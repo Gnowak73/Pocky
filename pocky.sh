@@ -11,6 +11,8 @@ END=""        # End date    (YYYY-MM-DD)
 SOURCE=""     # Data provider
 INSTR=""      # Instrument
 
+source .vars.env
+
 
 state_summary() {
   echo                      # one blank line after the logo
@@ -50,7 +52,6 @@ edit_wavelength() {
     "4500 Å  | white-light"
   )
 
-  # Arrow-keys navigate, Space toggles, Enter accepts.
   # Exit status is non-zero on Esc / Ctrl-C --> we leave WAVE unchanged.
   local picked
   picked=$(printf '%s\n' "${choices[@]}" |
@@ -68,7 +69,7 @@ _valid_iso_date() {          # “YYYY-MM-DD” sanity check
   date -d "$1" +%F >/dev/null 2>&1 || return 1               # real calendar?
 }
 
-_pause() {                        # message, then wait for one key
+_pause() {   # message, then wait for one key
   gum style --foreground 9 --bold "$1"
   gum input --width 1 --placeholder="⏎" --header="(press Enter)" >/dev/null
 }
@@ -102,7 +103,21 @@ edit_dates() {
     edit_dates
   fi
 }
-### ── 5. Main menu loop ────────────────────────────────────────────────────────
+
+export_vars() {
+  clear
+  cat > .vars.env <<EOF
+WAVE="$WAVE"
+START="$START"
+END="$END"
+SOURCE="$SOURCE"
+INSTR="$INSTR"
+EOF
+  cat .vars.env                         # also echo to stdout
+  gum style --bold --foreground 2 " Saved to .vars.env"
+}
+
+
 main_menu() {
   while true; do
     show_ascii_art
@@ -110,7 +125,7 @@ main_menu() {
     echo
     local menu=("Edit Wavelength" "Edit Date Range" \
                 "Pick Data Source" "Pick Instrument" \
-                "Export & Quit" "Quit without saving")
+                "Export & Quit" "Quit")
     local choice
     choice=$(printf "%s\n" "${menu[@]}" | gum choose --header "POCKY") || exit 0
     case "$choice" in
@@ -119,7 +134,7 @@ main_menu() {
       "Pick Data Source") choose_source ;;
       "Pick Instrument")  choose_instr ;;
       "Export & Quit")    export_vars; exit 0 ;;
-      "Quit without saving") clear; exit 0 ;;
+      "Quit") clear; exit 0 ;;
     esac
   done
 }
