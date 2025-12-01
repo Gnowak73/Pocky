@@ -2,6 +2,7 @@
 # usage: chmod +x pocky.sh && ./pocky.sh
 
 POCKY_VERSION="0.1"
+CONFIG_FILE=".vars.env"
 script_dir="$(dirname "$(readlink -f "$0")")"
 logo_file="$script_dir/logo.txt"
 
@@ -11,7 +12,7 @@ END=""        # End date    (YYYY-MM-DD)
 SOURCE=""     # Data provider
 INSTR=""      # Instrument
 
-source .vars.env
+source "$CONFIG_FILE"
 
 
 state_summary() {
@@ -27,7 +28,7 @@ state_summary() {
 show_ascii_art() {
   clear
   if [[ -f "$logo_file" && $(command -v tte) ]]; then
-    tte -i "$logo_file" --frame-rate 640 --no-color expand
+    tte -i "$logo_file" --frame-rate 640 expand --final-gradient-stops 443066 FF8855 FF6B81 FF4FAD D147FF 8B5EDB
   elif [[ -f "$logo_file" ]]; then
     cat "$logo_file"
   else
@@ -106,16 +107,24 @@ edit_dates() {
 
 export_vars() {
   clear
-  cat > .vars.env <<EOF
-WAVE="$WAVE"
-START="$START"
-END="$END"
-SOURCE="$SOURCE"
-INSTR="$INSTR"
-EOF
-  cat .vars.env                         # also echo to stdout
-  gum style --bold --foreground 2 " Saved to .vars.env"
+
+  #use temp file for atomic process (safety in case of crashes)
+  tmpfile=$(mktemp)
+{
+    printf 'WAVE="%s"\n' "$WAVE"
+    printf 'START="%s"\n' "$START"
+    printf 'END="%s"\n' "$END"
+    printf 'SOURCE="%s"\n' "$SOURCE"
+    printf 'INSTR="%s"\n' "$INSTR"
+} > "$tmpfile"
+
+  mv "$tmpfile" "$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE"
+
 }
+
+
+
 
 
 main_menu() {
