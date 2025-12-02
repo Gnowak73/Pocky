@@ -9,8 +9,7 @@ logo_file="$script_dir/logo.txt"
 WAVE=""       # Wavelength Range
 START=""      # Start date  (YYYY-MM-DD)
 END=""        # End date    (YYYY-MM-DD)
-SOURCE=""     # Data provider
-INSTR=""      # Instrument
+SOURCE="AIA"     # Data provider
 
 source "$CONFIG_FILE"
 
@@ -18,10 +17,9 @@ source "$CONFIG_FILE"
 state_summary() {
   echo                      # one blank line after the logo
   printf "  Wavelength : %s\n" "${WAVE:-<unset>}"
-  printf "  Date start : %s\n" "${START:-<unset>}"
-  printf "  Date end   : %s\n" "${END:-<unset>}"
-  printf "  Data src   : %s\n" "${SOURCE:-<unset>}"
-  printf "  Instrument : %s\n" "${INSTR:-<unset>}"
+  printf "  Date Start : %s\n" "${START:-<unset>}"
+  printf "  Date End   : %s\n" "${END:-<unset>}"
+  printf "  Data Source   : %s\n" "${SOURCE:-<unset>}"
 }
 
 
@@ -106,8 +104,6 @@ edit_dates() {
 }
 
 export_vars() {
-  clear
-
   #use temp file for atomic process (safety in case of crashes)
   tmpfile=$(mktemp)
 {
@@ -115,7 +111,6 @@ export_vars() {
     printf 'START="%s"\n' "$START"
     printf 'END="%s"\n' "$END"
     printf 'SOURCE="%s"\n' "$SOURCE"
-    printf 'INSTR="%s"\n' "$INSTR"
 } > "$tmpfile"
 
   mv "$tmpfile" "$CONFIG_FILE"
@@ -123,27 +118,20 @@ export_vars() {
 
 }
 
-
-
-
-
 main_menu() {
   while true; do
     show_ascii_art
+    export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" \
-                "Pick Data Source" "Pick Instrument" \
-                "Export & Quit" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Quit")
     local choice
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header "POCKY") || exit 0
+
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header "") || exit 0
     case "$choice" in
       "Edit Wavelength") edit_wavelength ;;
       "Edit Date Range") edit_dates ;;
-      "Pick Data Source") choose_source ;;
-      "Pick Instrument")  choose_instr ;;
-      "Export & Quit")    export_vars; exit 0 ;;
-      "Quit") clear; exit 0 ;;
+      "Quit") clear && export_vars; exit 0 ;;
     esac
   done
 }
