@@ -421,13 +421,92 @@ cache_menu() {
   done
 }
 
+_prompt_dl_args_jsoc() {
+  local def_email="${JSOC_EMAIL:-}"
+  local def_tsv="$script_dir/flare_cache.tsv"
+  local def_out="$script_dir/data_aia_lvl1"
+  local def_conn="6"
+  local def_splits="3"
+  local def_attempts="5"
+  local def_cadence="12s"
+  local def_before="0"
+  local def_after=""   # blank means default to flare duration
+
+  local email tsv outdir max_conn max_splits attempts cadence pad_before pad_after
+  email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email")
+  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv")
+  outdir=$(gum input --header="Output directory" --value="$def_out")
+  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn")
+  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits")
+  attempts=$(gum input --header="Max attempts per window/wavelength" --value="$def_attempts")
+  cadence=$(gum input --header="Cadence (e.g., 12s)" --value="$def_cadence")
+  pad_before=$(gum input --header="Minutes before event start" --value="$def_before")
+  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after")
+
+  printf '%s\n' "$email" "$tsv" "$outdir" "$max_conn" "$max_splits" "$attempts" "$cadence" "$pad_before" "$pad_after"
+}
+
+run_jsoc_download() {
+  show_ascii_art
+  if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
+    gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
+    _pause "Returning to menu" 9; return
+  fi
+
+  IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc)
+
+  # Fallbacks when user leaves entries blank
+  email=${email:-$JSOC_EMAIL}
+  tsv=${tsv:-$script_dir/flare_cache.tsv}
+  outdir=${outdir:-$script_dir/data_aia_lvl1}
+  max_conn=${max_conn:-6}
+  max_splits=${max_splits:-3}
+  attempts=${attempts:-5}
+  cadence=${cadence:-12s}
+  pad_before=${pad_before:-0}
+  pad_after=${pad_after:-}
+
+  local cmd=(python fetch_jsoc_lvl1.py
+    --tsv "$tsv"
+    --out "$outdir"
+    --max-conn "$max_conn"
+    --max-splits "$max_splits"
+    --attempts "$attempts"
+    --cadence "$cadence"
+    --pad-before "$pad_before"
+  )
+  [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
+  [[ -n $email ]] && cmd+=(--email "$email")
+
+  gum style --foreground 14 "Running: ${cmd[*]}"
+  if "${cmd[@]}"; then
+    gum style --foreground 10 "Download finished."
+  else
+    gum style --foreground 9 --bold "Download failed."
+  fi
+  _pause "Done"
+}
+
+download_menu() {
+  while true; do
+    show_ascii_art
+    local opts=("JSOC DRMS Lvl 1 Client" "Back")
+    local choice
+    choice=$(printf '%s\n' "${opts[@]}" | gum choose --header=$'\n') || return
+    case "$choice" in
+      "JSOC DRMS Lvl 1 Client") run_jsoc_download ;;
+      "Back") return ;;
+    esac
+  done
+}
+
 main_menu() {
   while true; do
     show_ascii_art
     export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Cache Options" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Cache Options" "Download FITS" "Quit")
     local choice
 
     choice=$(printf "%s\n" "${menu[@]}" | gum choose --header=$'\n') || exit 0
@@ -437,6 +516,7 @@ main_menu() {
       "Edit Flare Class Filter") flare_filter ;;
       "Select Flares") select_flares ;;
       "Cache Options") cache_menu ;;
+      "Download FITS") download_menu ;;
       "Quit") clear && export_vars; exit 0 ;;
     esac
   done

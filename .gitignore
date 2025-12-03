@@ -1,3 +1,5 @@
 .env
 .vars.env
 flare_cache.tsv
+data_aia_lvl1/
+__pycache__/
