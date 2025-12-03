@@ -19,7 +19,7 @@ _cmp_ascii() {
   case "$COMPARATOR" in
     "≥") echo ">=" ;;
     "≤") echo "<=" ;;
-    "ALL"|"All") echo "ALL" ;;
+    "ALL"|"All") echo "All" ;;
     *) echo "$COMPARATOR" ;;
   esac
 }
@@ -196,30 +196,30 @@ flare_filter() {
   local status op letter mag
 
   # get comparator
-  local -a comparator_display=('>' '≥' '==' '≤' '<' 'Any')
+  local -a comparator_display=('>' '≥' '==' '≤' '<' 'All')
   declare -A comparator_map=(
     [">"]=">"
     ["≥"]=">="
     ["=="]="=="
     ["≤"]="<="
     ["<"]="<"
-    ["Any"]="Any"
+    ["All"]="All"
   )
 
   op=$(printf '%s\n' "${comparator_display[@]}" |
-       gum choose --cursor="▶" --header=$'Choose Comparator\n')
+       gum choose --cursor="▶ " --header=$'Choose Comparator\n')
   status=$?                                     # Gum exit status
   [[ $status -ne 0 ]] && return                 # Esc goes back to menu
   op="${comparator_map[$op]}"
   [[ -z $op ]] && return                        # safety fallback
 
-  if [[ $op == "Any" ]]; then                   # clear filter
-    COMPARATOR="ALL"; FLARE_CLASS="Any"; return
+  if [[ $op == "All" ]]; then                   # clear filter
+    COMPARATOR="All"; FLARE_CLASS="Any"; return
   fi
 
   # get GOES class letter
   letter=$(printf '%s\n' A B C M X |
-           gum choose --cursor="▶" --header=$'Flare GOES Class\n')
+           gum choose --cursor="▶ " --header=$'Flare GOES Class\n')
   status=$?
   [[ $status -ne 0 ]] && return
 
@@ -228,7 +228,7 @@ flare_filter() {
   for i in {0..9}; do for t in {0..9}; do mags+=("$i.$t"); done; done
 
   mag=$(printf '%s\n' "${mags[@]}" |
-        gum choose --cursor="▶" --height 10 \
+        gum choose --cursor="▶ " --height 10 \
                    --header=$'Numeric Multiplier\n')
   status=$?
   [[ $status -ne 0 ]] && return
@@ -276,7 +276,7 @@ select_flares() {
   fi
 
   mapfile -t choices < <(
-    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\n", $1, $2}'
+    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\n", $1, $5}'
   )
 
   selection=$(
@@ -291,18 +291,53 @@ select_flares() {
   perm_dir="$script_dir"
   perm_file="$perm_dir/flare_cache.tsv"
   mkdir -p "$perm_dir"
+  local -a new_rows=()
+  while IFS= read -r line; do
+    for i in "${!choices[@]}"; do
+      if [[ ${choices[$i]} == "$line" ]]; then
+        new_rows+=("${rows[$i]}")
+        break
+      fi
+    done
+  done <<< "$selection"
+
+  local tmp_out
+  tmp_out="$(mktemp "$perm_dir/flare_cache.XXXXXX")"
+  printf '%s\n' "$header" > "$tmp_out"
   {
-    printf '%s\n' "$header"
-    while IFS= read -r line; do
-      for i in "${!choices[@]}"; do
-        if [[ ${choices[$i]} == "$line" ]]; then
-          printf '%s\n' "${rows[$i]}"
-          break
-        fi
-      done
-    done <<< "$selection"
-  } > "$perm_file"
+    if [[ -f "$perm_file" ]]; then
+      tail -n +2 "$perm_file"
+    fi
+    printf '%s\n' "${new_rows[@]}"
+  } | awk '!seen[$0]++' >> "$tmp_out"
+  mv "$tmp_out" "$perm_file"
   gum style --foreground 10 "Saved picks → $perm_file"
+  _pause "Done"
+}
+
+clear_flare_cache() {
+  show_ascii_art
+  local file="$script_dir/flare_cache.tsv"
+  if [[ ! -f $file ]]; then
+    gum style --bold "No flare cache found at $file"
+    _pause "Returning to menu"
+    return
+  fi
+
+  if ! gum confirm --default=false "Clear all flare entries in $file?"; then
+    _pause "Canceled"
+    return
+  fi
+
+  # Preserve header when clearing; fall back to current schema if missing
+  local header
+  if [[ -s $file ]]; then
+    header=$(head -n1 "$file")
+  fi
+  header=${header:-$'description\tflare_class\tstart\tend\tcoordinates\twavelength'}
+
+  printf '%s\n' "$header" > "$file"
+  gum style --foreground 10 "Cleared flare cache contents (header kept)."
   _pause "Done"
 }
 
@@ -312,7 +347,7 @@ main_menu() {
     export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Clear Flare Cache" "Quit")
     local choice
 
     choice=$(printf "%s\n" "${menu[@]}" | gum choose --header=$'\n') || exit 0
@@ -321,6 +356,7 @@ main_menu() {
       "Edit Date Range") edit_dates ;;
       "Edit Flare Class Filter") flare_filter ;;
       "Select Flares") select_flares ;;
+      "Clear Flare Cache") clear_flare_cache ;;
       "Quit") clear && export_vars; exit 0 ;;
     esac
   done

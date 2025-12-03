@@ -2,6 +2,7 @@
 """Query GOES flares from HEK and save them to a TSV cache."""
 
 import sys
+import re
 import datetime as dt
 from typing import NoReturn
 
@@ -13,12 +14,37 @@ def die(msg: str) -> NoReturn:
   sys.exit(1)
 
 
-def fmt_time(val) -> str:
-  """Format HEK time-like values without fractional seconds or trailing Z."""
+def fmt_iso(val) -> str:
+  """Return original ISO-ish time string (keep T/Z), or empty when missing."""
   if not val:
     return ""
-  s = getattr(val, "isot", str(val)).rstrip("Z").replace("T", " ")
-  return s.split(".", 1)[0]
+  return getattr(val, "isot", str(val))
+
+
+def fmt_human(val) -> str:
+  """Human-friendly time: drop fractional seconds and trailing Z, replace T with space."""
+  if not val:
+    return ""
+  s = getattr(val, "isot", str(val))
+  s = s.rstrip("Z").replace("T", " ")
+  if "." in s:
+    s = s.split(".", 1)[0]
+  return s
+
+
+def goes_score(cls: str) -> float:
+  """Return a sortable numeric score for GOES class (higher = stronger)."""
+  if not cls:
+    return -1.0
+  m = re.match(r"\s*([A-Za-z])\s*([0-9.]+)?", cls)
+  if not m:
+    return -1.0
+  letter = m.group(1).upper()
+  mag = float(m.group(2) or 0.0)
+  scale = {"A": 1e-8, "B": 1e-7, "C": 1e-6, "M": 1e-5, "X": 1e-4}.get(letter)
+  if scale is None:
+    return -1.0
+  return scale * mag
 
 
 def main() -> None:
@@ -30,17 +56,17 @@ def main() -> None:
   wave = args[4]
   outpath = args[5] if len(args) == 6 else "flare_cache.tsv"
 
+  if cmp_sym.lower() == "all":
+    cmp_sym = "All"
+
   base = a.hek.FL.GOESCls
   cmp_attr = {
     ">": base > flare,
     ">=": base >= flare,
-    "≥": base >= flare,
     "==": base == flare,
     "=": base == flare,
     "<=": base <= flare,
-    "≤": base <= flare,
     "<": base < flare,
-    "ALL": base >= "A0.0",
     "All": base >= "A0.0",
   }.get(cmp_sym)
   if cmp_attr is None:
@@ -53,18 +79,21 @@ def main() -> None:
     a.hek.OBS.Observatory == "GOES",
   )["hek"]
 
+  events = sorted(hek, key=lambda ev: goes_score(ev.get("fl_goescls")), reverse=True)
+
   with open(outpath, "w", encoding="utf-8") as f:
-    f.write("description\tcoordinates\twavelength\n")
-    for ev in hek:
+    f.write("description\tflare_class\tstart\tend\tcoordinates\twavelength\n")
+    for ev in events:
       s = ev.get("event_starttime")
       e = ev.get("event_endtime")
       x = ev.get("hpc_x", "")
       y = ev.get("hpc_y", "")
-      start_s = fmt_time(s)
-      end_s = fmt_time(e) or start_s
-      desc = f"{flare} flare occurred at {start_s} and ended at {end_s}"
+      cls = (ev.get("fl_goescls") or "").strip()
+      start_s = fmt_iso(s)
+      end_s = fmt_iso(e) or start_s
+      desc = f"{cls or 'Unknown'} flare occurred at {fmt_human(s)} and ended at {fmt_human(e) or fmt_human(s)}"
       coords = f"({x},{y})"
-      f.write(f"{desc}\t{coords}\t{wave}\n")
+      f.write(f"{desc}\t{cls}\t{start_s}\t{end_s}\t{coords}\t{wave}\n")
 
 
 if __name__ == "__main__":
