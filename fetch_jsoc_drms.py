@@ -41,6 +41,8 @@ def parse_args() -> argparse.Namespace:
   p.add_argument("--cadence", default="12s", help="Cadence string for JSOC query.")
   p.add_argument("--pad-before", type=float, default=0.0, help="Minutes to include before event start.")
   p.add_argument("--pad-after", type=float, default=None, help="Minutes to include after event start (blank = through event end).")
+  p.add_argument("--series", default="aia.lev1_euv_12s", help="JSOC series (fixed per caller).")
+  p.add_argument("--aia-scale", action="store_true", help="Apply aia_scale_aialev1 processing (for level 1.5).")
   return p.parse_args()
 
 
@@ -106,11 +108,11 @@ def count_all_fits(root: Path) -> int:
   return sum(1 for p in root.rglob("*.fits") if p.is_file())
 
 
-def stage_urls(client: drms.Client, record: str, attempts: int = 3) -> list[str]:
+def stage_urls(client: drms.Client, record: str, process: dict | None, attempts: int = 3) -> list[str]:
   urls: list[str] = []
   for attempt in range(1, attempts + 1):
     try:
-      req = client.export(record, method="url", protocol="fits")
+      req = client.export(record, method="url", protocol="fits", process=process)
       ok = req.wait(timeout=None, sleep=15, retries_notfound=5)
       if ok and req.urls is not None and not req.urls.empty:
         urls = [r.url for r in req.urls.itertuples(index=False)]
@@ -185,14 +187,15 @@ def main() -> None:
     print(f"\n[{idx}] {desc or win_id}")
     win_downloaded = 0
     win_failed = []
+    process = {"aia_scale_aialev1": {None: None}} if args.aia_scale else None
 
     for w in waves:
-      record = f'aia.lev1_euv_12s[{time_range(start_padded, end_padded, args.cadence)}][? WAVELNTH={w} ?]{{image}}'
+      record = f'{args.series}[{time_range(start_padded, end_padded, args.cadence)}][? WAVELNTH={w} ?]{{image}}'
       dest_dir = out_root / win_id / str(w)
       dest_dir.mkdir(parents=True, exist_ok=True)
       pre_count = count_fits(dest_dir)
 
-      staged_urls = stage_urls(client, record, attempts=3)
+      staged_urls = stage_urls(client, record, process, attempts=3)
       if not staged_urls:
         print(f"  [{win_id}] {w}A export returned no URLs.")
         render_status(idx - 1, total_events, win_id)
@@ -223,6 +226,7 @@ def main() -> None:
 
         errors = [e.url for e in getattr(res, "errors", [])] if res else urls_to_fetch
         files = list(getattr(res, "files", [])) if res else []
+
         total_files += len(files)
         win_downloaded += len(files)
         render_status(idx - 1, total_events, win_id)
@@ -230,7 +234,7 @@ def main() -> None:
         # If errors persist and we used https, fall back to new export once mid-way
         pending_urls = errors
         if pending_urls and attempt == (args.attempts // 2):
-          restaged = stage_urls(client, record, attempts=2)
+          restaged = stage_urls(client, record, process, attempts=2)
           if restaged:
             pending_urls, skipped = filter_existing(restaged, dest_dir)
             skipped_existing.update(skipped)
@@ -240,7 +244,7 @@ def main() -> None:
           time.sleep(backoff)
       if pending_urls:
         # Final serial try with fresh staging and HTTP
-        restaged = stage_urls(client, record, attempts=1)
+        restaged = stage_urls(client, record, process, attempts=1)
         if restaged:
           pending_urls, skipped = filter_existing(restaged, dest_dir)
           skipped_existing.update(skipped)
@@ -251,6 +255,7 @@ def main() -> None:
             res = dl.download()
             errors = [e.url for e in getattr(res, "errors", [])] if res else pending_urls
             files = list(getattr(res, "files", [])) if res else []
+
             total_files += len(files)
             win_downloaded += len(files)
             pending_urls = errors
@@ -259,12 +264,6 @@ def main() -> None:
         if pending_urls:
           print(f"  [{win_id}] {w}A — failed to fetch {len(pending_urls)} file(s) after all retries")
           win_failed.append((w, len(pending_urls)))
-        # update counts from disk to ensure accuracy
-        post_count = count_fits(dest_dir)
-        delta = max(0, post_count - pre_count)
-        if delta and delta != win_downloaded:
-          total_files += max(0, delta - win_downloaded)
-          win_downloaded = delta
       render_status(idx - 1, total_events, win_id)
     event_results.append({"id": win_id, "downloaded": win_downloaded, "failed": win_failed})
     render_status(idx, total_events, win_id)
@@ -277,7 +276,7 @@ def main() -> None:
       msg += f" (failed {fails})"
     print(msg)
 
-  print(f"Done. New FITS files: {total_files}. Skipped existing: {skipped_existing}.")
+  print(f"Done. New FITS files: {total_files}. Skipped existing: {len(skipped_existing)}.")
 
 
 if __name__ == "__main__":
