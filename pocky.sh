@@ -15,6 +15,15 @@ COMPARATOR="" # Flare comparator
 
 source "$CONFIG_FILE"
 
+_cmp_ascii() {
+  case "$COMPARATOR" in
+    "≥") echo ">=" ;;
+    "≤") echo "<=" ;;
+    "ALL"|"All") echo "ALL" ;;
+    *) echo "$COMPARATOR" ;;
+  esac
+}
+
 _wavelength_display() {
   [[ -z $WAVE ]] && { echo "<unset>"; return; }
 
@@ -125,7 +134,13 @@ _valid_iso_date() {          # “YYYY-MM-DD” sanity check
 }
 
 _pause() {   # message, then wait for one key
-  gum style --foreground 9 --bold "$1"
+  local msg="$1"
+  local color="$2"
+  if [[ -n $color ]]; then
+    gum style --foreground "$color" --bold "$msg"
+  else
+    gum style --bold "$msg"
+  fi
   gum input --width 1 --placeholder="⏎" --header="(press Enter)" >/dev/null
 }
 
@@ -153,7 +168,7 @@ edit_dates() {
   # make sure chronologically consistent
   if [[ -n $START && -n $END ]] &&
      (( $(date -d "$START" +%s) > $(date -d "$END" +%s) )); then
-    _pause "Start date is AFTER End date -– clearing both"
+    _pause "Start date is AFTER End date -– clearing both" 9
     START=""; END=""
     edit_dates
   fi
@@ -223,20 +238,89 @@ flare_filter() {
   FLARE_CLASS="${letter}${mag}"
 }
 
+select_flares() {
+  show_ascii_art
+
+  if [[ -z $START || -z $END ]]; then
+    gum style --foreground 9 --bold "Set a date range first."
+    _pause "Returning to menu" 9; return
+  fi
+  if [[ -z $WAVE ]]; then
+    gum style --foreground 9 --bold "Select at least one wavelength first."
+    _pause "Returning to menu" 9; return
+  fi
+
+  local cmp_ascii
+  cmp_ascii=$(_cmp_ascii)
+  local flare_class="${FLARE_CLASS:-A0.0}"
+  [[ -z $cmp_ascii ]] && { gum style --foreground 9 --bold "Set a comparator first."; _pause "Returning to menu" 9; return; }
+
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/pocky_flares.XXXXXXXX.tsv")"
+
+  if ! python query.py "$START" "$END" "$cmp_ascii" "$flare_class" "$WAVE" "$tmp"; then
+    gum style --foreground 9 --bold "Flare listing failed"
+    rm -f "$tmp"
+    _pause "Returning to menu" 9; return
+  fi
+
+  local header selection
+  header=$(head -n1 "$tmp")
+
+  # Prepare display lines without wavelength, keeping order to recover full rows
+  mapfile -t rows < <(tail -n +2 "$tmp")
+  if ((${#rows[@]}==0)); then
+    gum style --foreground 10 "No flares found."
+    rm -f "$tmp"
+    _pause "Returning to menu"; return
+  fi
+
+  mapfile -t choices < <(
+    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\n", $1, $2}'
+  )
+
+  selection=$(
+    printf '%s\n' "${choices[@]}" \
+    | gum choose --no-limit --height 20 --header "Choose Flares to Catalogue"
+  ) || selection=""
+  rm -f "$tmp"
+
+  [[ -z $selection ]] && { gum style --foreground 10 "No flares selected."; _pause "Returning to menu"; return; }
+
+  local perm_dir perm_file
+  perm_dir="$script_dir"
+  perm_file="$perm_dir/flare_cache.tsv"
+  mkdir -p "$perm_dir"
+  {
+    printf '%s\n' "$header"
+    while IFS= read -r line; do
+      for i in "${!choices[@]}"; do
+        if [[ ${choices[$i]} == "$line" ]]; then
+          printf '%s\n' "${rows[$i]}"
+          break
+        fi
+      done
+    done <<< "$selection"
+  } > "$perm_file"
+  gum style --foreground 10 "Saved picks → $perm_file"
+  _pause "Done"
+}
+
 main_menu() {
   while true; do
     show_ascii_art
     export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Quit")
     local choice
 
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="") || exit 0
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header=$'\n') || exit 0
     case "$choice" in
       "Edit Wavelength") edit_wavelength ;;
       "Edit Date Range") edit_dates ;;
       "Edit Flare Class Filter") flare_filter ;;
+      "Select Flares") select_flares ;;
       "Quit") clear && export_vars; exit 0 ;;
     esac
   done
