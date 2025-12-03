@@ -276,7 +276,7 @@ select_flares() {
   fi
 
   mapfile -t choices < <(
-    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\n", $1, $5}'
+    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\t%s\n", $1, $5, $3}'
   )
 
   selection=$(
@@ -341,13 +341,93 @@ clear_flare_cache() {
   _pause "Done"
 }
 
+delete_flare_rows() {
+  show_ascii_art
+  local file="$script_dir/flare_cache.tsv"
+  if [[ ! -s $file ]]; then
+    gum style --bold "Cache is empty (no flare_cache.tsv found or no data)."
+    _pause "Returning to menu"
+    return
+  fi
+
+  local header
+  header=$(head -n1 "$file")
+  mapfile -t rows < <(tail -n +2 "$file")
+  if ((${#rows[@]}==0)); then
+    gum style --bold "Cache has header only (no rows)."
+    _pause "Returning to menu"
+    return
+  fi
+
+  # Show description + coordinates for selection; keep mapping to full rows
+  mapfile -t choices < <(
+    printf '%s\n' "${rows[@]}" | awk -F'\t' '{printf "%s\t%s\n", $1, $5}'
+  )
+
+  local selection
+  selection=$(
+    printf '%s\n' "${choices[@]}" \
+    | gum filter --no-limit --height 20 --header "Select cache rows to delete" --fuzzy
+  ) || selection=""
+
+  [[ -z $selection ]] && { gum style --foreground 10 "No rows selected."; _pause "Returning to menu"; return; }
+
+  # Mark selected indices
+  declare -A delete_idx=()
+  while IFS= read -r line; do
+    for i in "${!choices[@]}"; do
+      if [[ ${choices[$i]} == "$line" ]]; then
+        delete_idx[$i]=1
+        break
+      fi
+    done
+  done <<< "$selection"
+
+  local tmp
+  tmp="$(mktemp "$script_dir/flare_cache.XXXXXX")"
+  printf '%s\n' "$header" > "$tmp"
+  for i in "${!rows[@]}"; do
+    [[ ${delete_idx[$i]+x} ]] && continue
+    printf '%s\n' "${rows[$i]}" >> "$tmp"
+  done
+  mv "$tmp" "$file"
+  gum style --foreground 10 "Removed selected rows."
+  _pause "Done"
+}
+
+view_flare_cache() {
+  show_ascii_art
+  local file="$script_dir/flare_cache.tsv"
+  if [[ ! -s $file ]]; then
+    gum style --bold "Cache is empty (no flare_cache.tsv found or no data)."
+    _pause "Returning to menu"
+    return
+  fi
+  gum pager < "$file"
+}
+
+cache_menu() {
+  while true; do
+    show_ascii_art
+    local opts=("View Cache" "Delete Rows" "Clear Cache" "Back")
+    local choice
+    choice=$(printf '%s\n' "${opts[@]}" | gum choose --header=$'\n') || return
+    case "$choice" in
+      "View Cache") view_flare_cache ;;
+      "Delete Rows") delete_flare_rows ;;
+      "Clear Cache") clear_flare_cache ;;
+      "Back") return ;;
+    esac
+  done
+}
+
 main_menu() {
   while true; do
     show_ascii_art
     export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Clear Flare Cache" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Select Flares" "Cache Options" "Quit")
     local choice
 
     choice=$(printf "%s\n" "${menu[@]}" | gum choose --header=$'\n') || exit 0
@@ -356,7 +436,7 @@ main_menu() {
       "Edit Date Range") edit_dates ;;
       "Edit Flare Class Filter") flare_filter ;;
       "Select Flares") select_flares ;;
-      "Clear Flare Cache") clear_flare_cache ;;
+      "Cache Options") cache_menu ;;
       "Quit") clear && export_vars; exit 0 ;;
     esac
   done
