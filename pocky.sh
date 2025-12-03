@@ -10,18 +10,74 @@ WAVE=""       # Wavelength Range
 START=""      # Start date  (YYYY-MM-DD)
 END=""        # End date    (YYYY-MM-DD)
 SOURCE="AIA"     # Data provider
+FLARE_CLASS="" # Flare GOES class
+COMPARATOR="" # Flare comparator
 
 source "$CONFIG_FILE"
+
+_wavelength_display() {
+  [[ -z $WAVE ]] && { echo "<unset>"; return; }
+
+  # Canonical order for grouping adjacent selections
+  local -a order=("94" "131" "171" "193" "211" "304" "335" "1600" "1700" "4500")
+  declare -A idx
+  for i in "${!order[@]}"; do idx["${order[$i]}"]=$i; done
+
+  local IFS=','
+  local -a selected
+  read -ra selected <<< "$WAVE"
+
+  # Filter to known wavelengths and drop empties
+  local -a valid=()
+  for w in "${selected[@]}"; do
+    w=${w//[[:space:]]/}
+    [[ -n ${idx[$w]+x} ]] && valid+=("$w")
+  done
+
+  (( ${#valid[@]} )) || { echo "$WAVE"; return; }
+
+  # Sort by canonical order
+  local IFS=$'\n'
+  local -a sorted
+  read -r -d '' -a sorted < <(
+    for w in "${valid[@]}"; do echo "${idx[$w]}:$w"; done | sort -n | cut -d: -f2
+    printf '\0'
+  )
+
+  # Collapse consecutive selections into ranges
+  local -a out
+  local start="" prev="" prev_i=""
+  for w in "${sorted[@]}"; do
+    local i=${idx[$w]}
+    if [[ -z $start ]]; then
+      start=$w; prev=$w; prev_i=$i; continue
+    fi
+    if (( i == prev_i + 1 )); then
+      prev=$w; prev_i=$i; continue
+    fi
+    if [[ $start == $prev ]]; then out+=("$start"); else out+=("$start-$prev"); fi
+    start=$w; prev=$w; prev_i=$i
+  done
+
+  # Flush last range
+  if [[ -n $start ]]; then
+    if [[ $start == $prev ]]; then out+=("$start"); else out+=("$start-$prev"); fi
+  fi
+
+  local IFS=','; echo "${out[*]}"
+}
 
 
 state_summary() {
   echo                      # one blank line after the logo
-  printf "  Wavelength : %s\n" "${WAVE:-<unset>}"
+  printf "  Wavelength : %s\n" "$(_wavelength_display)"
   printf "  Date Start : %s\n" "${START:-<unset>}"
   printf "  Date End   : %s\n" "${END:-<unset>}"
   printf "  Data Source   : %s\n" "${SOURCE:-<unset>}"
-}
+  printf "  Flare Class : %s\n" "${FLARE_CLASS:-<unset>}"
+  printf "  Comparator : %s\n" "${COMPARATOR:-<unset>}"
 
+}
 
 show_ascii_art() {
   clear
@@ -55,7 +111,7 @@ edit_wavelength() {
   local picked
   picked=$(printf '%s\n' "${choices[@]}" |
            gum choose --no-limit --height 12 \
-                      --header "Select AIA wavelength channels") || return
+                      --header $'Select AIA wavelength channels\n') || return
 
   # Extract just the wavelength numbers and join them with commas.
   if [[ -n $picked ]]; then
@@ -111,11 +167,60 @@ export_vars() {
     printf 'START="%s"\n' "$START"
     printf 'END="%s"\n' "$END"
     printf 'SOURCE="%s"\n' "$SOURCE"
+    printf 'FLARE_CLASS="%s"\n' "$FLARE_CLASS"
+    printf 'COMPARATOR="%s"\n' "$COMPARATOR"
 } > "$tmpfile"
 
   mv "$tmpfile" "$CONFIG_FILE"
   chmod 600 "$CONFIG_FILE"
 
+}
+
+flare_filter() {
+  show_ascii_art
+  local status op letter mag
+
+  # get comparator
+  local -a comparator_display=('>' '≥' '==' '≤' '<' 'Any')
+  declare -A comparator_map=(
+    [">"]=">"
+    ["≥"]=">="
+    ["=="]="=="
+    ["≤"]="<="
+    ["<"]="<"
+    ["Any"]="Any"
+  )
+
+  op=$(printf '%s\n' "${comparator_display[@]}" |
+       gum choose --cursor="▶" --header=$'Choose Comparator\n')
+  status=$?                                     # Gum exit status
+  [[ $status -ne 0 ]] && return                 # Esc goes back to menu
+  op="${comparator_map[$op]}"
+  [[ -z $op ]] && return                        # safety fallback
+
+  if [[ $op == "Any" ]]; then                   # clear filter
+    COMPARATOR="ALL"; FLARE_CLASS="Any"; return
+  fi
+
+  # get GOES class letter
+  letter=$(printf '%s\n' A B C M X |
+           gum choose --cursor="▶" --header=$'Flare GOES Class\n')
+  status=$?
+  [[ $status -ne 0 ]] && return
+
+  # get flare magnitude
+  local -a mags=()
+  for i in {0..9}; do for t in {0..9}; do mags+=("$i.$t"); done; done
+
+  mag=$(printf '%s\n' "${mags[@]}" |
+        gum choose --cursor="▶" --height 10 \
+                   --header=$'Numeric Multiplier\n')
+  status=$?
+  [[ $status -ne 0 ]] && return
+
+  # save
+  COMPARATOR="$op"
+  FLARE_CLASS="${letter}${mag}"
 }
 
 main_menu() {
@@ -124,13 +229,14 @@ main_menu() {
     export_vars
     state_summary
     echo
-    local menu=("Edit Wavelength" "Edit Date Range" "Quit")
+    local menu=("Edit Wavelength" "Edit Date Range" "Edit Flare Class Filter" "Quit")
     local choice
 
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header "") || exit 0
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="") || exit 0
     case "$choice" in
       "Edit Wavelength") edit_wavelength ;;
       "Edit Date Range") edit_dates ;;
+      "Edit Flare Class Filter") flare_filter ;;
       "Quit") clear && export_vars; exit 0 ;;
     esac
   done
@@ -139,4 +245,3 @@ main_menu() {
 
 
 main_menu
-
