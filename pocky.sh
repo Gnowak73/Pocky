@@ -453,6 +453,9 @@ run_jsoc_download() {
     _pause "Returning to menu" 9; return
   fi
 
+  local provider
+  provider=$(choose_fido_provider) || { _pause "Returning to menu"; return; }
+
   IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1")
 
   # Fallbacks when user leaves entries blank
@@ -545,16 +548,115 @@ run_jsoc_download_lvl15() {
   _pause "Done"
 }
 
+run_jsoc_fido_lvl1() {
+  show_ascii_art
+  if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
+    gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
+    _pause "Returning to menu" 9; return
+  fi
+
+  local provider
+  provider=$(printf '%s\n' "JSOC" "VSO" | gum choose --header="Select Fido provider" --item.foreground="bold") || { _pause "Returning to menu"; return; }
+
+  # Prompt core args; email only needed for JSOC
+  local def_tsv="$script_dir/flare_cache.tsv"
+  local def_out="$script_dir/data_aia_lvl1"
+  local def_conn="6" def_splits="3" def_attempts="3" def_cadence="12" def_before="0" def_after=""
+  local email tsv outdir max_conn max_splits attempts cadence pad_before pad_after
+  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv")
+  outdir=$(gum input --header="Output directory" --value="$def_out")
+  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn")
+  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits")
+  attempts=$(gum input --header="Fetch attempts per event" --value="$def_attempts")
+  cadence=$(gum input --header="Cadence (seconds)" --value="$def_cadence")
+  pad_before=$(gum input --header="Minutes before event start" --value="$def_before")
+  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after")
+  if [[ $provider == "jsoc" ]]; then
+    local def_email="${JSOC_EMAIL:-}"
+    email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email")
+  fi
+
+  # Fallbacks when user leaves entries blank
+  email=$(echo "${email:-}" | xargs)
+  tsv=${tsv:-$script_dir/flare_cache.tsv}
+  outdir=${outdir:-$script_dir/data_aia_lvl1}
+  cadence=${cadence:-12}
+  pad_before=${pad_before:-0}
+  pad_after=${pad_after:-}
+
+  if [[ $provider == "jsoc" && -z $email ]]; then
+    gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
+    _pause "Returning to menu" 9; return
+  fi
+
+  local cmd=(python fetch_fido.py
+    --tsv "$tsv"
+    --out "$outdir"
+    --cadence "${cadence:-12}"
+    --pad-before "${pad_before:-0}"
+    --max-conn "${max_conn:-6}"
+    --max-splits "${max_splits:-3}"
+    --attempts "${attempts:-3}"
+    --provider "$provider"
+  )
+  [[ $provider == "jsoc" ]] && cmd+=(--email "$email")
+  [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
+
+  gum style --foreground 14 "Running: ${cmd[*]}"
+  if "${cmd[@]}"; then
+    gum style --foreground 10 "Download finished."
+  else
+    gum style --foreground 9 --bold "Download failed."
+  fi
+  _pause "Done"
+}
+
+run_jsoc_fido_lvl15() {
+  show_ascii_art
+  if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
+    gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
+    _pause "Returning to menu" 9; return
+  fi
+
+  IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5")
+
+  # Fallbacks when user leaves entries blank
+  email=$(echo "$email" | xargs)
+  email=${email:-$JSOC_EMAIL}
+  tsv=${tsv:-$script_dir/flare_cache.tsv}
+  outdir=${outdir:-$script_dir/data_aia_lvl1.5}
+  cadence=${cadence:-12}
+  pad_before=${pad_before:-0}
+  pad_after=${pad_after:-}
+
+  if [[ -z $email ]]; then
+    gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
+    _pause "Returning to menu" 9; return
+  fi
+
+  gum style --foreground 9 --bold "Fido level 1.5 is not supported (use JSOC DRMS Lvl 1.5)."
+  _pause "Returning to menu" 9; return
+}
+
 download_menu() {
   while true; do
     show_ascii_art
-    local opts=("JSOC DRMS Lvl 1 Client" "JSOC DRMS Lvl 1.5 Client" "Back")
+    local opts=(
+      "JSOC DRMS Lvl 1 Client"
+      "JSOC DRMS Lvl 1.5 Client"
+      "---"
+      "Fido Fetch Lvl 1"
+      "---"
+      "Back"
+    )
     local choice
     choice=$(printf '%s\n' "${opts[@]}" | gum choose --header=$'\n') || return
     case "$choice" in
       "JSOC DRMS Lvl 1 Client") run_jsoc_download ;;
       "JSOC DRMS Lvl 1.5 Client") run_jsoc_download_lvl15 ;;
+      "Fido Fetch Lvl 1") run_jsoc_fido_lvl1 ;;
       "Back") return ;;
+      "---") continue ;;
     esac
   done
 }
