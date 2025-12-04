@@ -458,7 +458,7 @@ func renderMenu(m model, width int) string {
 			cursor = "> "
 		}
 		lineContent := cursor + style.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText+len(cursor)+2, lipgloss.Left, " "+lineContent+" ")
+		line := lipgloss.PlaceHorizontal(maxText+len(cursor), lipgloss.Center, lineContent)
 		lines = append(lines, line)
 	}
 
@@ -472,13 +472,24 @@ func renderMenu(m model, width int) string {
 		return "\n\n" + menuBlock
 	}
 
-	blockWidth := maxText + 2 + 2 // cursor plus padding
+	blockWidth := maxText + 2 // cursor + internal spacing
 
 	if width <= 0 {
 		width = blockWidth
 	}
 
-	return "\n\n" + lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
+	placed := lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
+	var shifted []string
+	for _, line := range strings.Split(placed, "\n") {
+		if strings.HasPrefix(line, " ") {
+			line = line[1:]
+		}
+		if strings.HasPrefix(line, " ") {
+			line = line[1:]
+		}
+		shifted = append(shifted, line)
+	}
+	return "\n\n" + strings.Join(shifted, "\n")
 }
 
 func renderSummary(cfg config, width int) string {
