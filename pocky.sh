@@ -12,6 +12,7 @@ END=""        # End date    (YYYY-MM-DD)
 SOURCE="AIA"     # Data provider
 FLARE_CLASS="" # Flare GOES class
 COMPARATOR="" # Flare comparator
+DL_EMAIL=""   # Cached download email
 
 source "$CONFIG_FILE"
 
@@ -151,16 +152,20 @@ edit_dates() {
   # get inputs
   while true; do
     tmp_start=$(gum input --placeholder="${START:-YYYY-MM-DD}" \
-                          --header="Start date  (YYYY-MM-DD)  —-  leave blank to unset")
-    [[ -z $tmp_start ]] && { START=""; break; }              # blank → unset
+                          --header="Start date  (YYYY-MM-DD)  —-  leave blank to remain same")
+    if [[ -z $tmp_start ]]; then
+      tmp_start="$START"    # keep previous if blank
+    fi
     _valid_iso_date "$tmp_start" && { START=$tmp_start; break; }
     gum style --bold --foreground 9 "Invalid date -— try again"
   done
 
   while true; do
     tmp_end=$(gum input --placeholder="${END:-YYYY-MM-DD}" \
-                        --header="End date    (YYYY-MM-DD)  —-  leave blank to unset")
-    [[ -z $tmp_end ]] && { END=""; break; }
+                        --header="End date    (YYYY-MM-DD)  —-  leave blank to remain same")
+    if [[ -z $tmp_end ]]; then
+      tmp_end="$END"    # keep previous if blank
+    fi
     _valid_iso_date "$tmp_end" && { END=$tmp_end; break; }
     gum style --bold --foreground 9 "Invalid date -— try again"
   done
@@ -184,6 +189,7 @@ export_vars() {
     printf 'SOURCE="%s"\n' "$SOURCE"
     printf 'FLARE_CLASS="%s"\n' "$FLARE_CLASS"
     printf 'COMPARATOR="%s"\n' "$COMPARATOR"
+    printf 'DL_EMAIL="%s"\n' "$DL_EMAIL"
 } > "$tmpfile"
 
   mv "$tmpfile" "$CONFIG_FILE"
@@ -243,17 +249,17 @@ select_flares() {
 
   if [[ -z $START || -z $END ]]; then
     gum style --foreground 9 --bold "Set a date range first."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
   if [[ -z $WAVE ]]; then
     gum style --foreground 9 --bold "Select at least one wavelength first."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local cmp_ascii
   cmp_ascii=$(_cmp_ascii)
   local flare_class="${FLARE_CLASS:-A0.0}"
-  [[ -z $cmp_ascii ]] && { gum style --foreground 9 --bold "Set a comparator first."; _pause "Returning to menu" 9; return; }
+  [[ -z $cmp_ascii ]] && { gum style --foreground 9 --bold "Set a comparator first."; _pause "Returning to menu"; return; }
 
   local tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/pocky_flares.XXXXXXXX.tsv")"
@@ -261,7 +267,7 @@ select_flares() {
   if ! python query.py "$START" "$END" "$cmp_ascii" "$flare_class" "$WAVE" "$tmp"; then
     gum style --foreground 9 --bold "Flare listing failed"
     rm -f "$tmp"
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local header selection
@@ -423,7 +429,7 @@ cache_menu() {
 
 _prompt_dl_args_jsoc() {
   local def_out="${1}"
-  local def_email="${JSOC_EMAIL:-}"
+  local def_email="${DL_EMAIL:-${JSOC_EMAIL:-}}"
   local def_tsv="$script_dir/flare_cache.tsv"
   local def_conn="6"
   local def_splits="3"
@@ -433,15 +439,15 @@ _prompt_dl_args_jsoc() {
   local def_after=""   # blank means default to flare duration
 
   local email tsv outdir max_conn max_splits attempts cadence pad_before pad_after
-  email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email")
-  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv")
-  outdir=$(gum input --header="Output directory" --value="$def_out")
-  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn")
-  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits")
-  attempts=$(gum input --header="Max attempts per window/wavelength" --value="$def_attempts")
-  cadence=$(gum input --header="Cadence (e.g., 12s)" --value="$def_cadence")
-  pad_before=$(gum input --header="Minutes before event start" --value="$def_before")
-  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after")
+  email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email") || return 1
+  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv") || return 1
+  outdir=$(gum input --header="Output directory" --value="$def_out") || return 1
+  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn") || return 1
+  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits") || return 1
+  attempts=$(gum input --header="Max attempts per window/wavelength" --value="$def_attempts") || return 1
+  cadence=$(gum input --header="Cadence (e.g., 12s)" --value="$def_cadence") || return 1
+  pad_before=$(gum input --header="Minutes before event start" --value="$def_before") || return 1
+  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after") || return 1
 
   printf '%s\n' "$email" "$tsv" "$outdir" "$max_conn" "$max_splits" "$attempts" "$cadence" "$pad_before" "$pad_after"
 }
@@ -450,17 +456,18 @@ run_jsoc_download() {
   show_ascii_art
   if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
     gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
-  local provider
-  provider=$(choose_fido_provider) || { _pause "Returning to menu"; return; }
-
-  IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1")
+  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1"); then
+    _pause "Returning to menu"; return
+  fi
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
   email=${email:-$JSOC_EMAIL}
+  DL_EMAIL="$email"
+  export_vars
   tsv=${tsv:-$script_dir/flare_cache.tsv}
   outdir=${outdir:-$script_dir/data_aia_lvl1}
   max_conn=${max_conn:-6}
@@ -473,7 +480,7 @@ run_jsoc_download() {
 
   if [[ -z $email ]]; then
     gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local cmd=(python fetch_jsoc_drms.py
@@ -502,14 +509,18 @@ run_jsoc_download_lvl15() {
   show_ascii_art
   if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
     gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
-  IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5")
+  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
+    _pause "Returning to menu"; return
+  fi
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
   email=${email:-$JSOC_EMAIL}
+  DL_EMAIL="$email"
+  export_vars
   tsv=${tsv:-$script_dir/flare_cache.tsv}
   outdir=${outdir:-$script_dir/data_aia_lvl1.5}
   max_conn=${max_conn:-6}
@@ -522,7 +533,7 @@ run_jsoc_download_lvl15() {
 
   if [[ -z $email ]]; then
     gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local cmd=(python fetch_jsoc_drms.py
@@ -552,29 +563,30 @@ run_jsoc_fido_lvl1() {
   show_ascii_art
   if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
     gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local provider
-  provider=$(printf '%s\n' "JSOC" "VSO" | gum choose --header="Select Fido provider" --item.foreground="bold") || { _pause "Returning to menu"; return; }
+  provider=$(printf '%s\n' "JSOC" "VSO" | gum choose --header="Select Fido provider" --cursor="▶ ") || { _pause "Returning to menu"; return; }
+  provider=$(echo "$provider" | tr '[:upper:]' '[:lower:]')
 
   # Prompt core args; email only needed for JSOC
   local def_tsv="$script_dir/flare_cache.tsv"
   local def_out="$script_dir/data_aia_lvl1"
   local def_conn="6" def_splits="3" def_attempts="3" def_cadence="12" def_before="0" def_after=""
   local email tsv outdir max_conn max_splits attempts cadence pad_before pad_after
-  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv")
-  outdir=$(gum input --header="Output directory" --value="$def_out")
-  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn")
-  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits")
-  attempts=$(gum input --header="Fetch attempts per event" --value="$def_attempts")
-  cadence=$(gum input --header="Cadence (seconds)" --value="$def_cadence")
-  pad_before=$(gum input --header="Minutes before event start" --value="$def_before")
-  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after")
   if [[ $provider == "jsoc" ]]; then
-    local def_email="${JSOC_EMAIL:-}"
-    email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email")
+    local def_email="${DL_EMAIL:-${JSOC_EMAIL:-}}"
+    email=$(gum input --header="JSOC Email (env JSOC_EMAIL used if blank)" --value="$def_email") || { _pause "Returning to menu"; return; }
   fi
+  tsv=$(gum input --header="Path to flare cache TSV" --value="$def_tsv") || { _pause "Returning to menu"; return; }
+  outdir=$(gum input --header="Output directory" --value="$def_out") || { _pause "Returning to menu"; return; }
+  max_conn=$(gum input --header="Downloader max connections" --value="$def_conn") || { _pause "Returning to menu"; return; }
+  max_splits=$(gum input --header="Downloader max splits" --value="$def_splits") || { _pause "Returning to menu"; return; }
+  attempts=$(gum input --header="Fetch attempts per event" --value="$def_attempts") || { _pause "Returning to menu"; return; }
+  cadence=$(gum input --header="Cadence (seconds)" --value="$def_cadence") || { _pause "Returning to menu"; return; }
+  pad_before=$(gum input --header="Minutes before event start" --value="$def_before") || { _pause "Returning to menu"; return; }
+  pad_after=$(gum input --header="Minutes after event start (blank = to event end)" --value="$def_after") || { _pause "Returning to menu"; return; }
 
   # Fallbacks when user leaves entries blank
   email=$(echo "${email:-}" | xargs)
@@ -586,7 +598,7 @@ run_jsoc_fido_lvl1() {
 
   if [[ $provider == "jsoc" && -z $email ]]; then
     gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   local cmd=(python fetch_fido.py
@@ -599,7 +611,11 @@ run_jsoc_fido_lvl1() {
     --attempts "${attempts:-3}"
     --provider "$provider"
   )
-  [[ $provider == "jsoc" ]] && cmd+=(--email "$email")
+  if [[ $provider == "jsoc" ]]; then
+    cmd+=(--email "$email")
+    DL_EMAIL="$email"
+    export_vars
+  fi
   [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
 
   gum style --foreground 14 "Running: ${cmd[*]}"
@@ -615,14 +631,18 @@ run_jsoc_fido_lvl15() {
   show_ascii_art
   if [[ ! -f "$script_dir/flare_cache.tsv" ]]; then
     gum style --foreground 9 --bold "flare_cache.tsv not found in $script_dir"
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
-  IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5")
+  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
+    _pause "Returning to menu"; return
+  fi
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
   email=${email:-$JSOC_EMAIL}
+  DL_EMAIL="$email"
+  export_vars
   tsv=${tsv:-$script_dir/flare_cache.tsv}
   outdir=${outdir:-$script_dir/data_aia_lvl1.5}
   cadence=${cadence:-12}
@@ -631,11 +651,11 @@ run_jsoc_fido_lvl15() {
 
   if [[ -z $email ]]; then
     gum style --foreground 9 --bold "JSOC email is required (set JSOC_EMAIL or enter it)."
-    _pause "Returning to menu" 9; return
+    _pause "Returning to menu"; return
   fi
 
   gum style --foreground 9 --bold "Fido level 1.5 is not supported (use JSOC DRMS Lvl 1.5)."
-  _pause "Returning to menu" 9; return
+  _pause "Returning to menu"; return
 }
 
 download_menu() {
