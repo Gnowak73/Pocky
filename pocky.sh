@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: chmod +x pocky.sh && ./pocky.sh
 
-POCKY_VERSION="0.1"
+POCKY_VERSION="0.2"
 CONFIG_FILE=".vars.env"
 script_dir="$(dirname "$(readlink -f "$0")")"
 logo_file="$script_dir/logo.txt"
@@ -79,13 +79,26 @@ _wavelength_display() {
 
 
 state_summary() {
-  echo                      # one blank line after the logo
-  printf "  Wavelength : %s\n" "$(_wavelength_display)"
-  printf "  Date Start : %s\n" "${START:-<unset>}"
-  printf "  Date End   : %s\n" "${END:-<unset>}"
-  printf "  Data Source   : %s\n" "${SOURCE:-<unset>}"
-  printf "  Flare Class : %s\n" "${FLARE_CLASS:-<unset>}"
-  printf "  Comparator : %s\n" "${COMPARATOR:-<unset>}"
+#  echo                      # one blank line after the logo
+#  printf "  Wavelength : %s\n" "$(_wavelength_display)"
+#  printf "  Date Start : %s\n" "${START:-<unset>}"
+#  printf "  Date End   : %s\n" "${END:-<unset>}"
+#  printf "  Data Source   : %s\n" "${SOURCE:-<unset>}"
+#  printf "  Flare Class : %s\n" "${FLARE_CLASS:-<unset>}"
+#  printf "  Comparator : %s\n" "${COMPARATOR:-<unset>}"
+#  printf "  Last Email  : %s\n" "${DL_EMAIL:-<unset>}"
+#
+
+#  echo                      # one blank line after the logo
+  gum style --border=rounded --padding "1 1" --border-foreground=12 --align=left <<EOF
+Wavelength : $(_wavelength_display)
+Date Start : ${START:-<unset>}
+Date End   : ${END:-<unset>}
+Data Source: ${SOURCE:-<unset>}
+Flare Class: ${FLARE_CLASS:-<unset>}
+Comparator : ${COMPARATOR:-<unset>}
+Last Email : ${DL_EMAIL:-<unset>}
+EOF
 
 }
 
@@ -496,6 +509,10 @@ run_jsoc_download() {
   [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
   cmd+=(--email "$email")
 
+  if ! gum confirm --default=true "Proceed with download?"; then
+    _pause "Canceled"; return
+  fi
+
   gum style --foreground 14 "Running: ${cmd[*]}"
   if "${cmd[@]}"; then
     gum style --foreground 10 "Download finished."
@@ -549,6 +566,10 @@ run_jsoc_download_lvl15() {
     --email "$email"
   )
   [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
+
+  if ! gum confirm --default=true "Proceed with download?"; then
+    _pause "Canceled"; return
+  fi
 
   gum style --foreground 14 "Running: ${cmd[*]}"
   if "${cmd[@]}"; then
@@ -617,6 +638,10 @@ run_jsoc_fido_lvl1() {
     export_vars
   fi
   [[ -n $pad_after ]] && cmd+=(--pad-after "$pad_after")
+
+  if ! gum confirm --default=true "Proceed with download?"; then
+    _pause "Canceled"; return
+  fi
 
   gum style --foreground 14 "Running: ${cmd[*]}"
   if "${cmd[@]}"; then
