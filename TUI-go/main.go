@@ -74,11 +74,11 @@ var (
 	summaryHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#EAEAFF")).
 				Bold(true).
-				Padding(0, 2).
+				Padding(0, 1).
 				Align(lipgloss.Center)
 
 	summaryBodyStyle = lipgloss.NewStyle().
-				Padding(0, 2).
+				Padding(0, 1).
 				Align(lipgloss.Left)
 
 	summaryBorderStyle = lipgloss.NewStyle().
@@ -425,7 +425,7 @@ func renderStatus(width int, logoWidth int, lines int) string {
 		Render("")
 	info := " Main Menu"
 	infoBox := statusTextStyle.Render(info)
-	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(infoBox), 0)
+	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
 	hints := statusHintStyle.Width(available).Align(lipgloss.Right).Render("q/esc to quit")
 
 	bar := lipgloss.JoinHorizontal(
@@ -444,6 +444,12 @@ func renderStatus(width int, logoWidth int, lines int) string {
 
 func renderMenu(m model, width int) string {
 	var lines []string
+	maxText := 0
+	for _, item := range m.menuItems {
+		if w := lipgloss.Width(item); w > maxText {
+			maxText = w
+		}
+	}
 	for i, item := range m.menuItems {
 		style := menuItemStyle
 		cursor := "  "
@@ -451,7 +457,9 @@ func renderMenu(m model, width int) string {
 			style = menuSelectedStyle
 			cursor = "> "
 		}
-		lines = append(lines, cursor+style.Render(item))
+		lineContent := cursor + style.Render(item)
+		line := lipgloss.PlaceHorizontal(maxText+len(cursor)+2, lipgloss.Left, " "+lineContent+" ")
+		lines = append(lines, line)
 	}
 
 	menuBlock := strings.Join(lines, "\n")
@@ -463,21 +471,12 @@ func renderMenu(m model, width int) string {
 	if width <= 0 {
 		return "\n\n" + menuBlock
 	}
-	// Center based on text width, ignoring cursor column.
-	maxText := 0
-	for _, item := range m.menuItems {
-		if w := lipgloss.Width(item); w > maxText {
-			maxText = w
-		}
+
+	blockWidth := maxText + 2 + 2 // cursor plus padding
+
+	if width <= 0 {
+		width = blockWidth
 	}
-	cursorPad := 2 // "▶ "
-	blockWidth := maxText + cursorPad
-	// Normalize each line to the block width so centering ignores cursor variance.
-	var padded []string
-	for _, line := range strings.Split(menuBlock, "\n") {
-		padded = append(padded, lipgloss.PlaceHorizontal(blockWidth, lipgloss.Center, line))
-	}
-	menuBlock = strings.Join(padded, "\n")
 
 	return "\n\n" + lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
 }
