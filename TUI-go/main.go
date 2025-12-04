@@ -49,6 +49,9 @@ var (
 			Foreground(lipgloss.Color("#A550DF")).
 			Padding(0, 1)
 
+	statusArrowStyle = lipgloss.NewStyle().
+				Inherit(statusBarStyle)
+
 	versionStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8B5EDB")).
 			Bold(true)
@@ -57,10 +60,8 @@ var (
 			Foreground(lipgloss.Color("#EAEAFF"))
 
 	menuSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#111014")).
-				Background(lipgloss.Color("#8B5EDB")).
-				Bold(true).
-				Padding(0, 1)
+				Foreground(lipgloss.Color("#8B5EDB")).
+				Bold(true)
 
 	summaryLabelStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FFB7D5")).
@@ -418,7 +419,11 @@ func renderStatus(width int, logoWidth int, lines int) string {
 	}
 
 	statusKey := statusKeyStyle.Render("POCKY")
-	info := "Main Menu"
+	statusArrow := statusArrowStyle.
+		Foreground(statusBarStyle.GetBackground()).
+		Background(statusKeyStyle.GetBackground()).
+		Render("")
+	info := " Main Menu"
 	infoBox := statusTextStyle.Render(info)
 	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(infoBox), 0)
 	hints := statusHintStyle.Width(available).Align(lipgloss.Right).Render("q/esc to quit")
@@ -426,6 +431,7 @@ func renderStatus(width int, logoWidth int, lines int) string {
 	bar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		statusKey,
+		statusArrow,
 		infoBox,
 		hints,
 	)
@@ -443,7 +449,7 @@ func renderMenu(m model, width int) string {
 		cursor := "  "
 		if i == m.selected {
 			style = menuSelectedStyle
-			cursor = "▶ "
+			cursor = "> "
 		}
 		lines = append(lines, cursor+style.Render(item))
 	}
