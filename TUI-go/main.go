@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
@@ -100,6 +103,7 @@ type model struct {
 	menuItems []string
 	selected  int
 	notice    string
+	noticeSet int
 
 	// Modes
 	mode viewMode
@@ -120,6 +124,15 @@ type model struct {
 	flareMagIdx       int
 	flareFocusFrame   int
 
+	// Flare selection
+	flareList      []flareEntry
+	flareHeader    string
+	flareSelected  map[int]bool
+	flareCursor    int
+	flareLoading   bool
+	flareLoadError string
+	flareTable     table.Model
+
 	// Date editor
 	dateStart string
 	dateEnd   string
@@ -137,6 +150,11 @@ type config struct {
 }
 
 type tickMsg struct{}
+type flaresLoadedMsg struct {
+	entries []flareEntry
+	header  string
+	err     error
+}
 
 type viewMode int
 
@@ -145,11 +163,84 @@ const (
 	modeWavelength
 	modeDateRange
 	modeFlare
+	modeSelectFlares
 )
 
 type waveOption struct {
 	code string
 	desc string
+}
+
+type flareEntry struct {
+	desc  string
+	class string
+	start string
+	end   string
+	coord string
+	full  string
+}
+
+func (m *model) rebuildFlareTable() {
+	if len(m.flareList) == 0 {
+		m.flareTable = table.Model{}
+		return
+	}
+
+	wClass, wStart, wEnd, wCoord := flareTableWidths(*m)
+	columns := []table.Column{
+		{Title: "Sel", Width: 4},
+		{Title: "Class", Width: wClass},
+		{Title: "Start", Width: wStart},
+		{Title: "End", Width: wEnd},
+		{Title: "Coordinates", Width: wCoord},
+	}
+
+	var rows []table.Row
+	for i, entry := range m.flareList {
+		sel := " "
+		if m.flareSelected[i] {
+			sel = "x"
+		}
+		rows = append(rows, table.Row{sel, entry.class, entry.start, entry.end, entry.coord})
+	}
+
+	height := maxInt(7, minInt(12, len(rows)))
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithHeight(height),
+		table.WithFocused(true),
+	)
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	s.Cell = s.Cell.Align(lipgloss.Left)
+	t.SetStyles(s)
+	t.SetCursor(m.flareCursor)
+	m.flareTable = t
+}
+
+func (m *model) updateFlareTableRows() {
+	if len(m.flareList) == 0 || m.flareTable.Columns() == nil {
+		return
+	}
+	var rows []table.Row
+	for i, entry := range m.flareList {
+		sel := " "
+		if m.flareSelected[i] {
+			sel = "x"
+		}
+		rows = append(rows, table.Row{sel, entry.class, entry.start, entry.end, entry.coord})
+	}
+	m.flareTable.SetRows(rows)
+	m.flareTable.SetCursor(m.flareCursor)
 }
 
 func main() {
@@ -216,6 +307,7 @@ func newModel(logo []string, cfg config) model {
 		flareLetterIdx:    letterIdx,
 		flareMagIdx:       magIdx,
 		flareFocusFrame:   0,
+		flareSelected:     make(map[int]bool),
 	}
 }
 
@@ -231,7 +323,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.frame++
 		m.colored = colorizeLogo(m.logoLines, m.blockW, m.frame)
+		if m.notice != "" && m.noticeSet > 0 && m.frame-m.noticeSet > 19 {
+			m.notice = ""
+		}
 		return m, tick()
+	case flaresLoadedMsg:
+		m.flareLoading = false
+		if msg.err != nil {
+			m.flareLoadError = msg.err.Error()
+			m.notice = m.flareLoadError
+			m.noticeSet = m.frame
+			m.mode = modeMain
+			return m, nil
+		}
+		m.flareList = msg.entries
+		m.flareHeader = msg.header
+		m.flareSelected = make(map[int]bool)
+		if len(m.flareList) == 0 {
+			m.notice = "No flares found."
+			m.noticeSet = m.frame
+			m.mode = modeMain
+			return m, nil
+		}
+		m.flareCursor = 0
+		m.rebuildFlareTable()
+		return m, nil
 	case tea.KeyMsg:
 		var cmd tea.Cmd
 		if m.mode == modeMain {
@@ -254,20 +370,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
 						m.waveFocus = 0
 						m.notice = ""
+						m.noticeSet = m.frame
 					case "Edit Date Range":
 						m.mode = modeDateRange
 						m.dateStart = ""
 						m.dateEnd = ""
 						m.dateFocus = 0
 						m.notice = ""
+						m.noticeSet = m.frame
 					case "Edit Flare Class Filter":
 						m.mode = modeFlare
 						m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
 						m.flareFocus = 0
 						m.flareFocusFrame = m.frame
 						m.notice = ""
+						m.noticeSet = m.frame
+					case "Select Flares":
+						if strings.TrimSpace(m.cfg.START) == "" || strings.TrimSpace(m.cfg.END) == "" {
+							m.notice = "Set a date range first."
+							m.noticeSet = m.frame
+							break
+						}
+						if strings.TrimSpace(m.cfg.WAVE) == "" {
+							m.notice = "Select at least one wavelength first."
+							m.noticeSet = m.frame
+							break
+						}
+						if strings.TrimSpace(m.cfg.COMPARATOR) == "" {
+							m.notice = "Set a comparator first."
+							m.noticeSet = m.frame
+							break
+						}
+						m.mode = modeSelectFlares
+						m.flareLoading = true
+						m.flareLoadError = ""
+						m.flareSelected = make(map[int]bool)
+						m.flareCursor = 0
+						m.flareList = nil
+						m.flareHeader = ""
+						cmd = loadFlaresCmd(m.cfg)
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+						m.noticeSet = m.frame
 					}
 				}
 			}
@@ -293,6 +437,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "q":
 				m.mode = modeMain
 				m.notice = "Canceled wavelength edit"
+				m.noticeSet = m.frame
 			case "up", "k":
 				if m.waveFocus > 0 {
 					m.waveFocus--
@@ -307,8 +452,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cfg.WAVE = buildWaveValue(m.waveOptions, m.waveSelected)
 				if err := saveConfig(m.cfg); err != nil {
 					m.notice = fmt.Sprintf("Save failed: %v", err)
+					m.noticeSet = m.frame
 				} else {
 					m.notice = "Wavelength saved"
+					m.noticeSet = m.frame
 				}
 				m.mode = modeMain
 			}
@@ -320,6 +467,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "q":
 				m.mode = modeMain
 				m.notice = "Canceled date edit"
+				m.noticeSet = m.frame
 			case "tab", "down":
 				m.dateFocus = 1
 			case "shift+tab", "up":
@@ -335,19 +483,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if !validDate(start) || !validDate(end) {
 					m.notice = "Dates must be YYYY-MM-DD"
+					m.noticeSet = m.frame
 					break
 				}
 				if !chronological(start, end) {
 					m.notice = "Start must be on/before End"
+					m.noticeSet = m.frame
 					break
 				}
 				m.cfg.START = start
 				m.cfg.END = end
 				if err := saveConfig(m.cfg); err != nil {
 					m.notice = fmt.Sprintf("Save failed: %v", err)
+					m.noticeSet = m.frame
 					break
 				}
 				m.notice = "Date range saved"
+				m.noticeSet = m.frame
 				m.mode = modeMain
 			case "backspace", "delete":
 				if m.dateFocus == 0 {
@@ -391,6 +543,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "q":
 				m.mode = modeMain
 				m.notice = "Canceled flare filter edit"
+				m.noticeSet = m.frame
 			case "tab", "right", "l":
 				m.flareFocus = (m.flareFocus + 1) % 3
 				m.flareFocusFrame = m.frame
@@ -447,11 +600,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if err := saveConfig(m.cfg); err != nil {
 					m.notice = fmt.Sprintf("Save failed: %v", err)
+					m.noticeSet = m.frame
 					break
 				}
 				m.notice = "Flare filter saved"
+				m.noticeSet = m.frame
 				m.mode = modeMain
 			}
+		} else if m.mode == modeSelectFlares {
+			var tcmd tea.Cmd
+			m.flareTable, tcmd = m.flareTable.Update(msg)
+			m.flareCursor = m.flareTable.Cursor()
+			m.flareTable.Focus()
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modeMain
+				m.notice = "Canceled flare selection"
+				m.noticeSet = m.frame
+			case " ":
+				if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
+					m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
+					m.updateFlareTableRows()
+				}
+			case "enter":
+				if len(m.flareSelected) == 0 {
+					m.notice = "No flares selected."
+					m.noticeSet = m.frame
+					m.mode = modeMain
+					break
+				}
+				if err := saveFlareSelection(m.flareHeader, m.flareList, m.flareSelected); err != nil {
+					m.notice = fmt.Sprintf("Save failed: %v", err)
+					m.noticeSet = m.frame
+				} else {
+					m.notice = fmt.Sprintf("Saved %d flares", len(m.flareSelected))
+					m.noticeSet = m.frame
+				}
+				m.mode = modeMain
+			}
+			m.flareTable.SetCursor(m.flareCursor)
+			return m, tcmd
 		}
 		return m, cmd
 	case tea.MouseMsg:
@@ -493,8 +683,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.flareFocus = 0
 							m.flareFocusFrame = m.frame
 							m.notice = ""
+						case "Select Flares":
+							if strings.TrimSpace(m.cfg.START) == "" || strings.TrimSpace(m.cfg.END) == "" {
+								m.notice = "Set a date range first."
+								m.noticeSet = m.frame
+								break
+							}
+							if strings.TrimSpace(m.cfg.WAVE) == "" {
+								m.notice = "Select at least one wavelength first."
+								m.noticeSet = m.frame
+								break
+							}
+							if strings.TrimSpace(m.cfg.COMPARATOR) == "" {
+								m.notice = "Set a comparator first."
+								m.noticeSet = m.frame
+								break
+							}
+							m.mode = modeSelectFlares
+							m.flareLoading = true
+							m.flareLoadError = ""
+							m.flareSelected = make(map[int]bool)
+							m.flareCursor = 0
+							m.flareList = nil
+							m.flareHeader = ""
+							return m, loadFlaresCmd(m.cfg)
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+							m.noticeSet = m.frame
 						}
 					}
 				}
@@ -560,6 +775,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		} else if m.mode == modeSelectFlares {
+			var tcmd tea.Cmd
+			m.flareTable, tcmd = m.flareTable.Update(msg)
+			m.flareCursor = m.flareTable.Cursor()
+			m.flareTable.Focus()
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				if m.flareCursor > 0 {
+					m.flareCursor--
+					m.flareTable.SetCursor(m.flareCursor)
+				}
+			case tea.MouseButtonWheelDown:
+				if m.flareCursor < len(m.flareList)-1 {
+					m.flareCursor++
+					m.flareTable.SetCursor(m.flareCursor)
+				}
+			}
+			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
+				if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
+					m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
+					m.rebuildFlareTable()
+				}
+			}
+			if msg.Button == tea.MouseButtonWheelUp {
+				if m.flareCursor > 0 {
+					m.flareCursor--
+					m.flareTable.SetCursor(m.flareCursor)
+				}
+			}
+			if msg.Button == tea.MouseButtonWheelDown {
+				if m.flareCursor < len(m.flareList)-1 {
+					m.flareCursor++
+					m.flareTable.SetCursor(m.flareCursor)
+				}
+			}
+			return m, tcmd
 		}
 		return m, cmd
 	}
@@ -697,48 +948,23 @@ func (m model) View() string {
 	var extraNotice string
 	if m.mode == modeWavelength {
 		body = summary + renderWavelengthEditor(m, w)
-		if m.notice != "" {
-			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
-			widthTarget := w
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
-			}
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(text)
-			}
-			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
-			noticeLine = "  " + noticeLine
-			extraNotice = "\n" + noticeLine
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
 		}
 	} else if m.mode == modeDateRange {
 		body = summary + renderDateEditor(m, w)
-		if m.notice != "" {
-			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
-			widthTarget := w
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
-			}
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(text)
-			}
-			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
-			noticeLine = "  " + noticeLine
-			extraNotice = "\n" + noticeLine
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
 		}
 	} else if m.mode == modeFlare {
 		body = summary + renderFlareEditor(m, w)
-		if m.notice != "" {
-			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
-			widthTarget := w
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
-			}
-			if widthTarget <= 0 {
-				widthTarget = lipgloss.Width(text)
-			}
-			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
-			noticeLine = "  " + noticeLine
-			extraNotice = "\n" + noticeLine
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
+		}
+	} else if m.mode == modeSelectFlares {
+		body = summary + renderSelectFlares(m, w)
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
 		}
 	} else {
 		body = summary + renderMenu(m, w)
@@ -1155,6 +1381,32 @@ func renderStaticGradientHint(text string, available int) string {
 		Render(colored)
 }
 
+func (m model) noticeLine(width int) string {
+	if m.notice == "" {
+		return ""
+	}
+	if m.noticeSet <= 0 {
+		return ""
+	}
+	elapsed := m.frame - m.noticeSet
+	const hold = 10
+	const life = 19 // ~1.5s at 80ms
+	if elapsed >= life {
+		return ""
+	}
+	t := 0.0
+	if elapsed > hold {
+		t = clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
+	}
+	col := blendHex("#FF6B81", "#353533", t)
+	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(m.notice)
+	widthTarget := width
+	if widthTarget <= 0 {
+		widthTarget = lipgloss.Width(text)
+	}
+	return lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
+}
+
 func renderGradientText(text, startHex, endHex string, base lipgloss.Style) string {
 	runes := []rune(text)
 	if len(runes) == 0 {
@@ -1368,6 +1620,63 @@ func renderFlareColumns(m model) []string {
 	}
 }
 
+func flareTableWidths(m model) (int, int, int, int) {
+	wClass := lipgloss.Width("Class")
+	wStart := lipgloss.Width("Start")
+	wEnd := lipgloss.Width("End")
+	wCoord := lipgloss.Width("Coordinates")
+	for _, e := range m.flareList {
+		if w := lipgloss.Width(e.class); w > wClass {
+			wClass = w
+		}
+		if w := lipgloss.Width(e.start); w > wStart {
+			wStart = w
+		}
+		if w := lipgloss.Width(e.end); w > wEnd {
+			wEnd = w
+		}
+		if w := lipgloss.Width(e.coord); w > wCoord {
+			wCoord = w
+		}
+	}
+	return wClass, wStart, wEnd, wCoord
+}
+
+func flareTableHeader(m model) (string, string) {
+	wClass, wStart, wEnd, wCoord := flareTableWidths(m)
+	format := fmt.Sprintf(" %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds ", wClass, wStart, wEnd, wCoord)
+	header := fmt.Sprintf(format, "Class", "Start", "End", "Coordinates")
+	return header, strings.Repeat("─", lipgloss.Width(header))
+}
+
+func flareTableRows(m model, start, end int) ([]string, int) {
+	wClass, wStart, wEnd, wCoord := flareTableWidths(m)
+	format := fmt.Sprintf(" %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds ", wClass, wStart, wEnd, wCoord)
+	var rows []string
+	maxW := 0
+	for i := start; i < end; i++ {
+		entry := m.flareList[i]
+		check := "[ ]"
+		if m.flareSelected[i] {
+			check = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("[x]")
+		}
+		cursor := "  "
+		if i == m.flareCursor {
+			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
+		}
+		line := fmt.Sprintf(format, entry.class, entry.start, entry.end, entry.coord)
+		row := cursor + check + " " + line
+		if i == m.flareCursor {
+			row = lipgloss.NewStyle().Background(lipgloss.Color("#1E1C22")).Render(row)
+		}
+		rows = append(rows, row)
+		if w := lipgloss.Width(row); w > maxW {
+			maxW = w
+		}
+	}
+	return rows, maxW
+}
+
 func renderFlareEditor(m model, width int) string {
 	titleStyle := summaryHeaderStyle.Copy().Bold(false)
 	cols := renderFlareColumns(m)
@@ -1391,6 +1700,61 @@ func renderFlareEditor(m model, width int) string {
 	}
 
 	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	return "\n\n" + placed + "\n\n" + helpLine
+}
+
+func renderSelectFlares(m model, width int) string {
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Choose Flares to Catalogue")
+
+	if m.flareLoading {
+		msg := menuHelpStyle.Render("Loading flares...")
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+
+	if m.flareLoadError != "" {
+		msg := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.flareLoadError)
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+
+	if len(m.flareList) == 0 {
+		msg := menuHelpStyle.Render("No flares found.")
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+
+	baseStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+
+	tableView := m.flareTable.View()
+	tableBox := baseStyle.Render(tableView)
+	tableWidth := lipgloss.Width(tableBox)
+	titleLine := lipgloss.PlaceHorizontal(tableWidth, lipgloss.Center, title)
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		titleLine,
+		tableBox,
+	)
+
+	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter save • esc cancel")
+
+	if width <= 0 {
+		return "\n\n" + body + "\n\n" + help
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	return "\n\n" + placed + "\n\n" + helpLine
 }
@@ -1420,18 +1784,11 @@ func renderMenu(m model, width int) string {
 		lines = append(lines, line)
 	}
 
-	blockWidth := maxText + 2 // cursor + internal spacing
-
 	menuBlock := strings.Join(lines, "\n")
 
 	noticeLine := ""
-	if m.notice != "" {
-		notice := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
-		targetWidth := width
-		if targetWidth <= 0 {
-			targetWidth = blockWidth
-		}
-		noticeLine = lipgloss.Place(targetWidth, 1, lipgloss.Center, lipgloss.Top, notice)
+	if nl := m.noticeLine(width); nl != "" {
+		noticeLine = nl
 	}
 
 	helpText := "↑/k up • ↓/j down • enter submit"
@@ -1559,6 +1916,20 @@ func prettyComparator(val string) string {
 		return "≥"
 	case "<=":
 		return "≤"
+	default:
+		return val
+	}
+}
+
+func comparatorASCII(val string) string {
+	val = strings.TrimSpace(val)
+	switch val {
+	case "≥":
+		return ">="
+	case "≤":
+		return "<="
+	case "All", "ALL":
+		return "All"
 	default:
 		return val
 	}
@@ -1726,6 +2097,130 @@ func parseFlareSelection(cfg config, compOpts []string, compMap map[string]strin
 	}
 
 	return compIdx, letterIdx, magIdx
+}
+
+func loadFlaresCmd(cfg config) tea.Cmd {
+	return func() tea.Msg {
+		cmp := comparatorASCII(cfg.COMPARATOR)
+		if strings.TrimSpace(cfg.START) == "" || strings.TrimSpace(cfg.END) == "" || strings.TrimSpace(cfg.WAVE) == "" || cmp == "" {
+			return flaresLoadedMsg{err: fmt.Errorf("missing required fields")}
+		}
+
+		flareClass := cfg.FLARE_CLASS
+		if strings.TrimSpace(flareClass) == "" {
+			flareClass = "A0.0"
+		}
+
+		tmp, err := os.CreateTemp("", "pocky_flares_*.tsv")
+		if err != nil {
+			return flaresLoadedMsg{err: err}
+		}
+		tmp.Close()
+		tmpPath := tmp.Name()
+		defer os.Remove(tmpPath)
+
+		cmd := exec.Command("python", "query.py", cfg.START, cfg.END, cmp, flareClass, cfg.WAVE, tmpPath)
+		cmd.Dir = ".."
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return flaresLoadedMsg{err: fmt.Errorf("flare listing failed: %v (%s)", err, strings.TrimSpace(string(output)))}
+		}
+
+		f, err := os.Open(tmpPath)
+		if err != nil {
+			return flaresLoadedMsg{err: err}
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		if !scanner.Scan() {
+			return flaresLoadedMsg{err: fmt.Errorf("empty flare listing")}
+		}
+		header := scanner.Text()
+		var entries []flareEntry
+		for scanner.Scan() {
+			line := scanner.Text()
+			fields := strings.Split(line, "\t")
+			if len(fields) < 6 {
+				continue
+			}
+			entries = append(entries, flareEntry{
+				desc:  fields[0],
+				class: fields[1],
+				start: fields[2],
+				end:   fields[3],
+				coord: fields[4],
+				full:  line,
+			})
+		}
+		if err := scanner.Err(); err != nil {
+			return flaresLoadedMsg{err: err}
+		}
+		return flaresLoadedMsg{entries: entries, header: header}
+	}
+}
+
+func saveFlareSelection(header string, entries []flareEntry, selected map[int]bool) error {
+	if len(selected) == 0 {
+		return nil
+	}
+	var chosen []string
+	for idx := range selected {
+		if idx >= 0 && idx < len(entries) {
+			chosen = append(chosen, entries[idx].full)
+		}
+	}
+	if len(chosen) == 0 {
+		return nil
+	}
+
+	cachePath := filepath.Join("..", "flare_cache.tsv")
+	existingHeader := header
+	var existing []string
+	if data, err := os.ReadFile(cachePath); err == nil {
+		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+		if len(lines) > 0 {
+			existingHeader = lines[0]
+			if len(lines) > 1 {
+				existing = lines[1:]
+			}
+		}
+	}
+	if strings.TrimSpace(existingHeader) == "" {
+		existingHeader = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
+	}
+
+	tmpPath := cachePath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	seen := make(map[string]struct{})
+	writeLine := func(line string) {
+		if _, ok := seen[line]; ok {
+			return
+		}
+		seen[line] = struct{}{}
+		fmt.Fprintln(out, line)
+	}
+
+	writeLine(existingHeader)
+	for _, line := range existing {
+		if strings.TrimSpace(line) != "" {
+			writeLine(line)
+		}
+	}
+	for _, line := range chosen {
+		if strings.TrimSpace(line) != "" {
+			writeLine(line)
+		}
+	}
+
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, cachePath)
 }
 
 func parseWaves(val string, opts []waveOption) map[string]bool {
