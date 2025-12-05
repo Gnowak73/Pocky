@@ -108,6 +108,11 @@ type model struct {
 	waveOptions  []waveOption
 	waveSelected map[string]bool
 	waveFocus    int
+
+	// Date editor
+	dateStart string
+	dateEnd   string
+	dateFocus int
 }
 
 type config struct {
@@ -127,6 +132,7 @@ type viewMode int
 const (
 	modeMain viewMode = iota
 	modeWavelength
+	modeDateRange
 )
 
 type waveOption struct {
@@ -222,6 +228,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
 						m.waveFocus = 0
 						m.notice = ""
+					case "Edit Date Range":
+						m.mode = modeDateRange
+						m.dateStart = ""
+						m.dateEnd = ""
+						m.dateFocus = 0
+						m.notice = ""
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 					}
@@ -268,6 +280,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.mode = modeMain
 			}
+		} else if m.mode == modeDateRange {
+			handled := true
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modeMain
+				m.notice = "Canceled date edit"
+			case "tab", "down":
+				m.dateFocus = 1
+			case "shift+tab", "up":
+				m.dateFocus = 0
+			case "enter":
+				start := strings.TrimSpace(m.dateStart)
+				end := strings.TrimSpace(m.dateEnd)
+				if start == "" {
+					start = strings.TrimSpace(m.cfg.START)
+				}
+				if end == "" {
+					end = strings.TrimSpace(m.cfg.END)
+				}
+				if !validDate(start) || !validDate(end) {
+					m.notice = "Dates must be YYYY-MM-DD"
+					break
+				}
+				if !chronological(start, end) {
+					m.notice = "Start must be on/before End"
+					break
+				}
+				m.cfg.START = start
+				m.cfg.END = end
+				if err := saveConfig(m.cfg); err != nil {
+					m.notice = fmt.Sprintf("Save failed: %v", err)
+					break
+				}
+				m.notice = "Date range saved"
+				m.mode = modeMain
+			case "backspace", "delete":
+				if m.dateFocus == 0 {
+					if len(m.dateStart) > 0 {
+						m.dateStart = m.dateStart[:len(m.dateStart)-1]
+					}
+				} else {
+					if len(m.dateEnd) > 0 {
+						m.dateEnd = m.dateEnd[:len(m.dateEnd)-1]
+					}
+				}
+			default:
+				handled = false
+			}
+			if !handled {
+				if len(msg.Runes) > 0 {
+					var runes []rune
+					for _, r := range msg.Runes {
+						if (r >= '0' && r <= '9') || r == '-' {
+							runes = append(runes, r)
+						}
+					}
+					if len(runes) > 0 {
+						target := &m.dateStart
+						if m.dateFocus == 1 {
+							target = &m.dateEnd
+						}
+						if len(*target) < len("2006-01-02") {
+							*target += string(runes)
+							if len(*target) > len("2006-01-02") {
+								*target = (*target)[:len("2006-01-02")]
+							}
+						}
+					}
+				}
+			}
 		}
 	case tea.MouseMsg:
 		if m.mode == modeMain {
@@ -294,6 +378,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.mode = modeWavelength
 							m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
 							m.waveFocus = 0
+							m.notice = ""
+						case "Edit Date Range":
+							m.mode = modeDateRange
+							m.dateStart = ""
+							m.dateEnd = ""
+							m.dateFocus = 0
 							m.notice = ""
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
@@ -449,6 +539,21 @@ func (m model) View() string {
 	var extraNotice string
 	if m.mode == modeWavelength {
 		body = summary + renderWavelengthEditor(m, w)
+		if m.notice != "" {
+			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
+			widthTarget := w
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
+			}
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(text)
+			}
+			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
+			noticeLine = "  " + noticeLine
+			extraNotice = "\n" + noticeLine
+		}
+	} else if m.mode == modeDateRange {
+		body = summary + renderDateEditor(m, w)
 		if m.notice != "" {
 			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
 			widthTarget := w
@@ -774,14 +879,77 @@ func renderWavelengthEditor(m model, width int) string {
 	}
 
 	if width <= 0 {
-		return "\n\n" + indent(block) + "\n\n" + indent(lipgloss.PlaceHorizontal(width, lipgloss.Center, help))
+		return "\n\n" + indent(block) + "\n\n\n\n\n" + indent(lipgloss.PlaceHorizontal(width, lipgloss.Center, help))
 	}
 
 	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	placed = indent(placed)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	helpLine = indent(helpLine)
-	return "\n\n" + placed + "\n\n" + helpLine
+	return "\n\n" + placed + "\n\n\n\n\n" + helpLine
+}
+
+func renderDateEditor(m model, width int) string {
+	valueStyle := summaryValueStyle.Copy()
+	focusStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2A262A"))
+	headerStyle := menuHelpStyle.Copy()
+	promptStyle := menuHelpStyle.Copy().Bold(true)
+	ghostStyle := menuHelpStyle.Copy().Faint(true)
+
+	renderField := func(header, val, placeholder string, focused bool) string {
+		line := lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), valueStyle.Render(val))
+		if strings.TrimSpace(val) == "" {
+			if placeholder == "" {
+				placeholder = "YYYY-MM-DD"
+			}
+			line = lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), ghostStyle.Render(placeholder))
+		}
+		if focused {
+			return focusStyle.Render(line)
+		}
+		return line
+	}
+
+	startField := renderField(
+		"Start date (YYYY-MM-DD) -- leave blank to remain same",
+		strings.TrimSpace(m.dateStart),
+		strings.TrimSpace(m.cfg.START),
+		m.dateFocus == 0,
+	)
+	endField := renderField(
+		"End date   (YYYY-MM-DD) -- leave blank to remain same",
+		strings.TrimSpace(m.dateEnd),
+		strings.TrimSpace(m.cfg.END),
+		m.dateFocus == 1,
+	)
+
+	block := lipgloss.JoinVertical(lipgloss.Left,
+		headerStyle.Render("Start date (YYYY-MM-DD) -- leave blank to remain same"),
+		startField,
+		"",
+		"",
+		headerStyle.Render("End date   (YYYY-MM-DD) -- leave blank to remain same"),
+		endField,
+	)
+
+	help := menuHelpStyle.Render("tab switch • enter save • esc cancel")
+
+	indent := func(s string) string {
+		return " " + strings.ReplaceAll(s, "\n", "\n ")
+	}
+
+	if width <= 0 {
+		helpLine := lipgloss.PlaceHorizontal(width, lipgloss.Center, help)
+		combined := lipgloss.JoinVertical(lipgloss.Left, block, "", "", helpLine)
+		return "\n\n" + indent(combined)
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	placed = indent(placed)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	helpLine = indent(helpLine)
+	combined := lipgloss.JoinVertical(lipgloss.Left, placed, "", "", helpLine)
+	return "\n\n" + combined
 }
 
 func renderMenu(m model, width int) string {
@@ -936,6 +1104,27 @@ func prettyValue(val string) string {
 		return "<unset>"
 	}
 	return val
+}
+
+func validDate(val string) bool {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return false
+	}
+	if len(val) != len("2006-01-02") {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", val)
+	return err == nil
+}
+
+func chronological(start, end string) bool {
+	s, err1 := time.Parse("2006-01-02", start)
+	e, err2 := time.Parse("2006-01-02", end)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return !s.After(e)
 }
 
 // waveDisplay collapses consecutive wavelengths into ranges, mirroring shell UI.
