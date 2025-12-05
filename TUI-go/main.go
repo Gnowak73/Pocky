@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -99,6 +100,14 @@ type model struct {
 	menuItems []string
 	selected  int
 	notice    string
+
+	// Modes
+	mode viewMode
+
+	// Wavelength editor
+	waveOptions  []waveOption
+	waveSelected map[string]bool
+	waveFocus    int
 }
 
 type config struct {
@@ -112,6 +121,18 @@ type config struct {
 }
 
 type tickMsg struct{}
+
+type viewMode int
+
+const (
+	modeMain viewMode = iota
+	modeWavelength
+)
+
+type waveOption struct {
+	code string
+	desc string
+}
 
 func main() {
 	logo, err := loadLogo()
@@ -142,6 +163,9 @@ func newModel(logo []string, cfg config) model {
 
 	colored := colorizeLogo(logo, blockW, 0)
 
+	waves := defaultWaveOptions()
+	selected := parseWaves(cfg.WAVE, waves)
+
 	menu := []string{
 		"Edit Wavelength",
 		"Edit Date Range",
@@ -153,11 +177,14 @@ func newModel(logo []string, cfg config) model {
 	}
 
 	return model{
-		logoLines: logo,
-		colored:   colored,
-		cfg:       cfg,
-		blockW:    blockW,
-		menuItems: menu,
+		logoLines:    logo,
+		colored:      colored,
+		cfg:          cfg,
+		blockW:       blockW,
+		menuItems:    menu,
+		mode:         modeMain,
+		waveOptions:  waves,
+		waveSelected: selected,
 	}
 }
 
@@ -175,37 +202,100 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.colored = colorizeLogo(m.logoLines, m.blockW, m.frame)
 		return m, tick()
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			return m, tea.Quit
-		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
+		if m.mode == modeMain {
+			switch msg.String() {
+			case "ctrl+c", "q", "esc":
+				return m, tea.Quit
+			case "up", "k":
+				if m.selected > 0 {
+					m.selected--
+				}
+			case "down", "j":
+				if m.selected < len(m.menuItems)-1 {
+					m.selected++
+				}
+			case "enter", " ":
+				if m.selected >= 0 && m.selected < len(m.menuItems) {
+					switch m.menuItems[m.selected] {
+					case "Edit Wavelength":
+						m.mode = modeWavelength
+						m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
+						m.waveFocus = 0
+						m.notice = ""
+					default:
+						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+					}
+				}
 			}
-		case "down", "j":
-			if m.selected < len(m.menuItems)-1 {
-				m.selected++
-			}
-		case "enter", " ":
-			if m.selected >= 0 && m.selected < len(m.menuItems) {
-				m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+		} else if m.mode == modeWavelength {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modeMain
+				m.notice = "Canceled wavelength edit"
+			case "up", "k":
+				if m.waveFocus > 0 {
+					m.waveFocus--
+				}
+			case "down", "j":
+				if m.waveFocus < len(m.waveOptions)-1 {
+					m.waveFocus++
+				}
+			case " ":
+				m.toggleWave(m.waveFocus)
+			case "enter":
+				m.cfg.WAVE = buildWaveValue(m.waveOptions, m.waveSelected)
+				if err := saveConfig(m.cfg); err != nil {
+					m.notice = fmt.Sprintf("Save failed: %v", err)
+				} else {
+					m.notice = "Wavelength saved"
+				}
+				m.mode = modeMain
 			}
 		}
 	case tea.MouseMsg:
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			if m.selected > 0 {
-				m.selected--
+		if m.mode == modeMain {
+			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
+				if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
+					m.selected = idx
+				}
 			}
-		case tea.MouseButtonWheelDown:
-			if m.selected < len(m.menuItems)-1 {
-				m.selected++
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				if m.selected > 0 {
+					m.selected--
+				}
+			case tea.MouseButtonWheelDown:
+				if m.selected < len(m.menuItems)-1 {
+					m.selected++
+				}
+			case tea.MouseButtonLeft:
+				if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
+					m.selected = idx
+					if msg.Action == tea.MouseActionRelease {
+						switch m.menuItems[m.selected] {
+						case "Edit Wavelength":
+							m.mode = modeWavelength
+							m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
+							m.waveFocus = 0
+							m.notice = ""
+						default:
+							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+						}
+					}
+				}
 			}
-		case tea.MouseButtonLeft, tea.MouseButtonNone:
-			if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
-				m.selected = idx
-				if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
-					m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+		} else if m.mode == modeWavelength {
+			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
+				if idx, ok := m.waveIndexAt(msg.X, msg.Y); ok {
+					m.waveFocus = idx
+				}
+			}
+			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
+				if idx, ok := m.waveIndexAt(msg.X, msg.Y); ok {
+					m.waveFocus = idx
+					m.toggleWave(idx)
 				}
 			}
 		}
@@ -215,6 +305,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) menuIndexAt(x, y int) (int, bool) {
 	if y < 0 || x < 0 || len(m.menuItems) == 0 {
+		return 0, false
+	}
+
+	if m.mode != modeMain {
 		return 0, false
 	}
 
@@ -257,6 +351,62 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 	return itemY, true
 }
 
+func (m model) waveIndexAt(x, y int) (int, bool) {
+	if m.mode != modeWavelength || y < 0 || x < 0 {
+		return 0, false
+	}
+
+	content := strings.Join(m.colored, "\n")
+	boxContent := logoBoxStyle.Render(content)
+
+	w := m.width
+	if w <= 0 {
+		w = lipgloss.Width(boxContent)
+	}
+	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
+
+	boxWidth := lipgloss.Width(boxContent)
+	versionText := versionStyle.Render("VERSION: 0.2")
+	leftPad := 0
+	if w > boxWidth {
+		leftPad = (w - boxWidth) / 2
+	}
+	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
+
+	summary := renderSummary(m.cfg, w)
+	editor := renderWavelengthEditor(m, w)
+
+	header := box + "\n" + versionLine + summary
+	editorTop := lipgloss.Height(header)
+
+	lines := strings.Split(editor, "\n")
+	if y < editorTop || y >= editorTop+len(lines) {
+		return 0, false
+	}
+
+	relativeY := y - editorTop
+	rowIdx := -1
+	rowsSeen := 0
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" || strings.HasPrefix(trimmed, "space toggle") || trimmed == "Select AIA Wavelength Channels" {
+			continue
+		}
+		if strings.Contains(trimmed, "Å") && strings.Contains(trimmed, "[") {
+			if relativeY <= i-1 { // adjust downward
+				rowIdx = rowsSeen
+				break
+			}
+			rowsSeen++
+		}
+	}
+
+	if rowIdx < 0 || rowIdx >= len(m.waveOptions) {
+		return 0, false
+	}
+	return rowIdx, true
+}
+
 func (m model) View() string {
 	if len(m.colored) == 0 {
 		return "logo missing\n"
@@ -280,16 +430,35 @@ func (m model) View() string {
 	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
 
 	summary := renderSummary(m.cfg, w)
-	menu := renderMenu(m, w)
+	var body string
+	var extraNotice string
+	if m.mode == modeWavelength {
+		body = summary + renderWavelengthEditor(m, w)
+		if m.notice != "" {
+			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
+			widthTarget := w
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
+			}
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(text)
+			}
+			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
+			noticeLine = "  " + noticeLine
+			extraNotice = "\n" + noticeLine
+		}
+	} else {
+		body = summary + renderMenu(m, w)
+	}
 
 	status := renderStatus(w)
 	if m.height > 0 {
-		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(summary) + lipgloss.Height(menu)
+		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
 		gap := maxInt(m.height-contentHeight-lipgloss.Height(status), 0)
-		return box + "\n" + versionLine + summary + menu + strings.Repeat("\n", gap) + status
+		return box + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
 	}
 
-	return box + "\n" + versionLine + summary + menu + "\n" + status
+	return box + "\n" + versionLine + body + extraNotice + "\n" + status
 }
 
 func loadLogo() ([]string, error) {
@@ -544,7 +713,65 @@ func renderStaticGradientHint(text string, available int) string {
 		Render(colored)
 }
 
+func renderWavelengthEditor(m model, width int) string {
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Select AIA Wavelength Channels")
+	divWidth := maxInt(lipgloss.Width(title)+6, 32)
+	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
+	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
+
+	codeStyle := lipgloss.NewStyle().Width(6)
+	descStyle := lipgloss.NewStyle()
+	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+	focusStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#2A262A"))
+
+	var rows []string
+	for i, opt := range m.waveOptions {
+		check := "[ ]"
+		if m.waveSelected[opt.code] {
+			check = checkStyle.Render("[x]")
+		}
+		row := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			check,
+			" ",
+			codeStyle.Render(opt.code+"Å"),
+			menuHelpStyle.Render("  │  "),
+			descStyle.Render(opt.desc),
+		)
+		if i == m.waveFocus {
+			row = focusStyle.Render(row)
+		}
+		rows = append(rows, row)
+	}
+
+	list := strings.Join(rows, "\n")
+	list = " " + strings.ReplaceAll(list, "\n", "\n ")
+	help := menuHelpStyle.Render("space toggle • enter save • esc cancel")
+
+	block := lipgloss.JoinVertical(lipgloss.Left,
+		titleBlock,
+		"",
+		list,
+	)
+	indent := func(s string) string {
+		return " " + strings.ReplaceAll(s, "\n", "\n ")
+	}
+
+	if width <= 0 {
+		return "\n\n" + indent(block) + "\n\n" + lipgloss.PlaceHorizontal(width, lipgloss.Center, help)
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	placed = indent(placed)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	return "\n\n" + placed + "\n\n" + helpLine
+}
+
 func renderMenu(m model, width int) string {
+	if m.mode != modeMain {
+		return ""
+	}
 	var lines []string
 	maxText := 0
 	for _, item := range m.menuItems {
@@ -566,38 +793,52 @@ func renderMenu(m model, width int) string {
 		lines = append(lines, line)
 	}
 
+	blockWidth := maxText + 2 // cursor + internal spacing
+
 	menuBlock := strings.Join(lines, "\n")
+
+	noticeLine := ""
 	if m.notice != "" {
 		notice := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
-		menuBlock = menuBlock + "\n\n" + notice
+		targetWidth := width
+		if targetWidth <= 0 {
+			targetWidth = blockWidth
+		}
+		noticeLine = lipgloss.Place(targetWidth, 1, lipgloss.Center, lipgloss.Top, notice)
 	}
 
 	helpText := "↑/k up • ↓/j down • enter submit"
 
 	if width <= 0 {
 		help := menuHelpStyle.Render(helpText)
+		if noticeLine != "" {
+			return "\n\n" + menuBlock + "\n\n" + noticeLine + "\n\n" + help
+		}
 		return "\n\n" + menuBlock + "\n\n" + help
 	}
 
-	blockWidth := maxText + 2 // cursor + internal spacing
-
-	if width <= 0 {
-		width = blockWidth
-	}
-
 	placed := lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
+	if noticeLine != "" {
+		if strings.HasPrefix(noticeLine, " ") {
+			noticeLine = noticeLine[1:]
+		}
+		if strings.HasPrefix(noticeLine, " ") {
+			noticeLine = noticeLine[1:]
+		}
+	}
+	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, menuHelpStyle.Render(helpText))
 	var shifted []string
 	for _, line := range strings.Split(placed, "\n") {
 		if strings.HasPrefix(line, " ") {
 			line = line[1:]
 		}
-		if strings.HasPrefix(line, " ") {
-			line = line[1:]
-		}
 		shifted = append(shifted, line)
 	}
-	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, menuHelpStyle.Render(helpText))
-	return "\n\n" + strings.Join(shifted, "\n") + "\n\n" + help
+	block := "\n\n" + strings.Join(shifted, "\n")
+	if noticeLine != "" {
+		block += "\n\n" + noticeLine
+	}
+	return block + "\n\n" + help
 }
 
 func renderSummary(cfg config, width int) string {
@@ -605,7 +846,7 @@ func renderSummary(cfg config, width int) string {
 		label string
 		val   string
 	}{
-		{"Wavelength", prettyValue(cfg.WAVE)},
+		{"Wavelength", waveDisplay(cfg.WAVE)},
 		{"Date Start", prettyValue(cfg.START)},
 		{"Date End", prettyValue(cfg.END)},
 		{"Data Source", prettyValue(cfg.SOURCE)},
@@ -635,6 +876,7 @@ func renderSummary(cfg config, width int) string {
 	}
 
 	cellWidth := maxContent + pad*2
+	cellWidth++
 
 	headerLine := headerTextStyle.
 		Width(cellWidth).
@@ -664,10 +906,12 @@ func renderSummary(cfg config, width int) string {
 	tableLines = append(tableLines, bottom)
 
 	tableStr := strings.Join(tableLines, "\n")
-	if width <= 0 {
-		return "\n" + tableStr
+	tableWidth := lipgloss.Width(tableStr)
+	w := width
+	if w <= 0 {
+		w = tableWidth
 	}
-	return "\n" + lipgloss.Place(width, len(tableLines), lipgloss.Center, lipgloss.Top, tableStr)
+	return "\n" + lipgloss.Place(w, len(tableLines), lipgloss.Center, lipgloss.Top, tableStr)
 }
 
 func prettyValue(val string) string {
@@ -675,6 +919,143 @@ func prettyValue(val string) string {
 		return "<unset>"
 	}
 	return val
+}
+
+// waveDisplay collapses consecutive wavelengths into ranges, mirroring shell UI.
+func waveDisplay(val string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "<unset>"
+	}
+
+	order := []string{"94", "131", "171", "193", "211", "304", "335", "1600", "1700", "4500"}
+	idx := make(map[string]int)
+	for i, v := range order {
+		idx[v] = i
+	}
+
+	parts := strings.Split(val, ",")
+	var valid []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if _, ok := idx[p]; ok {
+			valid = append(valid, p)
+		}
+	}
+	if len(valid) == 0 {
+		return val
+	}
+
+	sort.Slice(valid, func(i, j int) bool {
+		return idx[valid[i]] < idx[valid[j]]
+	})
+
+	// collapse consecutive
+	var out []string
+	start := valid[0]
+	prev := start
+	for i := 1; i < len(valid); i++ {
+		cur := valid[i]
+		if idx[cur] == idx[prev]+1 {
+			prev = cur
+			continue
+		}
+		if start == prev {
+			out = append(out, start)
+		} else {
+			out = append(out, fmt.Sprintf("%s-%s", start, prev))
+		}
+		start = cur
+		prev = cur
+	}
+	if start == prev {
+		out = append(out, start)
+	} else {
+		out = append(out, fmt.Sprintf("%s-%s", start, prev))
+	}
+
+	return strings.Join(out, ",")
+}
+
+func defaultWaveOptions() []waveOption {
+	return []waveOption{
+		{"94", "Fe XVIII (hot flares)"},
+		{"131", "Fe VIII / Fe XXI"},
+		{"171", "Fe IX (quiet corona)"},
+		{"193", "Fe XII / Fe XXIV"},
+		{"211", "Fe XIV (2 MK loops)"},
+		{"304", "He II (chromosphere)"},
+		{"335", "Fe XVI (2.5 MK)"},
+		{"1600", "C IV / continuum"},
+		{"1700", "continuum (photo.)"},
+		{"4500", "white-light"},
+	}
+}
+
+func parseWaves(val string, opts []waveOption) map[string]bool {
+	selected := make(map[string]bool)
+	if strings.TrimSpace(val) == "" {
+		return selected
+	}
+	known := make(map[string]struct{})
+	for _, o := range opts {
+		known[o.code] = struct{}{}
+	}
+	for _, part := range strings.Split(val, ",") {
+		p := strings.TrimSpace(part)
+		if _, ok := known[p]; ok {
+			selected[p] = true
+		}
+	}
+	return selected
+}
+
+func buildWaveValue(opts []waveOption, sel map[string]bool) string {
+	var parts []string
+	for _, o := range opts {
+		if sel[o.code] {
+			parts = append(parts, o.code)
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+func saveConfig(cfg config) error {
+	paths := []string{
+		".vars.env",
+		filepath.Join("..", ".vars.env"),
+	}
+
+	target := paths[0]
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			target = p
+			break
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "WAVE=\"%s\"\n", cfg.WAVE)
+	fmt.Fprintf(&b, "START=\"%s\"\n", cfg.START)
+	fmt.Fprintf(&b, "END=\"%s\"\n", cfg.END)
+	fmt.Fprintf(&b, "SOURCE=\"%s\"\n", cfg.SOURCE)
+	fmt.Fprintf(&b, "FLARE_CLASS=\"%s\"\n", cfg.FLARE_CLASS)
+	fmt.Fprintf(&b, "COMPARATOR=\"%s\"\n", cfg.COMPARATOR)
+	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.DL_EMAIL)
+
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, target)
+}
+
+func (m *model) toggleWave(idx int) {
+	if idx < 0 || idx >= len(m.waveOptions) {
+		return
+	}
+	code := m.waveOptions[idx].code
+	m.waveSelected[code] = !m.waveSelected[code]
 }
 
 func maxInt(a, b int) int {
