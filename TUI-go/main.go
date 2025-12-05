@@ -122,7 +122,7 @@ func main() {
 
 	cfg := loadConfig()
 	m := newModel(logo, cfg)
-	if err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Start(); err != nil {
+	if err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion()).Start(); err != nil {
 		fmt.Println("tui error:", err)
 		os.Exit(1)
 	}
@@ -201,10 +201,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected < len(m.menuItems)-1 {
 				m.selected++
 			}
-		case tea.MouseButtonLeft:
+		case tea.MouseButtonLeft, tea.MouseButtonNone:
 			if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
 				m.selected = idx
-				if msg.Action == tea.MouseActionRelease {
+				if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
 					m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 				}
 			}
@@ -218,6 +218,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 		return 0, false
 	}
 
+	// Compute the rendered positions exactly as in View to align mouse coords with lines.
 	content := strings.Join(m.colored, "\n")
 	boxContent := logoBoxStyle.Render(content)
 
@@ -226,21 +227,29 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 		w = lipgloss.Width(boxContent)
 	}
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
-	boxHeight := lipgloss.Height(box)
 
-	versionLineHeight := 1 // rendered as a single line
+	boxWidth := lipgloss.Width(boxContent)
+	versionText := versionStyle.Render("VERSION: 0.2")
+	leftPad := 0
+	if w > boxWidth {
+		leftPad = (w - boxWidth) / 2
+	}
+	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
+
 	summary := renderSummary(m.cfg, w)
 	menu := renderMenu(m, w)
 
-	// Layout matches View(): box + "\n" + versionLine + summary + menu
-	menuTop := boxHeight + 1 + versionLineHeight + lipgloss.Height(summary)
+	header := box + "\n" + versionLine + summary
+	menuTop := lipgloss.Height(header)
 	menuHeight := lipgloss.Height(menu)
 	if y < menuTop || y >= menuTop+menuHeight {
 		return 0, false
 	}
 
 	relativeY := y - menuTop
-	itemY := relativeY - 2 // renderMenu prefixes two blank lines
+	// renderMenu prefixes two blank lines before items; help/notice lines follow items.
+	start := 1
+	itemY := relativeY - start
 	if itemY < 0 || itemY >= len(m.menuItems) {
 		return 0, false
 	}
