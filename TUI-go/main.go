@@ -231,6 +231,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
+			case "ctrl+a":
+				allSelected := true
+				for _, opt := range m.waveOptions {
+					if !m.waveSelected[opt.code] {
+						allSelected = false
+						break
+					}
+				}
+				next := true
+				if allSelected {
+					next = false
+				}
+				for _, opt := range m.waveOptions {
+					m.waveSelected[opt.code] = next
+				}
 			case "esc", "q":
 				m.mode = modeMain
 				m.notice = "Canceled wavelength edit"
@@ -747,7 +762,7 @@ func renderWavelengthEditor(m model, width int) string {
 
 	list := strings.Join(rows, "\n")
 	list = " " + strings.ReplaceAll(list, "\n", "\n ")
-	help := menuHelpStyle.Render("space toggle • enter save • esc cancel")
+	help := menuHelpStyle.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
 
 	block := lipgloss.JoinVertical(lipgloss.Left,
 		titleBlock,
@@ -759,12 +774,13 @@ func renderWavelengthEditor(m model, width int) string {
 	}
 
 	if width <= 0 {
-		return "\n\n" + indent(block) + "\n\n" + lipgloss.PlaceHorizontal(width, lipgloss.Center, help)
+		return "\n\n" + indent(block) + "\n\n" + indent(lipgloss.PlaceHorizontal(width, lipgloss.Center, help))
 	}
 
 	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	placed = indent(placed)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	helpLine = indent(helpLine)
 	return "\n\n" + placed + "\n\n" + helpLine
 }
 
@@ -812,7 +828,7 @@ func renderMenu(m model, width int) string {
 	if width <= 0 {
 		help := menuHelpStyle.Render(helpText)
 		if noticeLine != "" {
-			return "\n\n" + menuBlock + "\n\n" + noticeLine + "\n\n" + help
+			return "\n\n" + menuBlock + "\n\n" + "  " + noticeLine + "\n\n" + help
 		}
 		return "\n\n" + menuBlock + "\n\n" + help
 	}
@@ -825,6 +841,7 @@ func renderMenu(m model, width int) string {
 		if strings.HasPrefix(noticeLine, " ") {
 			noticeLine = noticeLine[1:]
 		}
+		noticeLine = "  " + noticeLine
 	}
 	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, menuHelpStyle.Render(helpText))
 	var shifted []string
