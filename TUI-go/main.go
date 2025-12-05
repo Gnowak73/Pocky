@@ -109,6 +109,17 @@ type model struct {
 	waveSelected map[string]bool
 	waveFocus    int
 
+	// Flare filter editor
+	flareCompOptions  []string
+	flareCompMap      map[string]string
+	flareClassLetters []string
+	flareMagnitudes   []string
+	flareFocus        int // 0=comp,1=letter,2=mag
+	flareCompIdx      int
+	flareLetterIdx    int
+	flareMagIdx       int
+	flareFocusFrame   int
+
 	// Date editor
 	dateStart string
 	dateEnd   string
@@ -133,6 +144,7 @@ const (
 	modeMain viewMode = iota
 	modeWavelength
 	modeDateRange
+	modeFlare
 )
 
 type waveOption struct {
@@ -182,15 +194,28 @@ func newModel(logo []string, cfg config) model {
 		"Quit",
 	}
 
+	compOpts, compMap := defaultComparatorOptions()
+	letters := defaultClassLetters()
+	mags := defaultMagnitudes()
+	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, compOpts, compMap, letters, mags)
+
 	return model{
-		logoLines:    logo,
-		colored:      colored,
-		cfg:          cfg,
-		blockW:       blockW,
-		menuItems:    menu,
-		mode:         modeMain,
-		waveOptions:  waves,
-		waveSelected: selected,
+		logoLines:         logo,
+		colored:           colored,
+		cfg:               cfg,
+		blockW:            blockW,
+		menuItems:         menu,
+		mode:              modeMain,
+		waveOptions:       waves,
+		waveSelected:      selected,
+		flareCompOptions:  compOpts,
+		flareCompMap:      compMap,
+		flareClassLetters: letters,
+		flareMagnitudes:   mags,
+		flareCompIdx:      compIdx,
+		flareLetterIdx:    letterIdx,
+		flareMagIdx:       magIdx,
+		flareFocusFrame:   0,
 	}
 }
 
@@ -208,6 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.colored = colorizeLogo(m.logoLines, m.blockW, m.frame)
 		return m, tick()
 	case tea.KeyMsg:
+		var cmd tea.Cmd
 		if m.mode == modeMain {
 			switch msg.String() {
 			case "ctrl+c", "q", "esc":
@@ -233,6 +259,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.dateStart = ""
 						m.dateEnd = ""
 						m.dateFocus = 0
+						m.notice = ""
+					case "Edit Flare Class Filter":
+						m.mode = modeFlare
+						m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
+						m.flareFocus = 0
+						m.flareFocusFrame = m.frame
 						m.notice = ""
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
@@ -352,8 +384,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		} else if m.mode == modeFlare {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modeMain
+				m.notice = "Canceled flare filter edit"
+			case "tab", "right", "l":
+				m.flareFocus = (m.flareFocus + 1) % 3
+				m.flareFocusFrame = m.frame
+			case "shift+tab", "left", "h":
+				m.flareFocus--
+				if m.flareFocus < 0 {
+					m.flareFocus = 2
+				}
+				m.flareFocusFrame = m.frame
+			case "up", "k":
+				switch m.flareFocus {
+				case 0:
+					if m.flareCompIdx > 0 {
+						m.flareCompIdx--
+					}
+				case 1:
+					if m.flareLetterIdx > 0 {
+						m.flareLetterIdx--
+					}
+				case 2:
+					if m.flareMagIdx > 0 {
+						m.flareMagIdx--
+					}
+				}
+			case "down", "j":
+				switch m.flareFocus {
+				case 0:
+					if m.flareCompIdx < len(m.flareCompOptions)-1 {
+						m.flareCompIdx++
+					}
+				case 1:
+					if m.flareLetterIdx < len(m.flareClassLetters)-1 {
+						m.flareLetterIdx++
+					}
+				case 2:
+					if m.flareMagIdx < len(m.flareMagnitudes)-1 {
+						m.flareMagIdx++
+					}
+				}
+			case "enter":
+				comp := m.flareCompOptions[m.flareCompIdx]
+				compVal := m.flareCompMap[comp]
+				if compVal == "" {
+					compVal = comp
+				}
+				letter := m.flareClassLetters[m.flareLetterIdx]
+				mag := m.flareMagnitudes[m.flareMagIdx]
+				if compVal == "All" {
+					m.cfg.COMPARATOR = "All"
+					m.cfg.FLARE_CLASS = "Any"
+				} else {
+					m.cfg.COMPARATOR = compVal
+					m.cfg.FLARE_CLASS = fmt.Sprintf("%s%s", letter, mag)
+				}
+				if err := saveConfig(m.cfg); err != nil {
+					m.notice = fmt.Sprintf("Save failed: %v", err)
+					break
+				}
+				m.notice = "Flare filter saved"
+				m.mode = modeMain
+			}
 		}
+		return m, cmd
 	case tea.MouseMsg:
+		var cmd tea.Cmd
 		if m.mode == modeMain {
 			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
 				if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
@@ -385,6 +487,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.dateEnd = ""
 							m.dateFocus = 0
 							m.notice = ""
+						case "Edit Flare Class Filter":
+							m.mode = modeFlare
+							m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
+							m.flareFocus = 0
+							m.flareFocusFrame = m.frame
+							m.notice = ""
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 						}
@@ -403,7 +511,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.toggleWave(idx)
 				}
 			}
+		} else if m.mode == modeFlare {
+			col, row, ok := m.flareHit(msg.X, msg.Y)
+			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion && ok {
+				m.flareFocus = col
+			}
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				switch m.flareFocus {
+				case 0:
+					if m.flareCompIdx > 0 {
+						m.flareCompIdx--
+					}
+				case 1:
+					if m.flareLetterIdx > 0 {
+						m.flareLetterIdx--
+					}
+				case 2:
+					if m.flareMagIdx > 0 {
+						m.flareMagIdx--
+					}
+				}
+			case tea.MouseButtonWheelDown:
+				switch m.flareFocus {
+				case 0:
+					if m.flareCompIdx < len(m.flareCompOptions)-1 {
+						m.flareCompIdx++
+					}
+				case 1:
+					if m.flareLetterIdx < len(m.flareClassLetters)-1 {
+						m.flareLetterIdx++
+					}
+				case 2:
+					if m.flareMagIdx < len(m.flareMagnitudes)-1 {
+						m.flareMagIdx++
+					}
+				}
+			case tea.MouseButtonLeft:
+				if ok && msg.Action == tea.MouseActionRelease {
+					m.flareFocus = col
+					switch col {
+					case 0:
+						m.flareCompIdx = clampInt(row, 0, len(m.flareCompOptions)-1)
+					case 1:
+						m.flareLetterIdx = clampInt(row, 0, len(m.flareClassLetters)-1)
+					case 2:
+						m.flareMagIdx = clampInt(row, 0, len(m.flareMagnitudes)-1)
+					}
+				}
+			}
 		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -567,6 +725,21 @@ func (m model) View() string {
 			noticeLine = "  " + noticeLine
 			extraNotice = "\n" + noticeLine
 		}
+	} else if m.mode == modeFlare {
+		body = summary + renderFlareEditor(m, w)
+		if m.notice != "" {
+			text := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.notice)
+			widthTarget := w
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(renderSummary(m.cfg, 0))
+			}
+			if widthTarget <= 0 {
+				widthTarget = lipgloss.Width(text)
+			}
+			noticeLine := lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
+			noticeLine = "  " + noticeLine
+			extraNotice = "\n" + noticeLine
+		}
 	} else {
 		body = summary + renderMenu(m, w)
 	}
@@ -579,6 +752,142 @@ func (m model) View() string {
 	}
 
 	return box + "\n" + versionLine + body + extraNotice + "\n" + status
+}
+
+// flareHit identifies which column (0 comparator, 1 class, 2 magnitude) and which row is at x,y.
+// x,y are 0-based terminal coordinates.
+func (m model) flareHit(x, y int) (col int, row int, ok bool) {
+	if m.mode != modeFlare || x < 0 || y < 0 {
+		return 0, 0, false
+	}
+
+	cols := renderFlareColumns(m)
+	if len(cols) != 3 {
+		return 0, 0, false
+	}
+
+	// Logo block height
+	content := strings.Join(m.colored, "\n")
+	boxContent := logoBoxStyle.Render(content)
+	w := m.width
+	if w <= 0 {
+		w = lipgloss.Width(boxContent)
+	}
+	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
+
+	boxWidth := lipgloss.Width(boxContent)
+	versionText := versionStyle.Render("VERSION: 0.2")
+	leftPad := 0
+	if w > boxWidth {
+		leftPad = (w - boxWidth) / 2
+	}
+	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
+
+	summary := renderSummary(m.cfg, w)
+
+	// Build flare block components to measure positions.
+	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Set Flare Filters")
+	colWidth := lipgloss.Width(columns)
+	if colWidth < lipgloss.Width(title) {
+		colWidth = lipgloss.Width(title)
+	}
+	divWidth := maxInt(colWidth, lipgloss.Width(title)+6)
+	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
+	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
+	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
+
+	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
+
+	blockWidth := lipgloss.Width(block)
+	blockHeight := lipgloss.Height(block)
+
+	// Positioning: View returns box + "\n" + versionLine + summary + renderFlareEditor (which starts with two newlines)
+	header := box + "\n" + versionLine + summary
+	topY := lipgloss.Height(header) + 2 /*leading newlines in editor*/
+
+	if y < topY || y > topY+blockHeight {
+		return 0, 0, false
+	}
+
+	offsetX := 0
+	if w > blockWidth {
+		offsetX = (w - blockWidth) / 2
+	}
+	if offsetX > 2 {
+		offsetX -= 2
+	}
+
+	relY := y - topY
+	relX := x - offsetX
+	if relX < 0 {
+		return 0, 0, false
+	}
+
+	titleHeight := lipgloss.Height(titleBlock) + 1 // includes blank line
+	if relY < titleHeight {
+		return 0, 0, false
+	}
+	optY := relY - titleHeight
+	col0 := cols[0]
+	col1 := cols[1]
+	col2 := cols[2]
+	pad := 2
+	colStartX := []int{0, lipgloss.Width(col0) + pad, lipgloss.Width(col0) + pad + lipgloss.Width(col1) + pad}
+	colWidths := []int{lipgloss.Width(col0), lipgloss.Width(col1), lipgloss.Width(col2)}
+	colIdx := -1
+	for i := 0; i < 3; i++ {
+		if relX >= colStartX[i] && relX < colStartX[i]+colWidths[i] {
+			colIdx = i
+			break
+		}
+	}
+	if colIdx == -1 {
+		return 0, 0, false
+	}
+
+	// Each column layout: header, blank, options...
+	if optY < 2 {
+		return 0, 0, false
+	}
+	rowIdx := optY - 2
+
+	var start, window, maxRows int
+	switch colIdx {
+	case 0:
+		window = len(m.flareCompOptions)
+		if len(m.flareCompOptions) > window {
+			window = len(m.flareCompOptions)
+		}
+		start = 0
+		maxRows = len(m.flareCompOptions)
+	case 1:
+		window = len(m.flareClassLetters)
+		start = 0
+		maxRows = len(m.flareClassLetters)
+	case 2:
+		window = 9
+		maxRows = len(m.flareMagnitudes)
+		if maxRows < window {
+			window = maxRows
+		}
+		if maxRows > window {
+			start = clampInt(m.flareMagIdx-window/2, 0, maxRows-window)
+		}
+	default:
+		return 0, 0, false
+	}
+
+	if rowIdx < 0 || rowIdx >= window {
+		return 0, 0, false
+	}
+
+	actualIdx := start + rowIdx
+	if actualIdx >= maxRows {
+		return 0, 0, false
+	}
+
+	return colIdx, actualIdx, true
 }
 
 func loadLogo() ([]string, error) {
@@ -743,6 +1052,19 @@ func buildGradient(count int) []lipgloss.Style {
 	return styles
 }
 
+func blendHex(a, b string, t float64) string {
+	c1, err1 := colorful.Hex(a)
+	c2, err2 := colorful.Hex(b)
+	if err1 != nil {
+		c1 = colorful.Color{}
+	}
+	if err2 != nil {
+		c2 = colorful.Color{}
+	}
+	t = clamp(t, 0, 1)
+	return c1.BlendHcl(c2, t).Hex()
+}
+
 func blendStops(stops []colorful.Color, t float64) colorful.Color {
 	if len(stops) == 0 {
 		return colorful.Color{}
@@ -831,6 +1153,34 @@ func renderStaticGradientHint(text string, available int) string {
 		Width(available).
 		Align(lipgloss.Right).
 		Render(colored)
+}
+
+func renderGradientText(text, startHex, endHex string, base lipgloss.Style) string {
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return ""
+	}
+
+	start, err := colorful.Hex(startHex)
+	if err != nil {
+		start = colorful.Color{}
+	}
+	end, err := colorful.Hex(endHex)
+	if err != nil {
+		end = colorful.Color{}
+	}
+
+	var parts []string
+	steps := len(runes)
+	for i, r := range runes {
+		t := 0.0
+		if steps > 1 {
+			t = float64(i) / float64(steps-1)
+		}
+		col := start.BlendHcl(end, t)
+		parts = append(parts, base.Copy().Foreground(lipgloss.Color(col.Hex())).Render(string(r)))
+	}
+	return strings.Join(parts, "")
 }
 
 func renderWavelengthEditor(m model, width int) string {
@@ -952,6 +1302,99 @@ func renderDateEditor(m model, width int) string {
 	return "\n\n" + combined
 }
 
+func renderFlareColumns(m model) []string {
+	headerStyle := menuHelpStyle.Copy()
+	itemStyle := summaryValueStyle.Copy()
+	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+	focusBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1)
+	plainBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1)
+
+	renderColumn := func(title string, opts []string, selected int, focused bool, window int) string {
+		start := 0
+		if len(opts) > window {
+			start = clampInt(selected-window/2, 0, len(opts)-window)
+		}
+		end := minInt(len(opts), start+window)
+
+		var rows []string
+		for i := start; i < end; i++ {
+			prefix := "[ ]"
+			if i == selected {
+				prefix = checkStyle.Render("[x]")
+			}
+			line := lipgloss.JoinHorizontal(lipgloss.Top, prefix, " ", itemStyle.Render(opts[i]))
+			rows = append(rows, line)
+		}
+
+		headerText := headerStyle.Copy().Foreground(lipgloss.Color("#3A3A3A")).Render(title)
+		if focused {
+			headerAnimT := clamp(float64(maxInt(m.frame-m.flareFocusFrame, 0))/8.0, 0, 1)
+			headerText = renderGradientText(
+				title,
+				blendHex("#7D5FFF", "#FFB7D5", headerAnimT),
+				blendHex("#8B5EDB", "#F785D1", headerAnimT),
+				headerStyle.Copy().Bold(true),
+			)
+		}
+
+		content := lipgloss.JoinVertical(
+			lipgloss.Left,
+			headerText,
+			"",
+			strings.Join(rows, "\n"),
+		)
+		if focused {
+			return focusBox.Copy().
+				BorderForeground(lipgloss.Color("#F785D1")).
+				Render(content)
+		}
+		return plainBox.Copy().
+			BorderForeground(lipgloss.Color("#2B2B2B")).
+			Render(content)
+	}
+
+	compCol := renderColumn("Comparator", m.flareCompOptions, m.flareCompIdx, m.flareFocus == 0, len(m.flareCompOptions))
+	letCol := renderColumn("GOES Class", m.flareClassLetters, m.flareLetterIdx, m.flareFocus == 1, len(m.flareClassLetters))
+	magCol := renderColumn("Magnitude (Scroll)", m.flareMagnitudes, m.flareMagIdx, m.flareFocus == 2, 9)
+
+	return []string{
+		lipgloss.NewStyle().PaddingRight(2).Render(compCol),
+		lipgloss.NewStyle().PaddingRight(2).Render(letCol),
+		magCol,
+	}
+}
+
+func renderFlareEditor(m model, width int) string {
+	titleStyle := summaryHeaderStyle.Copy().Bold(false)
+	cols := renderFlareColumns(m)
+	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	title := titleStyle.Render("Set Flare Filters")
+	colWidth := lipgloss.Width(columns)
+	if colWidth < lipgloss.Width(title) {
+		colWidth = lipgloss.Width(title)
+	}
+	divWidth := maxInt(colWidth, lipgloss.Width(title)+6)
+	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
+	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
+	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
+
+	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
+
+	help := menuHelpStyle.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
+
+	if width <= 0 {
+		return "\n\n" + block + "\n\n" + help
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	return "\n\n" + placed + "\n\n" + helpLine
+}
+
 func renderMenu(m model, width int) string {
 	if m.mode != modeMain {
 		return ""
@@ -1036,7 +1479,7 @@ func renderSummary(cfg config, width int) string {
 		{"Date End", prettyValue(cfg.END)},
 		{"Data Source", prettyValue(cfg.SOURCE)},
 		{"Flare Class", prettyValue(cfg.FLARE_CLASS)},
-		{"Comparator", prettyValue(cfg.COMPARATOR)},
+		{"Comparator", prettyComparator(cfg.COMPARATOR)},
 		{"Last Email", prettyValue(cfg.DL_EMAIL)},
 	}
 
@@ -1104,6 +1547,21 @@ func prettyValue(val string) string {
 		return "<unset>"
 	}
 	return val
+}
+
+func prettyComparator(val string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "<unset>"
+	}
+	switch val {
+	case ">=":
+		return "≥"
+	case "<=":
+		return "≤"
+	default:
+		return val
+	}
 }
 
 func validDate(val string) bool {
@@ -1198,6 +1656,78 @@ func defaultWaveOptions() []waveOption {
 	}
 }
 
+func defaultComparatorOptions() ([]string, map[string]string) {
+	opts := []string{">", "≥", "==", "≤", "<", "All"}
+	m := map[string]string{
+		">":   ">",
+		"≥":   ">=",
+		"==":  "==",
+		"≤":   "<=",
+		"<":   "<",
+		"All": "All",
+	}
+	return opts, m
+}
+
+func defaultClassLetters() []string {
+	return []string{"A", "B", "C", "M", "X"}
+}
+
+func defaultMagnitudes() []string {
+	var mags []string
+	for i := 0; i <= 9; i++ {
+		for t := 0; t <= 9; t++ {
+			mags = append(mags, fmt.Sprintf("%d.%d", i, t))
+		}
+	}
+	return mags
+}
+
+func parseFlareSelection(cfg config, compOpts []string, compMap map[string]string, letters, mags []string) (int, int, int) {
+	compIdx := 0
+	letterIdx := 0
+	magIdx := 0
+
+	currentComp := strings.TrimSpace(cfg.COMPARATOR)
+	currentClass := strings.TrimSpace(cfg.FLARE_CLASS)
+
+	// comparator
+	if currentComp != "" {
+		for i, opt := range compOpts {
+			val := compMap[opt]
+			if val == "" {
+				val = opt
+			}
+			if val == currentComp {
+				compIdx = i
+				break
+			}
+		}
+	}
+
+	// class
+	if len(currentClass) >= 1 {
+		letter := string(currentClass[0])
+		for i, l := range letters {
+			if l == letter {
+				letterIdx = i
+				break
+			}
+		}
+		if len(currentClass) > 1 {
+			mag := currentClass[1:]
+			for i, m := range mags {
+				if m == mag {
+					magIdx = i
+					break
+				}
+			}
+		}
+	}
+
+	return compIdx, letterIdx, magIdx
+}
+
 func parseWaves(val string, opts []waveOption) map[string]bool {
 	selected := make(map[string]bool)
 	if strings.TrimSpace(val) == "" {
@@ -1266,6 +1796,13 @@ func (m *model) toggleWave(idx int) {
 
 func maxInt(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b
