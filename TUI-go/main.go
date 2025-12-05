@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -129,9 +130,14 @@ type model struct {
 	flareHeader    string
 	flareSelected  map[int]bool
 	flareCursor    int
+	flareOffset    int
 	flareLoading   bool
 	flareLoadError string
 	flareTable     table.Model
+
+	// Loading animation
+	spinFrames []string
+	spinIndex  int
 
 	// Date editor
 	dateStart string
@@ -180,30 +186,57 @@ type flareEntry struct {
 	full  string
 }
 
+func isoToHuman(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	s = strings.TrimSuffix(s, "Z")
+	s = strings.ReplaceAll(s, "T", " ")
+	if idx := strings.IndexRune(s, '.'); idx >= 0 {
+		s = s[:idx]
+	}
+	return s
+}
+
+func flareViewHeight(m model) int {
+	if len(m.flareList) == 0 {
+		return 0
+	}
+	return maxInt(7, minInt(12, len(m.flareList)))
+}
+
+func (m model) styledFlareRows() []table.Row {
+	if len(m.flareList) == 0 {
+		return nil
+	}
+	rows := make([]table.Row, 0, len(m.flareList))
+	for i, entry := range m.flareList {
+		check := "[ ]"
+		if m.flareSelected[i] {
+			check = "[x]"
+		}
+		rows = append(rows, table.Row{check, entry.class, entry.start, entry.end, entry.coord})
+	}
+	return rows
+}
+
 func (m *model) rebuildFlareTable() {
 	if len(m.flareList) == 0 {
 		m.flareTable = table.Model{}
 		return
 	}
 
-	wClass, wStart, wEnd, wCoord := flareTableWidths(*m)
+	wSel, wClass, wStart, wEnd, wCoord := flareTableWidths(*m)
 	columns := []table.Column{
-		{Title: "Sel", Width: 4},
-		{Title: "Class", Width: wClass},
-		{Title: "Start", Width: wStart},
-		{Title: "End", Width: wEnd},
-		{Title: "Coordinates", Width: wCoord},
+		{Title: "SEL", Width: wSel},
+		{Title: "CLASS", Width: wClass},
+		{Title: "START", Width: wStart},
+		{Title: "END", Width: wEnd},
+		{Title: "COORDINATES", Width: wCoord},
 	}
 
-	var rows []table.Row
-	for i, entry := range m.flareList {
-		sel := " "
-		if m.flareSelected[i] {
-			sel = "x"
-		}
-		rows = append(rows, table.Row{sel, entry.class, entry.start, entry.end, entry.coord})
-	}
-
+	rows := m.styledFlareRows()
 	height := maxInt(7, minInt(12, len(rows)))
 	t := table.New(
 		table.WithColumns(columns),
@@ -214,14 +247,23 @@ func (m *model) rebuildFlareTable() {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(lipgloss.Color("238")).
 		BorderBottom(true).
-		Bold(false)
+		Foreground(lipgloss.Color("252")).
+		Bold(true).
+		PaddingLeft(1).
+		PaddingRight(1)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	s.Cell = s.Cell.Align(lipgloss.Left)
+		Foreground(lipgloss.Color("245")).
+		Background(lipgloss.Color("")).
+		Bold(false).
+		PaddingLeft(1).
+		PaddingRight(1)
+	s.Cell = s.Cell.
+		Align(lipgloss.Left).
+		Foreground(lipgloss.Color("245")).
+		PaddingLeft(1).
+		PaddingRight(1)
 	t.SetStyles(s)
 	t.SetCursor(m.flareCursor)
 	m.flareTable = t
@@ -231,14 +273,7 @@ func (m *model) updateFlareTableRows() {
 	if len(m.flareList) == 0 || m.flareTable.Columns() == nil {
 		return
 	}
-	var rows []table.Row
-	for i, entry := range m.flareList {
-		sel := " "
-		if m.flareSelected[i] {
-			sel = "x"
-		}
-		rows = append(rows, table.Row{sel, entry.class, entry.start, entry.end, entry.coord})
-	}
+	rows := m.styledFlareRows()
 	m.flareTable.SetRows(rows)
 	m.flareTable.SetCursor(m.flareCursor)
 }
@@ -308,6 +343,8 @@ func newModel(logo []string, cfg config) model {
 		flareMagIdx:       magIdx,
 		flareFocusFrame:   0,
 		flareSelected:     make(map[int]bool),
+		spinFrames:        []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		flareOffset:       0,
 	}
 }
 
@@ -325,6 +362,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.colored = colorizeLogo(m.logoLines, m.blockW, m.frame)
 		if m.notice != "" && m.noticeSet > 0 && m.frame-m.noticeSet > 19 {
 			m.notice = ""
+		}
+		if m.flareLoading && len(m.spinFrames) > 0 {
+			m.spinIndex = (m.spinIndex + 1) % len(m.spinFrames)
 		}
 		return m, tick()
 	case flaresLoadedMsg:
@@ -346,6 +386,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.flareCursor = 0
+		m.flareOffset = 0
 		m.rebuildFlareTable()
 		return m, nil
 	case tea.KeyMsg:
@@ -406,8 +447,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.flareLoadError = ""
 						m.flareSelected = make(map[int]bool)
 						m.flareCursor = 0
+						m.flareOffset = 0
 						m.flareList = nil
 						m.flareHeader = ""
+						m.notice = ""
+						m.noticeSet = 0
 						cmd = loadFlaresCmd(m.cfg)
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
@@ -608,10 +652,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = modeMain
 			}
 		} else if m.mode == modeSelectFlares {
-			var tcmd tea.Cmd
-			m.flareTable, tcmd = m.flareTable.Update(msg)
-			m.flareCursor = m.flareTable.Cursor()
-			m.flareTable.Focus()
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
@@ -622,7 +662,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
 					m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
-					m.updateFlareTableRows()
 				}
 			case "enter":
 				if len(m.flareSelected) == 0 {
@@ -639,9 +678,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.noticeSet = m.frame
 				}
 				m.mode = modeMain
+			case "up", "k":
+				if m.flareCursor > 0 {
+					m.flareCursor--
+				}
+				m.ensureFlareVisible()
+			case "down", "j":
+				if m.flareCursor < len(m.flareList)-1 {
+					m.flareCursor++
+				}
+				m.ensureFlareVisible()
+			default:
+				// ignore other keys in flare selection
 			}
-			m.flareTable.SetCursor(m.flareCursor)
-			return m, tcmd
+			return m, nil
 		}
 		return m, cmd
 	case tea.MouseMsg:
@@ -706,6 +756,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.flareCursor = 0
 							m.flareList = nil
 							m.flareHeader = ""
+							m.notice = ""
+							m.noticeSet = 0
 							return m, loadFlaresCmd(m.cfg)
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
@@ -776,41 +828,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if m.mode == modeSelectFlares {
-			var tcmd tea.Cmd
-			m.flareTable, tcmd = m.flareTable.Update(msg)
-			m.flareCursor = m.flareTable.Cursor()
-			m.flareTable.Focus()
 			switch msg.Button {
 			case tea.MouseButtonWheelUp:
 				if m.flareCursor > 0 {
 					m.flareCursor--
-					m.flareTable.SetCursor(m.flareCursor)
+					m.ensureFlareVisible()
 				}
 			case tea.MouseButtonWheelDown:
 				if m.flareCursor < len(m.flareList)-1 {
 					m.flareCursor++
-					m.flareTable.SetCursor(m.flareCursor)
+					m.ensureFlareVisible()
+				}
+			case tea.MouseButtonLeft:
+				if msg.Action == tea.MouseActionRelease {
+					if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
+						m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
+					}
 				}
 			}
-			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
-				if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
-					m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
-					m.rebuildFlareTable()
-				}
-			}
-			if msg.Button == tea.MouseButtonWheelUp {
-				if m.flareCursor > 0 {
-					m.flareCursor--
-					m.flareTable.SetCursor(m.flareCursor)
-				}
-			}
-			if msg.Button == tea.MouseButtonWheelDown {
-				if m.flareCursor < len(m.flareList)-1 {
-					m.flareCursor++
-					m.flareTable.SetCursor(m.flareCursor)
-				}
-			}
-			return m, tcmd
+			return m, nil
 		}
 		return m, cmd
 	}
@@ -1620,7 +1656,11 @@ func renderFlareColumns(m model) []string {
 	}
 }
 
-func flareTableWidths(m model) (int, int, int, int) {
+func flareTableWidths(m model) (int, int, int, int, int) {
+	wSel := lipgloss.Width("SEL")
+	if wSel < lipgloss.Width("[x]") {
+		wSel = lipgloss.Width("[x]")
+	}
 	wClass := lipgloss.Width("Class")
 	wStart := lipgloss.Width("Start")
 	wEnd := lipgloss.Width("End")
@@ -1639,19 +1679,20 @@ func flareTableWidths(m model) (int, int, int, int) {
 			wCoord = w
 		}
 	}
-	return wClass, wStart, wEnd, wCoord
+	pad := 2
+	return wSel + pad, wClass + pad, wStart + pad, wEnd + pad, wCoord + pad
 }
 
 func flareTableHeader(m model) (string, string) {
-	wClass, wStart, wEnd, wCoord := flareTableWidths(m)
-	format := fmt.Sprintf(" %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds ", wClass, wStart, wEnd, wCoord)
-	header := fmt.Sprintf(format, "Class", "Start", "End", "Coordinates")
+	wSel, wClass, wStart, wEnd, wCoord := flareTableWidths(m)
+	format := fmt.Sprintf("│ %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds │", wSel, wClass, wStart, wEnd, wCoord)
+	header := fmt.Sprintf(format, "SEL", "CLASS", "START", "END", "COORDINATES")
 	return header, strings.Repeat("─", lipgloss.Width(header))
 }
 
 func flareTableRows(m model, start, end int) ([]string, int) {
-	wClass, wStart, wEnd, wCoord := flareTableWidths(m)
-	format := fmt.Sprintf(" %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds ", wClass, wStart, wEnd, wCoord)
+	wSel, wClass, wStart, wEnd, wCoord := flareTableWidths(m)
+	format := fmt.Sprintf("│ %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds │ %%-%ds │", wSel, wClass, wStart, wEnd, wCoord)
 	var rows []string
 	maxW := 0
 	for i := start; i < end; i++ {
@@ -1660,19 +1701,19 @@ func flareTableRows(m model, start, end int) ([]string, int) {
 		if m.flareSelected[i] {
 			check = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("[x]")
 		}
-		cursor := "  "
-		if i == m.flareCursor {
-			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
+		line := fmt.Sprintf(format, check, entry.class, entry.start, entry.end, entry.coord)
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		if (i-start)%2 == 1 {
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 		}
-		line := fmt.Sprintf(format, entry.class, entry.start, entry.end, entry.coord)
-		row := cursor + check + " " + line
-		if i == m.flareCursor {
-			row = lipgloss.NewStyle().Background(lipgloss.Color("#1E1C22")).Render(row)
-		}
-		rows = append(rows, row)
-		if w := lipgloss.Width(row); w > maxW {
+		rendered := style.Render(line)
+		rows = append(rows, rendered)
+		if w := lipgloss.Width(rendered); w > maxW {
 			maxW = w
 		}
+	}
+	if len(rows) == 0 {
+		return rows, maxW
 	}
 	return rows, maxW
 }
@@ -1705,15 +1746,19 @@ func renderFlareEditor(m model, width int) string {
 }
 
 func renderSelectFlares(m model, width int) string {
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Choose Flares to Catalogue")
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 
 	if m.flareLoading {
-		msg := menuHelpStyle.Render("Loading flares...")
-		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		if width <= 0 {
-			return "\n\n" + block
+		spin := ""
+		if len(m.spinFrames) > 0 {
+			spin = m.spinFrames[m.spinIndex]
 		}
-		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+		msg := menuHelpStyle.Render(fmt.Sprintf("Loading flares %s", spin))
+		block := lipgloss.JoinVertical(lipgloss.Center, "", msg)
+		if width <= 0 {
+			return "\n" + block
+		}
+		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
 	if m.flareLoadError != "" {
@@ -1734,20 +1779,26 @@ func renderSelectFlares(m model, width int) string {
 		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	baseStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
-
-	tableView := m.flareTable.View()
-	tableBox := baseStyle.Render(tableView)
-	tableWidth := lipgloss.Width(tableBox)
-	titleLine := lipgloss.PlaceHorizontal(tableWidth, lipgloss.Center, title)
-
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		titleLine,
-		tableBox,
-	)
-
+	height := flareViewHeight(m)
+	if m.flareOffset < 0 {
+		m.flareOffset = 0
+	}
+	if height == 0 {
+		msg := menuHelpStyle.Render("No flares found.")
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+	tableStr := renderSelectFlaresTable(m, width, height)
+	titleLine := title
+	if width > 0 {
+		titleLine = lipgloss.Place(width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+	} else {
+		titleLine = lipgloss.Place(lipgloss.Width(tableStr), lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, titleLine, "", tableStr)
 	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter save • esc cancel")
 
 	if width <= 0 {
@@ -1757,6 +1808,60 @@ func renderSelectFlares(m model, width int) string {
 	placed := lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	return "\n\n" + placed + "\n\n" + helpLine
+}
+
+// renderSelectFlaresTable builds the flare selection table with distinct columns and a selectable SEL column.
+func renderSelectFlaresTable(m model, width int, height int) string {
+	start := clampInt(m.flareOffset, 0, maxInt(len(m.flareList)-height, 0))
+	end := minInt(len(m.flareList), start+height)
+
+	base := lipgloss.NewStyle().Padding(0, 1)
+	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
+	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
+	evenStyle := base.Foreground(lipgloss.Color("245"))
+	oddStyle := base.Foreground(lipgloss.Color("252"))
+	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+
+	rows := make([][]string, 0, end-start)
+	for i := start; i < end; i++ {
+		entry := m.flareList[i]
+		sel := "[ ]"
+		if m.flareSelected[i] {
+			sel = selMark.Render("[x]")
+		}
+		rows = append(rows, []string{
+			sel,
+			entry.class,
+			entry.start,
+			entry.end,
+			entry.coord,
+		})
+	}
+
+	t := lgtbl.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		Headers("SEL", "CLASS", "START", "END", "COORDINATES").
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == lgtbl.HeaderRow {
+				return headerStyle
+			}
+			abs := start + row
+			if abs == m.flareCursor {
+				return cursorStyle
+			}
+			if abs%2 == 0 {
+				return evenStyle
+			}
+			return oddStyle
+		})
+
+	tableStr := t.String()
+	if width > 0 {
+		tableStr = lipgloss.Place(width, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
+	}
+	return tableStr
 }
 
 func renderMenu(m model, width int) string {
@@ -2143,11 +2248,16 @@ func loadFlaresCmd(cfg config) tea.Cmd {
 			if len(fields) < 6 {
 				continue
 			}
+			startHuman := isoToHuman(fields[2])
+			endHuman := isoToHuman(fields[3])
+			if endHuman == "" {
+				endHuman = startHuman
+			}
 			entries = append(entries, flareEntry{
 				desc:  fields[0],
 				class: fields[1],
-				start: fields[2],
-				end:   fields[3],
+				start: startHuman,
+				end:   endHuman,
 				coord: fields[4],
 				full:  line,
 			})
@@ -2321,4 +2431,32 @@ func clamp(v, min, max float64) float64 {
 		return max
 	}
 	return v
+}
+
+// ensureFlareVisible adjusts the offset so the cursor row remains within the viewport.
+func (m *model) ensureFlareVisible() {
+	h := flareViewHeight(*m)
+	if h <= 0 {
+		m.flareOffset = 0
+		return
+	}
+	if m.flareCursor < 0 {
+		m.flareCursor = 0
+	}
+	if m.flareCursor >= len(m.flareList) {
+		m.flareCursor = len(m.flareList) - 1
+	}
+	if m.flareCursor < m.flareOffset {
+		m.flareOffset = m.flareCursor
+	}
+	if m.flareCursor >= m.flareOffset+h {
+		m.flareOffset = m.flareCursor - h + 1
+	}
+	maxOffset := maxInt(len(m.flareList)-h, 0)
+	if m.flareOffset > maxOffset {
+		m.flareOffset = maxOffset
+	}
+	if m.flareOffset < 0 {
+		m.flareOffset = 0
+	}
 }
