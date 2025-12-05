@@ -1818,6 +1818,13 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
+	selectColStyle := base.Foreground(lipgloss.Color("#C7CDD6")) // subtle accent for SEL
+	classEvenStyle := base.Foreground(lipgloss.Color("245"))     // lighter pattern (was start/end)
+	classOddStyle := base.Foreground(lipgloss.Color("252"))
+	coordEvenStyle := base.Foreground(lipgloss.Color("#B8C3D9")) // soft gray-blue
+	coordOddStyle := base.Foreground(lipgloss.Color("#A0A9BE"))  // slightly deeper gray-blue
+	startEndEvenStyle := base.Foreground(lipgloss.Color("241"))  // more subdued (was class)
+	startEndOddStyle := base.Foreground(lipgloss.Color("245"))
 	evenStyle := base.Foreground(lipgloss.Color("245"))
 	oddStyle := base.Foreground(lipgloss.Color("252"))
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
@@ -1850,6 +1857,27 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 			abs := start + row
 			if abs == m.flareCursor {
 				return cursorStyle
+			}
+			if col == 0 {
+				return selectColStyle
+			}
+			evenRow := abs%2 == 0
+			switch col {
+			case 1:
+				if evenRow {
+					return classEvenStyle
+				}
+				return classOddStyle
+			case 2, 3:
+				if evenRow {
+					return startEndEvenStyle
+				}
+				return startEndOddStyle
+			case 4:
+				if evenRow {
+					return coordEvenStyle
+				}
+				return coordOddStyle
 			}
 			if abs%2 == 0 {
 				return evenStyle
