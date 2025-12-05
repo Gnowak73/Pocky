@@ -36,7 +36,7 @@ var (
 	statusKeyStyle = lipgloss.NewStyle().
 			Inherit(statusBarStyle).
 			Foreground(statusBarStyle.GetBackground()).
-			Background(lipgloss.Color("#FF5F87")).
+			Background(lipgloss.Color("#FF7FB3")).
 			Padding(0, 1).
 			MarginRight(1).
 			Bold(true)
@@ -60,8 +60,10 @@ var (
 			Foreground(lipgloss.Color("#EAEAFF"))
 
 	menuSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#8B5EDB")).
-				Bold(true)
+				Foreground(lipgloss.Color("#F785D1"))
+
+	menuHelpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
 
 	summaryLabelStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FFB7D5")).
@@ -120,7 +122,7 @@ func main() {
 
 	cfg := loadConfig()
 	m := newModel(logo, cfg)
-	if err := tea.NewProgram(m, tea.WithAltScreen()).Start(); err != nil {
+	if err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Start(); err != nil {
 		fmt.Println("tui error:", err)
 		os.Exit(1)
 	}
@@ -189,8 +191,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 			}
 		}
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			if m.selected > 0 {
+				m.selected--
+			}
+		case tea.MouseButtonWheelDown:
+			if m.selected < len(m.menuItems)-1 {
+				m.selected++
+			}
+		case tea.MouseButtonLeft:
+			if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
+				m.selected = idx
+				if msg.Action == tea.MouseActionRelease {
+					m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
+				}
+			}
+		}
 	}
 	return m, nil
+}
+
+func (m model) menuIndexAt(x, y int) (int, bool) {
+	if y < 0 || x < 0 || len(m.menuItems) == 0 {
+		return 0, false
+	}
+
+	content := strings.Join(m.colored, "\n")
+	boxContent := logoBoxStyle.Render(content)
+
+	w := m.width
+	if w <= 0 {
+		w = lipgloss.Width(boxContent)
+	}
+	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
+	boxHeight := lipgloss.Height(box)
+
+	versionLineHeight := 1 // rendered as a single line
+	summary := renderSummary(m.cfg, w)
+	menu := renderMenu(m, w)
+
+	// Layout matches View(): box + "\n" + versionLine + summary + menu
+	menuTop := boxHeight + 1 + versionLineHeight + lipgloss.Height(summary)
+	menuHeight := lipgloss.Height(menu)
+	if y < menuTop || y >= menuTop+menuHeight {
+		return 0, false
+	}
+
+	relativeY := y - menuTop
+	itemY := relativeY - 2 // renderMenu prefixes two blank lines
+	if itemY < 0 || itemY >= len(m.menuItems) {
+		return 0, false
+	}
+
+	return itemY, true
 }
 
 func (m model) View() string {
@@ -491,12 +546,14 @@ func renderMenu(m model, width int) string {
 	for i, item := range m.menuItems {
 		style := menuItemStyle
 		cursor := "  "
+		cursorW := lipgloss.Width(cursor)
 		if i == m.selected {
 			style = menuSelectedStyle
-			cursor = "> "
+			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
+			cursorW = lipgloss.Width(cursor)
 		}
 		lineContent := cursor + style.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText+len(cursor), lipgloss.Center, lineContent)
+		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
 		lines = append(lines, line)
 	}
 
@@ -506,8 +563,11 @@ func renderMenu(m model, width int) string {
 		menuBlock = menuBlock + "\n\n" + notice
 	}
 
+	helpText := "↑/k up • ↓/j down • enter submit"
+
 	if width <= 0 {
-		return "\n\n" + menuBlock
+		help := menuHelpStyle.Render(helpText)
+		return "\n\n" + menuBlock + "\n\n" + help
 	}
 
 	blockWidth := maxText + 2 // cursor + internal spacing
@@ -527,7 +587,8 @@ func renderMenu(m model, width int) string {
 		}
 		shifted = append(shifted, line)
 	}
-	return "\n\n" + strings.Join(shifted, "\n")
+	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, menuHelpStyle.Render(helpText))
+	return "\n\n" + strings.Join(shifted, "\n") + "\n\n" + help
 }
 
 func renderSummary(cfg config, width int) string {
