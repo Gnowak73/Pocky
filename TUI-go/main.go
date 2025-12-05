@@ -35,7 +35,7 @@ var (
 
 	statusKeyStyle = lipgloss.NewStyle().
 			Inherit(statusBarStyle).
-			Foreground(lipgloss.Color("#FFFDF5")).
+			Foreground(statusBarStyle.GetBackground()).
 			Background(lipgloss.Color("#FF5F87")).
 			Padding(0, 1).
 			MarginRight(1).
@@ -46,7 +46,7 @@ var (
 
 	statusHintStyle = lipgloss.NewStyle().
 			Inherit(statusBarStyle).
-			Foreground(lipgloss.Color("#A550DF")).
+			Foreground(lipgloss.Color("#D147FF")).
 			Padding(0, 1)
 
 	statusArrowStyle = lipgloss.NewStyle().
@@ -218,7 +218,7 @@ func (m model) View() string {
 	summary := renderSummary(m.cfg, w)
 	menu := renderMenu(m, w)
 
-	status := renderStatus(w, m.blockW, len(m.colored))
+	status := renderStatus(w)
 	if m.height > 0 {
 		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(summary) + lipgloss.Height(menu)
 		gap := maxInt(m.height-contentHeight-lipgloss.Height(status), 0)
@@ -412,7 +412,7 @@ func blendStops(stops []colorful.Color, t float64) colorful.Color {
 	return stops[idx].BlendHcl(stops[next], frac)
 }
 
-func renderStatus(width int, logoWidth int, lines int) string {
+func renderStatus(width int) string {
 	w := width
 	if w <= 0 {
 		w = 0
@@ -426,7 +426,7 @@ func renderStatus(width int, logoWidth int, lines int) string {
 	info := " Main Menu"
 	infoBox := statusTextStyle.Render(info)
 	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
-	hints := statusHintStyle.Width(available).Align(lipgloss.Right).Render("q/esc to quit")
+	hints := renderStaticGradientHint("q/esc to quit", available)
 
 	bar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -440,6 +440,44 @@ func renderStatus(width int, logoWidth int, lines int) string {
 		return statusBarStyle.Width(w).Render(bar)
 	}
 	return statusBarStyle.Render(bar)
+}
+
+func renderStaticGradientHint(text string, available int) string {
+	if available <= 0 {
+		return ""
+	}
+
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return ""
+	}
+
+	start, err := colorful.Hex("#D147FF") // lighter pinkish purple
+	if err != nil {
+		start = colorful.Color{}
+	}
+	end, err := colorful.Hex("#8B5EDB") // deeper purple
+	if err != nil {
+		end = colorful.Color{}
+	}
+
+	charStyle := statusHintStyle.Copy().Padding(0)
+	var parts []string
+	steps := len(runes)
+	for i, r := range runes {
+		t := 0.0
+		if steps > 1 {
+			t = float64(i) / float64(steps-1)
+		}
+		col := start.BlendHcl(end, t)
+		parts = append(parts, charStyle.Foreground(lipgloss.Color(col.Hex())).Render(string(r)))
+	}
+
+	colored := strings.Join(parts, "")
+	return statusHintStyle.Copy().
+		Width(available).
+		Align(lipgloss.Right).
+		Render(colored)
 }
 
 func renderMenu(m model, width int) string {
