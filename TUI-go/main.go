@@ -585,6 +585,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.cacheSelected = 0
 						m.notice = ""
 						m.noticeSet = m.frame
+					case "Quit":
+						return m, tea.Quit
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 						m.noticeSet = m.frame
@@ -1140,6 +1142,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.cacheOpenFrame = m.frame
 							m.cacheSelected = 0
 							m.notice = ""
+						case "Quit":
+							return m, tea.Quit
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 							m.noticeSet = m.frame
