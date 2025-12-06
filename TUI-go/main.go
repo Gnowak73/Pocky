@@ -457,10 +457,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						case "View Cache":
 							header, rows, err := loadCache()
 							m.cacheMenuOpen = false
-							if err != nil || len(rows) == 0 {
-								m.notice = "Cache empty or missing"
-								m.noticeSet = m.frame
-								return m, nil
+							if err != nil {
+								header = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
+								rows = nil
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
@@ -897,10 +896,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						case "View Cache":
 							header, rows, err := loadCache()
 							m.cacheMenuOpen = false
-							if err != nil || len(rows) == 0 {
-								m.notice = "Cache empty or missing"
-								m.noticeSet = m.frame
-								return m, nil
+							if err != nil {
+								header = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
+								rows = nil
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
@@ -1249,6 +1247,16 @@ func (m model) View() string {
 		}
 	} else if m.mode == modeSelectFlares {
 		body = summary + renderSelectFlares(m, w)
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
+		}
+	} else if m.mode == modeCacheView {
+		body = summary + renderCacheView(m, w)
+		if nl := m.noticeLine(w); nl != "" {
+			extraNotice = "\n" + "  " + nl
+		}
+	} else if m.mode == modeCacheDelete {
+		body = summary + renderCacheDelete(m, w)
 		if nl := m.noticeLine(w); nl != "" {
 			extraNotice = "\n" + "  " + nl
 		}
