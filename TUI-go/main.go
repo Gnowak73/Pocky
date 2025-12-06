@@ -1371,7 +1371,7 @@ func (m model) View() string {
 	// Dedicated full-screen cache view (hide logo/summary)
 	if m.mode == modeCacheView {
 		body := renderCacheView(m, m.width)
-		status := renderStatus(m.width)
+		status := renderStatus(m)
 		if m.height > 0 {
 			gap := maxInt(m.height-lipgloss.Height(body)-lipgloss.Height(status), 0)
 			return body + strings.Repeat("\n", gap) + status
@@ -1438,7 +1438,7 @@ func (m model) View() string {
 		}
 	}
 
-	status := renderStatus(w)
+	status := renderStatus(m)
 	if m.height > 0 {
 		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
 		gap := maxInt(m.height-contentHeight-lipgloss.Height(status), 0)
@@ -2037,19 +2037,45 @@ func blendStops(stops []colorful.Color, t float64) colorful.Color {
 	return stops[idx].BlendHcl(stops[next], frac)
 }
 
-func renderStatus(width int) string {
-	w := width
+func renderStatus(m model) string {
+	w := m.width
 	if w <= 0 {
 		w = 0
 	}
+
+	statusLabel := func() string {
+		switch m.mode {
+		case modeMain:
+			if m.cacheMenuOpen {
+				return " Cache Options"
+			}
+			return " Main Menu"
+		case modeWavelength:
+			return " Edit Wavelength"
+		case modeDateRange:
+			return " Edit Date Range"
+		case modeFlare:
+			return " Edit Flare Class Filter"
+		case modeSelectFlares:
+			if m.flareLoading {
+				return " Loading Flares..."
+			}
+			return " Select Flares"
+		case modeCacheView:
+			return " View Cache"
+		case modeCacheDelete:
+			return " Delete Cache Rows"
+		default:
+			return " Ready"
+		}
+	}()
 
 	statusKey := statusKeyStyle.Render("POCKY")
 	statusArrow := statusArrowStyle.
 		Foreground(statusBarStyle.GetBackground()).
 		Background(statusKeyStyle.GetBackground()).
 		Render("")
-	info := " Main Menu"
-	infoBox := statusTextStyle.Render(info)
+	infoBox := statusTextStyle.Render(statusLabel)
 	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
 	hints := renderStaticGradientHint("q/esc to quit", available)
 
