@@ -135,6 +135,17 @@ type model struct {
 	flareLoadError string
 	flareTable     table.Model
 
+	// Cache submenu
+	cacheMenuOpen  bool
+	cacheMenuItems []string
+	cacheSelected  int
+	cacheOpenFrame int
+	cacheRows      []cacheRow
+	cacheHeader    string
+	cachePick      map[int]bool
+	cacheCursor    int
+	cacheOffset    int
+
 	// Loading animation
 	spinFrames []string
 	spinIndex  int
@@ -170,6 +181,8 @@ const (
 	modeDateRange
 	modeFlare
 	modeSelectFlares
+	modeCacheView
+	modeCacheDelete
 )
 
 type waveOption struct {
@@ -183,6 +196,16 @@ type flareEntry struct {
 	start string
 	end   string
 	coord string
+	full  string
+}
+
+type cacheRow struct {
+	desc  string
+	class string
+	start string
+	end   string
+	coord string
+	wave  string
 	full  string
 }
 
@@ -204,6 +227,13 @@ func flareViewHeight(m model) int {
 		return 0
 	}
 	return maxInt(7, minInt(12, len(m.flareList)))
+}
+
+func cacheViewHeight(m model) int {
+	if len(m.cacheRows) == 0 {
+		return 0
+	}
+	return maxInt(7, minInt(12, len(m.cacheRows)))
 }
 
 func (m model) styledFlareRows() []table.Row {
@@ -319,6 +349,12 @@ func newModel(logo []string, cfg config) model {
 		"Download FITS",
 		"Quit",
 	}
+	cacheMenu := []string{
+		"View Cache",
+		"Delete Rows",
+		"Clear Cache",
+		"Back",
+	}
 
 	compOpts, compMap := defaultComparatorOptions()
 	letters := defaultClassLetters()
@@ -345,6 +381,8 @@ func newModel(logo []string, cfg config) model {
 		flareSelected:     make(map[int]bool),
 		spinFrames:        []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
 		flareOffset:       0,
+		cacheMenuItems:    cacheMenu,
+		cachePick:         make(map[int]bool),
 	}
 }
 
@@ -392,6 +430,73 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		var cmd tea.Cmd
 		if m.mode == modeMain {
+			if m.cacheMenuOpen {
+				switch msg.String() {
+				case "ctrl+c":
+					return m, tea.Quit
+				case "esc", "left", "h", "q":
+					m.cacheMenuOpen = false
+					return m, nil
+				case "up", "k":
+					if m.cacheSelected > 0 {
+						m.cacheSelected--
+					}
+					return m, nil
+				case "down", "j":
+					if m.cacheSelected < len(m.cacheMenuItems)-1 {
+						m.cacheSelected++
+					}
+					return m, nil
+				case "enter", " ":
+					if m.cacheSelected >= 0 && m.cacheSelected < len(m.cacheMenuItems) {
+						switch m.cacheMenuItems[m.cacheSelected] {
+						case "Back":
+							m.cacheMenuOpen = false
+							m.notice = "Cache menu closed"
+							m.noticeSet = m.frame
+						case "View Cache":
+							header, rows, err := loadCache()
+							m.cacheMenuOpen = false
+							if err != nil || len(rows) == 0 {
+								m.notice = "Cache empty or missing"
+								m.noticeSet = m.frame
+								return m, nil
+							}
+							m.cacheHeader = header
+							m.cacheRows = rows
+							m.cacheCursor = 0
+							m.cacheOffset = 0
+							m.mode = modeCacheView
+							return m, nil
+						case "Delete Rows":
+							header, rows, err := loadCache()
+							m.cacheMenuOpen = false
+							if err != nil || len(rows) == 0 {
+								m.notice = "Cache empty or missing"
+								m.noticeSet = m.frame
+								return m, nil
+							}
+							m.cacheHeader = header
+							m.cacheRows = rows
+							m.cacheCursor = 0
+							m.cacheOffset = 0
+							m.cachePick = make(map[int]bool)
+							m.mode = modeCacheDelete
+							return m, nil
+						case "Clear Cache":
+							m.cacheMenuOpen = false
+							if _, err := clearCacheFile(); err != nil {
+								m.notice = fmt.Sprintf("Clear failed: %v", err)
+							} else {
+								m.notice = "Cleared flare cache"
+							}
+							m.noticeSet = m.frame
+						}
+					}
+					return m, nil
+				}
+			}
+
 			switch msg.String() {
 			case "ctrl+c", "q", "esc":
 				return m, tea.Quit
@@ -407,12 +512,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.selected >= 0 && m.selected < len(m.menuItems) {
 					switch m.menuItems[m.selected] {
 					case "Edit Wavelength":
+						m.cacheMenuOpen = false
 						m.mode = modeWavelength
 						m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
 						m.waveFocus = 0
 						m.notice = ""
 						m.noticeSet = m.frame
 					case "Edit Date Range":
+						m.cacheMenuOpen = false
 						m.mode = modeDateRange
 						m.dateStart = ""
 						m.dateEnd = ""
@@ -420,6 +527,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.notice = ""
 						m.noticeSet = m.frame
 					case "Edit Flare Class Filter":
+						m.cacheMenuOpen = false
 						m.mode = modeFlare
 						m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
 						m.flareFocus = 0
@@ -442,6 +550,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.noticeSet = m.frame
 							break
 						}
+						m.cacheMenuOpen = false
 						m.mode = modeSelectFlares
 						m.flareLoading = true
 						m.flareLoadError = ""
@@ -453,6 +562,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.notice = ""
 						m.noticeSet = 0
 						cmd = loadFlaresCmd(m.cfg)
+					case "Cache Options":
+						m.cacheMenuOpen = true
+						m.cacheOpenFrame = m.frame
+						m.cacheSelected = 0
+						m.notice = ""
+						m.noticeSet = m.frame
 					default:
 						m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 						m.noticeSet = m.frame
@@ -692,12 +807,138 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// ignore other keys in flare selection
 			}
 			return m, nil
+		} else if m.mode == modeCacheView {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q", "left", "h":
+				m.mode = modeMain
+				m.notice = "Cache view closed"
+				m.noticeSet = m.frame
+			case "up", "k":
+				if m.cacheCursor > 0 {
+					m.cacheCursor--
+				}
+				m.ensureCacheVisible()
+			case "down", "j":
+				if m.cacheCursor < len(m.cacheRows)-1 {
+					m.cacheCursor++
+				}
+				m.ensureCacheVisible()
+			}
+			return m, nil
+		} else if m.mode == modeCacheDelete {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q", "left", "h":
+				m.mode = modeMain
+				m.notice = "Canceled cache deletion"
+				m.noticeSet = m.frame
+			case "up", "k":
+				if m.cacheCursor > 0 {
+					m.cacheCursor--
+				}
+				m.ensureCacheVisible()
+			case "down", "j":
+				if m.cacheCursor < len(m.cacheRows)-1 {
+					m.cacheCursor++
+				}
+				m.ensureCacheVisible()
+			case " ":
+				if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
+					m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
+				}
+			case "enter":
+				if len(m.cachePick) == 0 {
+					m.mode = modeMain
+					m.notice = "No rows selected."
+					m.noticeSet = m.frame
+					break
+				}
+				if err := saveCachePruned(m.cacheHeader, m.cacheRows, m.cachePick); err != nil {
+					m.notice = fmt.Sprintf("Delete failed: %v", err)
+				} else {
+					m.notice = fmt.Sprintf("Deleted %d rows", len(m.cachePick))
+					m.cacheRows = nil
+					m.cachePick = make(map[int]bool)
+				}
+				m.noticeSet = m.frame
+				m.mode = modeMain
+			}
+			return m, nil
 		}
 		return m, cmd
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		if m.mode == modeMain {
+			if m.cacheMenuOpen {
+				switch msg.Button {
+				case tea.MouseButtonWheelUp:
+					if m.cacheSelected > 0 {
+						m.cacheSelected--
+					}
+				case tea.MouseButtonWheelDown:
+					if m.cacheSelected < len(m.cacheMenuItems)-1 {
+						m.cacheSelected++
+					}
+				case tea.MouseButtonNone:
+					if idx, ok := m.cacheMenuIndexAt(msg.X, msg.Y); ok {
+						m.cacheSelected = idx
+					}
+				case tea.MouseButtonLeft:
+					if msg.Action == tea.MouseActionRelease {
+						// trigger current cache action
+						switch m.cacheMenuItems[m.cacheSelected] {
+						case "Back":
+							m.cacheMenuOpen = false
+							m.notice = "Cache menu closed"
+							m.noticeSet = m.frame
+						case "View Cache":
+							header, rows, err := loadCache()
+							m.cacheMenuOpen = false
+							if err != nil || len(rows) == 0 {
+								m.notice = "Cache empty or missing"
+								m.noticeSet = m.frame
+								return m, nil
+							}
+							m.cacheHeader = header
+							m.cacheRows = rows
+							m.cacheCursor = 0
+							m.cacheOffset = 0
+							m.mode = modeCacheView
+						case "Delete Rows":
+							header, rows, err := loadCache()
+							m.cacheMenuOpen = false
+							if err != nil || len(rows) == 0 {
+								m.notice = "Cache empty or missing"
+								m.noticeSet = m.frame
+								return m, nil
+							}
+							m.cacheHeader = header
+							m.cacheRows = rows
+							m.cacheCursor = 0
+							m.cacheOffset = 0
+							m.cachePick = make(map[int]bool)
+							m.mode = modeCacheDelete
+						case "Clear Cache":
+							m.cacheMenuOpen = false
+							if _, err := clearCacheFile(); err != nil {
+								m.notice = fmt.Sprintf("Clear failed: %v", err)
+							} else {
+								m.notice = "Cleared flare cache"
+							}
+							m.noticeSet = m.frame
+						}
+					}
+				}
+				return m, nil
+			}
 			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
+				if idx, ok := m.cacheMenuIndexAt(msg.X, msg.Y); ok {
+					m.cacheSelected = idx
+					return m, nil
+				}
 				if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
 					m.selected = idx
 				}
@@ -717,23 +958,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if msg.Action == tea.MouseActionRelease {
 						switch m.menuItems[m.selected] {
 						case "Edit Wavelength":
+							m.cacheMenuOpen = false
 							m.mode = modeWavelength
 							m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
 							m.waveFocus = 0
 							m.notice = ""
 						case "Edit Date Range":
+							m.cacheMenuOpen = false
 							m.mode = modeDateRange
 							m.dateStart = ""
 							m.dateEnd = ""
 							m.dateFocus = 0
 							m.notice = ""
 						case "Edit Flare Class Filter":
+							m.cacheMenuOpen = false
 							m.mode = modeFlare
 							m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
 							m.flareFocus = 0
 							m.flareFocusFrame = m.frame
 							m.notice = ""
 						case "Select Flares":
+							m.cacheMenuOpen = false
 							if strings.TrimSpace(m.cfg.START) == "" || strings.TrimSpace(m.cfg.END) == "" {
 								m.notice = "Set a date range first."
 								m.noticeSet = m.frame
@@ -759,6 +1004,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.notice = ""
 							m.noticeSet = 0
 							return m, loadFlaresCmd(m.cfg)
+						case "Cache Options":
+							m.cacheMenuOpen = true
+							m.cacheOpenFrame = m.frame
+							m.cacheSelected = 0
+							m.notice = ""
 						default:
 							m.notice = fmt.Sprintf("Selected: %s (not implemented yet)", m.menuItems[m.selected])
 							m.noticeSet = m.frame
@@ -1003,7 +1253,11 @@ func (m model) View() string {
 			extraNotice = "\n" + "  " + nl
 		}
 	} else {
-		body = summary + renderMenu(m, w)
+		if m.cacheMenuOpen {
+			body = summary + renderMenuWithCache(m, w)
+		} else {
+			body = summary + renderMenu(m, w)
+		}
 	}
 
 	status := renderStatus(w)
@@ -1239,6 +1493,96 @@ func loadConfig() config {
 		break
 	}
 	return cfg
+}
+
+func cacheFilePath() string {
+	return filepath.Join("..", "flare_cache.tsv")
+}
+
+func loadCache() (string, []cacheRow, error) {
+	path := cacheFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, err
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) == 0 {
+		return "", nil, fmt.Errorf("cache empty")
+	}
+	header := lines[0]
+	var rows []cacheRow
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		// description, flare_class, start, end, coordinates, wavelength
+		row := cacheRow{full: line}
+		if len(fields) > 0 {
+			row.desc = fields[0]
+		}
+		if len(fields) > 1 {
+			row.class = fields[1]
+		}
+		if len(fields) > 2 {
+			row.start = isoToHuman(fields[2])
+		}
+		if len(fields) > 3 {
+			row.end = isoToHuman(fields[3])
+		}
+		if len(fields) > 4 {
+			row.coord = fields[4]
+		}
+		if len(fields) > 5 {
+			row.wave = fields[5]
+		}
+		rows = append(rows, row)
+	}
+	return header, rows, nil
+}
+
+func clearCacheFile() (string, error) {
+	path := cacheFilePath()
+	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
+	if data, err := os.ReadFile(path); err == nil {
+		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+		if len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
+			header = lines[0]
+		}
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(header+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return "", err
+	}
+	return header, nil
+}
+
+func saveCachePruned(header string, rows []cacheRow, delete map[int]bool) error {
+	path := cacheFilePath()
+	tmp := path + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	fmt.Fprintln(f, header)
+	for i, r := range rows {
+		if delete[i] {
+			continue
+		}
+		if strings.TrimSpace(r.full) == "" {
+			continue
+		}
+		fmt.Fprintln(f, r.full)
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // colorizeLogo renders the logo lines with a vertical gradient and applies a gentle wave offset.
@@ -1810,6 +2154,144 @@ func renderSelectFlares(m model, width int) string {
 	return "\n\n" + placed + "\n\n" + helpLine
 }
 
+func renderCacheView(m model, width int) string {
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Cached Flares")
+	height := cacheViewHeight(m)
+	if len(m.cacheRows) == 0 {
+		msg := menuHelpStyle.Render("Cache empty.")
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+
+	start := clampInt(m.cacheOffset, 0, maxInt(len(m.cacheRows)-height, 0))
+	end := minInt(len(m.cacheRows), start+height)
+
+	base := lipgloss.NewStyle().Padding(0, 1)
+	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
+	rowEven := base.Foreground(lipgloss.Color("245"))
+	rowOdd := base.Foreground(lipgloss.Color("252"))
+	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
+
+	rows := make([][]string, 0, end-start)
+	for i := start; i < end; i++ {
+		r := m.cacheRows[i]
+		rows = append(rows, []string{
+			r.desc,
+			r.class,
+			r.start,
+			r.end,
+			r.coord,
+			r.wave,
+		})
+	}
+
+	t := lgtbl.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		Headers("DESCRIPTION", "CLASS", "START", "END", "COORD", "WAVE").
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == lgtbl.HeaderRow {
+				return headerStyle
+			}
+			abs := start + row
+			if abs == m.cacheCursor {
+				return cursorStyle
+			}
+			if abs%2 == 0 {
+				return rowEven
+			}
+			return rowOdd
+		})
+
+	tableStr := t.String()
+	if width > 0 {
+		tableStr = lipgloss.Place(width, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
+	}
+
+	help := menuHelpStyle.Render("↑/↓ scroll • q/esc back")
+	body := lipgloss.JoinVertical(lipgloss.Left, title, "", tableStr, "", help)
+	if width <= 0 {
+		return "\n\n" + body
+	}
+	return "\n\n" + lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
+}
+
+func renderCacheDelete(m model, width int) string {
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows")
+	height := cacheViewHeight(m)
+	if len(m.cacheRows) == 0 {
+		msg := menuHelpStyle.Render("Cache empty.")
+		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
+		if width <= 0 {
+			return "\n\n" + block
+		}
+		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	}
+
+	start := clampInt(m.cacheOffset, 0, maxInt(len(m.cacheRows)-height, 0))
+	end := minInt(len(m.cacheRows), start+height)
+
+	base := lipgloss.NewStyle().Padding(0, 1)
+	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
+	rowEven := base.Foreground(lipgloss.Color("245"))
+	rowOdd := base.Foreground(lipgloss.Color("252"))
+	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
+	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+
+	rows := make([][]string, 0, end-start)
+	for i := start; i < end; i++ {
+		r := m.cacheRows[i]
+		sel := "[ ]"
+		if m.cachePick[i] {
+			sel = selMark.Render("[x]")
+		}
+		rows = append(rows, []string{
+			sel,
+			r.desc,
+			r.class,
+			r.start,
+			r.end,
+			r.coord,
+			r.wave,
+		})
+	}
+
+	t := lgtbl.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		Headers("SEL", "DESCRIPTION", "CLASS", "START", "END", "COORD", "WAVE").
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == lgtbl.HeaderRow {
+				return headerStyle
+			}
+			abs := start + row
+			if abs == m.cacheCursor {
+				return cursorStyle
+			}
+			if abs%2 == 0 {
+				return rowEven
+			}
+			return rowOdd
+		})
+
+	tableStr := t.String()
+	if width > 0 {
+		tableStr = lipgloss.Place(width, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
+	}
+
+	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter delete • q/esc cancel")
+	body := lipgloss.JoinVertical(lipgloss.Left, title, "", tableStr, "", help)
+	if width <= 0 {
+		return "\n\n" + body
+	}
+	return "\n\n" + lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
+}
+
 // renderSelectFlaresTable builds the flare selection table with distinct columns and a selectable SEL column.
 func renderSelectFlaresTable(m model, width int, height int) string {
 	start := clampInt(m.flareOffset, 0, maxInt(len(m.flareList)-height, 0))
@@ -1957,6 +2439,222 @@ func renderMenu(m model, width int) string {
 		block += "\n\n" + noticeLine
 	}
 	return block + "\n\n" + help
+}
+
+// renderMenuWithCache shows the main menu with an inline submenu under Cache Options.
+func renderMenuWithCache(m model, width int) string {
+	var lines []string
+	maxText := 0
+	for _, item := range m.menuItems {
+		if w := lipgloss.Width(item); w > maxText {
+			maxText = w
+		}
+	}
+
+	for i, item := range m.menuItems {
+		style := menuItemStyle
+		cursor := "  "
+		cursorW := lipgloss.Width(cursor)
+		if i == m.selected {
+			style = menuSelectedStyle
+			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
+			cursorW = lipgloss.Width(cursor)
+		}
+		lineContent := cursor + style.Render(item)
+		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
+		lines = append(lines, line)
+
+		// Inline submenu under Cache Options
+		if item == "Cache Options" && m.cacheMenuOpen {
+			maxCache := 0
+			for _, it := range m.cacheMenuItems {
+				if w := lipgloss.Width(it); w > maxCache {
+					maxCache = w
+				}
+			}
+			innerWidth := maxCache + 4 // cursor + padding
+			targetHeight := len(m.cacheMenuItems) + 2
+			delta := m.frame - m.cacheOpenFrame
+			if delta < 0 {
+				delta = 0
+			}
+			heightAnim := minInt(targetHeight, (delta+1)*3) // faster grow
+			if heightAnim < 1 {
+				heightAnim = 1
+			}
+
+			progress := float64(delta) / float64(targetHeight)
+			if progress > 1 {
+				progress = 1
+			}
+			col := blendHex("#7D5FFF", "#F785D1", progress)
+			if heightAnim >= targetHeight {
+				col = "#8B5EDB" // settle to static purple when fully open
+			}
+			boxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(col))
+
+			if heightAnim >= targetHeight {
+				var sub []string
+				top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
+				sub = append(sub, top)
+				for j, subItem := range m.cacheMenuItems {
+					sStyle := menuItemStyle.Copy().Foreground(lipgloss.Color("252"))
+					sCursor := "  "
+					if j == m.cacheSelected {
+						sStyle = menuSelectedStyle
+						sCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("» ")
+					}
+					sLine := sCursor + sStyle.Render(subItem)
+					padded := sLine
+					if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
+						padded += strings.Repeat(" ", pad)
+					}
+					leftBar := boxStyle.Render("   │")
+					rightBar := boxStyle.Render("│")
+					sub = append(sub, leftBar+padded+rightBar)
+				}
+				bottom := boxStyle.Render("   ╰" + strings.Repeat("─", innerWidth) + "╯")
+				sub = append(sub, bottom)
+				lines = append(lines, strings.Join(sub, "\n"))
+			} else {
+				var partial []string
+				partial = append(partial, boxStyle.Render("   ╭"+strings.Repeat("─", innerWidth)+"╮"))
+				mid := heightAnim - 1
+				if mid < 0 {
+					mid = 0
+				}
+				for k := 0; k < mid; k++ {
+					leftBar := boxStyle.Render("   │")
+					rightBar := boxStyle.Render("│")
+					partial = append(partial, leftBar+strings.Repeat(" ", innerWidth)+rightBar)
+				}
+				lines = append(lines, strings.Join(partial, "\n"))
+			}
+		}
+	}
+
+	mainBlock := strings.Join(lines, "\n")
+
+	noticeLine := ""
+	if nl := m.noticeLine(width); nl != "" {
+		noticeLine = nl
+	}
+
+	helpText := "↑/k up • ↓/j down • enter submit • esc close cache"
+	help := menuHelpStyle.Render(helpText)
+	joined := mainBlock
+
+	if width <= 0 {
+		block := "\n\n" + joined
+		if noticeLine != "" {
+			block += "\n\n" + noticeLine
+		}
+		return block + "\n\n" + help
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(joined), lipgloss.Center, lipgloss.Top, joined)
+	if noticeLine != "" {
+		if strings.HasPrefix(noticeLine, " ") {
+			noticeLine = noticeLine[1:]
+		}
+		if strings.HasPrefix(noticeLine, " ") {
+			noticeLine = noticeLine[1:]
+		}
+		noticeLine = "  " + noticeLine
+	}
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	block := "\n\n" + placed
+	if noticeLine != "" {
+		block += "\n\n" + noticeLine
+	}
+	return block + "\n\n" + helpLine
+}
+
+// cacheMenuIndexAt maps mouse coords to a cache submenu item when open.
+func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
+	if !m.cacheMenuOpen || m.mode != modeMain {
+		return 0, false
+	}
+
+	// Header height (logo + version + summary)
+	content := strings.Join(m.colored, "\n")
+	boxContent := logoBoxStyle.Render(content)
+
+	w := m.width
+	if w <= 0 {
+		w = lipgloss.Width(boxContent)
+	}
+	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
+
+	boxWidth := lipgloss.Width(boxContent)
+	versionText := versionStyle.Render("VERSION: 0.2")
+	leftPad := 0
+	if w > boxWidth {
+		leftPad = (w - boxWidth) / 2
+	}
+	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
+
+	summary := renderSummary(m.cfg, w)
+	header := box + "\n" + versionLine + summary
+	menuTop := maxInt(lipgloss.Height(header)+1, 0) // slight downward shift to align with cursor
+
+	// Build menu lines with expanded cache submenu (structural only).
+	var lines []string
+	maxText := 0
+	for _, item := range m.menuItems {
+		if val := lipgloss.Width(item); val > maxText {
+			maxText = val
+		}
+	}
+
+	cacheOptLine := -1
+	for _, item := range m.menuItems {
+		cursor := "  "
+		cursorW := lipgloss.Width(cursor)
+		lineContent := cursor + menuItemStyle.Render(item)
+		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
+		lines = append(lines, line)
+		if item == "Cache Options" {
+			cacheOptLine = len(lines) - 1
+			maxCache := 0
+			for _, it := range m.cacheMenuItems {
+				if w := lipgloss.Width(it); w > maxCache {
+					maxCache = w
+				}
+			}
+			innerWidth := maxCache + 4
+			lines = append(lines, "   ╭"+strings.Repeat("─", innerWidth)+"╮")
+			for _, subItem := range m.cacheMenuItems {
+				sLine := "  " + menuItemStyle.Render(subItem)
+				if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
+					sLine += strings.Repeat(" ", pad)
+				}
+				lines = append(lines, "   │"+sLine+"│")
+			}
+			lines = append(lines, "   ╰"+strings.Repeat("─", innerWidth)+"╯")
+		}
+	}
+
+	if cacheOptLine == -1 {
+		return 0, false
+	}
+
+	menuHeight := len(lines)
+	if y < menuTop || y >= menuTop+menuHeight {
+		return 0, false
+	}
+
+	relativeY := y - menuTop
+	subStart := cacheOptLine + 1 // top border
+	itemStart := subStart + 1    // first item
+	if relativeY < itemStart || relativeY >= itemStart+len(m.cacheMenuItems) {
+		return 0, false
+	}
+	idx := relativeY - itemStart
+	if idx < 0 || idx >= len(m.cacheMenuItems) {
+		return 0, false
+	}
+	return idx, true
 }
 
 func renderSummary(cfg config, width int) string {
@@ -2486,5 +3184,33 @@ func (m *model) ensureFlareVisible() {
 	}
 	if m.flareOffset < 0 {
 		m.flareOffset = 0
+	}
+}
+
+// ensureCacheVisible keeps the cache cursor within the viewport.
+func (m *model) ensureCacheVisible() {
+	h := cacheViewHeight(*m)
+	if h <= 0 {
+		m.cacheOffset = 0
+		return
+	}
+	if m.cacheCursor < 0 {
+		m.cacheCursor = 0
+	}
+	if m.cacheCursor >= len(m.cacheRows) {
+		m.cacheCursor = len(m.cacheRows) - 1
+	}
+	if m.cacheCursor < m.cacheOffset {
+		m.cacheOffset = m.cacheCursor
+	}
+	if m.cacheCursor >= m.cacheOffset+h {
+		m.cacheOffset = m.cacheCursor - h + 1
+	}
+	maxOffset := maxInt(len(m.cacheRows)-h, 0)
+	if m.cacheOffset > maxOffset {
+		m.cacheOffset = maxOffset
+	}
+	if m.cacheOffset < 0 {
+		m.cacheOffset = 0
 	}
 }
