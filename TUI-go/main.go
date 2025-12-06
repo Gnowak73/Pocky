@@ -137,20 +137,17 @@ type model struct {
 	flareTable     table.Model
 
 	// Cache submenu
-	cacheMenuOpen   bool
-	cacheMenuItems  []string
-	cacheSelected   int
-	cacheOpenFrame  int
-	cacheRows       []cacheRow
-	cacheHeader     string
-	cachePick       map[int]bool
-	cacheCursor     int
-	cacheOffset     int
-	cacheViewport   viewport.Model
-	cacheContent    string
-	cachePaneFocus  int // 0=table,1=side
-	cacheSideCursor int
-	cacheSideOffset int
+	cacheMenuOpen  bool
+	cacheMenuItems []string
+	cacheSelected  int
+	cacheOpenFrame int
+	cacheRows      []cacheRow
+	cacheHeader    string
+	cachePick      map[int]bool
+	cacheCursor    int
+	cacheOffset    int
+	cacheViewport  viewport.Model
+	cacheContent   string
 
 	// Loading animation
 	spinFrames []string
@@ -478,9 +475,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.cacheHeader = header
 							m.cacheRows = rows
 							m.cacheContent = renderCacheTableString(rows, m.width)
-							m.cachePaneFocus = 0
-							m.cacheSideCursor = 0
-							m.cacheSideOffset = 0
 							if m.width > 0 && m.height > 0 {
 								m.cacheViewport.Width = maxInt(m.width-6, 20)
 								m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -1035,9 +1029,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.cacheHeader = header
 							m.cacheRows = rows
 							m.cacheContent = renderCacheTableString(rows, m.width)
-							m.cachePaneFocus = 0
-							m.cacheSideCursor = 0
-							m.cacheSideOffset = 0
 							if m.width > 0 && m.height > 0 {
 								m.cacheViewport.Width = maxInt(m.width-6, 20)
 								m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -1157,44 +1148,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if m.mode == modeCacheView {
-			switch msg.Button {
-			case tea.MouseButtonWheelUp:
-				if m.cachePaneFocus == 0 {
-					var vpCmd tea.Cmd
-					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
-					return m, vpCmd
-				}
-				if m.cacheSideCursor > 0 {
-					m.cacheSideCursor--
-					if m.cacheSideCursor < m.cacheSideOffset {
-						m.cacheSideOffset = m.cacheSideCursor
-					}
-				}
-			case tea.MouseButtonWheelDown:
-				if m.cachePaneFocus == 0 {
-					var vpCmd tea.Cmd
-					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
-					return m, vpCmd
-				}
-				if m.cacheSideCursor < len(m.cacheRows)-1 {
-					m.cacheSideCursor++
-					if m.cacheSideCursor >= m.cacheSideOffset+10 {
-						m.cacheSideOffset = m.cacheSideCursor - 9
-					}
-				}
-			case tea.MouseButtonLeft:
-				// left click moves focus to side list; use keyboard to return
-				if msg.Action == tea.MouseActionRelease {
-					m.cachePaneFocus = 1
-				}
-			default:
-				if m.cachePaneFocus == 0 {
-					var vpCmd tea.Cmd
-					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
-					return m, vpCmd
-				}
-			}
-			return m, nil
+			var vpCmd tea.Cmd
+			m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
+			return m, vpCmd
 		} else if m.mode == modeCacheDelete {
 			switch msg.Button {
 			case tea.MouseButtonWheelUp:
