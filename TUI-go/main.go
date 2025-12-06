@@ -137,17 +137,20 @@ type model struct {
 	flareTable     table.Model
 
 	// Cache submenu
-	cacheMenuOpen  bool
-	cacheMenuItems []string
-	cacheSelected  int
-	cacheOpenFrame int
-	cacheRows      []cacheRow
-	cacheHeader    string
-	cachePick      map[int]bool
-	cacheCursor    int
-	cacheOffset    int
-	cacheViewport  viewport.Model
-	cacheContent   string
+	cacheMenuOpen   bool
+	cacheMenuItems  []string
+	cacheSelected   int
+	cacheOpenFrame  int
+	cacheRows       []cacheRow
+	cacheHeader     string
+	cachePick       map[int]bool
+	cacheCursor     int
+	cacheOffset     int
+	cacheViewport   viewport.Model
+	cacheContent    string
+	cachePaneFocus  int // 0=table,1=side
+	cacheSideCursor int
+	cacheSideOffset int
 
 	// Loading animation
 	spinFrames []string
@@ -236,7 +239,7 @@ func cacheViewHeight(m model) int {
 	if len(m.cacheRows) == 0 {
 		return 0
 	}
-	return maxInt(7, minInt(12, len(m.cacheRows)))
+	return maxInt(7, minInt(25, len(m.cacheRows)))
 }
 
 func (m model) styledFlareRows() []table.Row {
@@ -474,7 +477,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
-							m.cacheContent = renderCacheTableString(rows)
+							m.cacheContent = renderCacheTableString(rows, m.width)
+							m.cachePaneFocus = 0
+							m.cacheSideCursor = 0
+							m.cacheSideOffset = 0
 							if m.width > 0 && m.height > 0 {
 								m.cacheViewport.Width = maxInt(m.width-6, 20)
 								m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -600,10 +606,77 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notice = "Cache view closed"
 				m.noticeSet = m.frame
 				return m, nil
+			case "delete", "backspace", "ctrl+d":
+				// enter delete mode directly
+				m.mode = modeCacheDelete
+				m.cacheCursor = 0
+				m.cacheOffset = 0
+				m.cachePick = make(map[int]bool)
+				return m, nil
 			}
 			var vpCmd tea.Cmd
 			m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
 			return m, vpCmd
+		} else if m.mode == modeCacheDelete {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q", "left", "h":
+				m.mode = modeMain
+				m.notice = "Canceled cache deletion"
+				m.noticeSet = m.frame
+			case "up", "k":
+				if m.cacheCursor > 0 {
+					m.cacheCursor--
+					m.ensureCacheVisible()
+				}
+			case "down", "j":
+				if m.cacheCursor < len(m.cacheRows)-1 {
+					m.cacheCursor++
+					m.ensureCacheVisible()
+				}
+			case "pgup", "b":
+				m.cacheCursor = maxInt(0, m.cacheCursor-5)
+				m.ensureCacheVisible()
+			case "pgdown", "f":
+				m.cacheCursor = minInt(len(m.cacheRows)-1, m.cacheCursor+5)
+				m.ensureCacheVisible()
+			case " ":
+				if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
+					m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
+				}
+			case "enter":
+				if len(m.cachePick) == 0 {
+					m.mode = modeMain
+					m.notice = "No rows selected."
+					m.noticeSet = m.frame
+					break
+				}
+				if err := saveCachePruned(m.cacheHeader, m.cacheRows, m.cachePick); err != nil {
+					m.notice = fmt.Sprintf("Delete failed: %v", err)
+				} else {
+					m.notice = fmt.Sprintf("Deleted %d rows", len(m.cachePick))
+					// Reload cache into viewport after deletion
+					header, rows, err := loadCache()
+					if err == nil {
+						m.cacheHeader = header
+						m.cacheRows = rows
+						m.cachePick = make(map[int]bool)
+						m.cacheContent = renderCacheTableString(rows, m.width)
+						if m.width > 0 && m.height > 0 {
+							m.cacheViewport.Width = maxInt(m.width-6, 20)
+							m.cacheViewport.Height = maxInt(m.height-10, 8)
+						}
+						m.cacheViewport.SetContent(m.cacheContent)
+					} else {
+						m.cacheRows = nil
+						m.cachePick = make(map[int]bool)
+					}
+				}
+				m.noticeSet = m.frame
+				m.mode = modeMain
+			}
+			return m, nil
 		} else if m.mode == modeWavelength {
 			switch msg.String() {
 			case "ctrl+c":
@@ -838,23 +911,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		} else if m.mode == modeCacheView {
-			switch msg.String() {
-			case "ctrl+c":
+			switch msg.Type {
+			case tea.KeyCtrlC:
 				return m, tea.Quit
-			case "esc", "q", "left", "h":
+			case tea.KeyEsc:
 				m.mode = modeMain
 				m.notice = "Cache view closed"
 				m.noticeSet = m.frame
 				return m, nil
-			case "up", "k":
-				m.cacheViewport.LineUp(1)
-			case "down", "j":
-				m.cacheViewport.LineDown(1)
-			case "pgup", "b":
-				m.cacheViewport.ViewUp()
-			case "pgdown", "f":
-				m.cacheViewport.ViewDown()
+			case tea.KeyDelete, tea.KeyBackspace:
+				m.mode = modeCacheDelete
+				m.cacheCursor = 0
+				m.cacheOffset = 0
+				m.cachePick = make(map[int]bool)
+				return m, nil
 			}
+
+			switch msg.String() {
+			case "q":
+				m.mode = modeMain
+				m.notice = "Cache view closed"
+				m.noticeSet = m.frame
+				return m, nil
+			case "ctrl+d":
+				m.mode = modeCacheDelete
+				m.cacheCursor = 0
+				m.cacheOffset = 0
+				m.cachePick = make(map[int]bool)
+				return m, nil
+			}
+
 			var cmd tea.Cmd
 			m.cacheViewport, cmd = m.cacheViewport.Update(msg)
 			return m, cmd
@@ -891,8 +977,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.notice = fmt.Sprintf("Delete failed: %v", err)
 				} else {
 					m.notice = fmt.Sprintf("Deleted %d rows", len(m.cachePick))
-					m.cacheRows = nil
-					m.cachePick = make(map[int]bool)
+					// Reload cache into viewport after deletion
+					header, rows, err := loadCache()
+					if err == nil {
+						m.cacheHeader = header
+						m.cacheRows = rows
+						m.cachePick = make(map[int]bool)
+						m.cacheContent = renderCacheTableString(rows, m.width)
+						if m.width > 0 && m.height > 0 {
+							m.cacheViewport.Width = maxInt(m.width-6, 20)
+							m.cacheViewport.Height = maxInt(m.height-10, 8)
+						}
+						m.cacheViewport.SetContent(m.cacheContent)
+					} else {
+						m.cacheRows = nil
+						m.cachePick = make(map[int]bool)
+					}
 				}
 				m.noticeSet = m.frame
 				m.mode = modeMain
@@ -934,7 +1034,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
-							m.cacheContent = renderCacheTableString(rows)
+							m.cacheContent = renderCacheTableString(rows, m.width)
+							m.cachePaneFocus = 0
+							m.cacheSideCursor = 0
+							m.cacheSideOffset = 0
 							if m.width > 0 && m.height > 0 {
 								m.cacheViewport.Width = maxInt(m.width-6, 20)
 								m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -1054,9 +1157,65 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if m.mode == modeCacheView {
-			var vpCmd tea.Cmd
-			m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
-			return m, vpCmd
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				if m.cachePaneFocus == 0 {
+					var vpCmd tea.Cmd
+					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
+					return m, vpCmd
+				}
+				if m.cacheSideCursor > 0 {
+					m.cacheSideCursor--
+					if m.cacheSideCursor < m.cacheSideOffset {
+						m.cacheSideOffset = m.cacheSideCursor
+					}
+				}
+			case tea.MouseButtonWheelDown:
+				if m.cachePaneFocus == 0 {
+					var vpCmd tea.Cmd
+					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
+					return m, vpCmd
+				}
+				if m.cacheSideCursor < len(m.cacheRows)-1 {
+					m.cacheSideCursor++
+					if m.cacheSideCursor >= m.cacheSideOffset+10 {
+						m.cacheSideOffset = m.cacheSideCursor - 9
+					}
+				}
+			case tea.MouseButtonLeft:
+				// left click moves focus to side list; use keyboard to return
+				if msg.Action == tea.MouseActionRelease {
+					m.cachePaneFocus = 1
+				}
+			default:
+				if m.cachePaneFocus == 0 {
+					var vpCmd tea.Cmd
+					m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
+					return m, vpCmd
+				}
+			}
+			return m, nil
+		} else if m.mode == modeCacheDelete {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				if m.cacheCursor > 0 {
+					m.cacheCursor--
+					m.ensureCacheVisible()
+				}
+			case tea.MouseButtonWheelDown:
+				if m.cacheCursor < len(m.cacheRows)-1 {
+					m.cacheCursor++
+					m.ensureCacheVisible()
+				}
+			case tea.MouseButtonLeft:
+				if msg.Action == tea.MouseActionRelease {
+					// Toggle current row (acts like space)
+					if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
+						m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
+					}
+				}
+			}
+			return m, nil
 		} else if m.mode == modeWavelength {
 			if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
 				if idx, ok := m.waveIndexAt(msg.X, msg.Y); ok {
@@ -1310,7 +1469,8 @@ func (m model) View() string {
 			extraNotice = "\n" + "  " + nl
 		}
 	} else if m.mode == modeCacheDelete {
-		body = summary + renderCacheDelete(m, w)
+		// hide summary; show centered delete table
+		body = renderCacheDelete(m, w)
 		if nl := m.noticeLine(w); nl != "" {
 			extraNotice = "\n" + "  " + nl
 		}
@@ -1587,10 +1747,10 @@ func loadCache() (string, []cacheRow, error) {
 			row.class = fields[1]
 		}
 		if len(fields) > 2 {
-			row.start = isoToHuman(fields[2])
+			row.start = fields[2]
 		}
 		if len(fields) > 3 {
-			row.end = isoToHuman(fields[3])
+			row.end = fields[3]
 		}
 		if len(fields) > 4 {
 			row.coord = fields[4]
@@ -1603,20 +1763,32 @@ func loadCache() (string, []cacheRow, error) {
 	return header, rows, nil
 }
 
+func truncateCell(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
+}
+
 // formatCacheTable builds a boxed table string for the cache rows.
 func formatCacheTable(header string, rows []cacheRow) string {
-	cols := []string{"DESCRIPTION", "CLASS", "START", "END", "COORD", "WAVE"}
+	cols := []string{"DESC", "CLASS", "START", "END", "COORD", "WAVE"}
 	widths := make([]int, len(cols))
 	for i, c := range cols {
 		widths[i] = lipgloss.Width(c)
 	}
+	maxWidths := []int{3, 8, 20, 20, 30, 8}
 	for _, r := range rows {
-		widths[0] = maxInt(widths[0], lipgloss.Width(r.desc))
-		widths[1] = maxInt(widths[1], lipgloss.Width(r.class))
-		widths[2] = maxInt(widths[2], lipgloss.Width(r.start))
-		widths[3] = maxInt(widths[3], lipgloss.Width(r.end))
-		widths[4] = maxInt(widths[4], lipgloss.Width(r.coord))
-		widths[5] = maxInt(widths[5], lipgloss.Width(r.wave))
+		widths[0] = maxInt(widths[0], minInt(maxWidths[0], lipgloss.Width(r.desc)))
+		widths[1] = maxInt(widths[1], minInt(maxWidths[1], lipgloss.Width(r.class)))
+		widths[2] = maxInt(widths[2], minInt(maxWidths[2], lipgloss.Width(r.start)))
+		widths[3] = maxInt(widths[3], minInt(maxWidths[3], lipgloss.Width(r.end)))
+		widths[4] = maxInt(widths[4], minInt(maxWidths[4], lipgloss.Width(r.coord)))
+		widths[5] = maxInt(widths[5], minInt(maxWidths[5], lipgloss.Width(r.wave)))
 	}
 
 	border := func(left, mid, right string) string {
@@ -1655,12 +1827,12 @@ func formatCacheTable(header string, rows []cacheRow) string {
 
 	for _, r := range rows {
 		cells := []string{
-			fmt.Sprintf(" %-*s ", widths[0], r.desc),
-			fmt.Sprintf(" %-*s ", widths[1], r.class),
-			fmt.Sprintf(" %-*s ", widths[2], r.start),
-			fmt.Sprintf(" %-*s ", widths[3], r.end),
-			fmt.Sprintf(" %-*s ", widths[4], r.coord),
-			fmt.Sprintf(" %-*s ", widths[5], r.wave),
+			fmt.Sprintf(" %-*s ", widths[0], truncateCell("...", widths[0])),
+			fmt.Sprintf(" %-*s ", widths[1], truncateCell(r.class, widths[1])),
+			fmt.Sprintf(" %-*s ", widths[2], truncateCell(r.start, widths[2])),
+			fmt.Sprintf(" %-*s ", widths[3], truncateCell(r.end, widths[3])),
+			fmt.Sprintf(" %-*s ", widths[4], truncateCell(r.coord, widths[4])),
+			fmt.Sprintf(" %-*s ", widths[5], truncateCell(r.wave, widths[5])),
 		}
 		fmt.Fprintln(&b, "│"+strings.Join(cells, "│")+"│")
 	}
@@ -1672,7 +1844,7 @@ func cacheHeaderView(m model, width int) string {
 	title := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		Padding(0, 1).
-		Render("Cache")
+		Render("flare_cache.tsv")
 	line := strings.Repeat("─", maxInt(0, m.cacheViewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
@@ -1687,19 +1859,44 @@ func cacheFooterView(m model, width int) string {
 }
 
 // renderCacheTableString builds a styled table (similar to previous layout).
-func renderCacheTableString(rows []cacheRow) string {
+func renderCacheTableString(rows []cacheRow, width int) string {
+	// Responsive caps based on available width.
+	if width <= 0 {
+		width = 80
+	}
+	rowCap, descCap := 4, 3
+	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 8
+	if width > 0 {
+		switch {
+		case width < 70:
+			classCap, startCap, endCap, coordCap, waveCap = 5, 12, 12, 9, 5
+		case width < 90:
+			classCap, startCap, endCap, coordCap, waveCap = 7, 18, 18, 14, 7
+		case width < 110:
+			classCap, startCap, endCap, coordCap, waveCap = 9, 22, 22, 18, 8
+		}
+	}
+	maxWidths := []int{rowCap, descCap, classCap, startCap, endCap, coordCap, waveCap}
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
 	rowEven := base.Foreground(lipgloss.Color("245"))
-	rowOdd := base.Foreground(lipgloss.Color("252"))
+	rowOdd := base.Foreground(lipgloss.Color("241"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
-		Headers("DESCRIPTION", "CLASS", "START", "END", "COORD", "WAVE")
+		Headers("ROW", "DESC", "CLASS", "START", "END", "COORD", "WAVE")
 
-	for _, r := range rows {
-		t = t.Row(r.desc, r.class, r.start, r.end, r.coord, r.wave)
+	for i, r := range rows {
+		rowNum := truncateCell(fmt.Sprintf("%d", i+1), maxWidths[0])
+		desc := descStyle.Render(truncateCell("...", maxWidths[1]))
+		class := truncateCell(r.class, maxWidths[2])
+		start := truncateCell(r.start, maxWidths[3])
+		end := truncateCell(r.end, maxWidths[4])
+		coord := truncateCell(r.coord, maxWidths[5])
+		wave := truncateCell(r.wave, maxWidths[6])
+		t = t.Row(rowNum, desc, class, start, end, coord, wave)
 	}
 
 	t = t.StyleFunc(func(row, col int) lipgloss.Style {
@@ -1757,6 +1954,23 @@ func saveCachePruned(header string, rows []cacheRow, delete map[int]bool) error 
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// centerContent pads each line to center content within a target width.
+func centerContent(content string, width int) string {
+	if width <= 0 {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		w := lipgloss.Width(line)
+		if w >= width {
+			continue
+		}
+		pad := (width - w) / 2
+		lines[i] = strings.Repeat(" ", pad) + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 // colorizeLogo renders the logo lines with a vertical gradient and applies a gentle wave offset.
@@ -2329,16 +2543,24 @@ func renderSelectFlares(m model, width int) string {
 }
 
 func renderCacheView(m model, width int) string {
-	if strings.TrimSpace(m.cacheContent) == "" {
-		m.cacheContent = renderCacheTableString(m.cacheRows)
+	// Always rebuild content so columns/values stay in sync with current cache.
+	availWidth := width
+	if availWidth > 0 {
+		availWidth = maxInt(availWidth-6, 20) // leave room for borders/padding
 	}
-	m.cacheViewport.SetContent(m.cacheContent)
-	m.cacheViewport.Width = maxInt(width-6, 20)
-	m.cacheViewport.Height = maxInt(m.height-10, 8)
+	m.cacheContent = renderCacheTableString(m.cacheRows, availWidth)
+	contentWidth := lipgloss.Width(m.cacheContent)
+	contentHeight := lipgloss.Height(m.cacheContent)
+	targetW := minInt(maxInt(contentWidth+2, 20), maxInt(availWidth-2, 20))
+	targetH := minInt(contentHeight+2, maxInt(m.height-10, 5))
+	m.cacheViewport.Width = targetW
+	m.cacheViewport.Height = targetH
+	centered := centerContent(m.cacheContent, m.cacheViewport.Width)
+	m.cacheViewport.SetContent(centered)
 
 	header := cacheHeaderView(m, width)
 	footer := cacheFooterView(m, width)
-	help := menuHelpStyle.Render("↑/↓ scroll • pgup/pgdown jump • q/esc back")
+	help := menuHelpStyle.Render("↑/↓ scroll • pgup/pgdown jump • del delete • q/esc back")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -2354,10 +2576,12 @@ func renderCacheView(m model, width int) string {
 		m.cacheViewport.View(),
 	)
 
+	mainBlock := box.Render(centeredView)
+
 	body := lipgloss.JoinVertical(
 		lipgloss.Center,
 		header,
-		box.Render(centeredView),
+		mainBlock,
 		footer,
 		"",
 		help,
@@ -2371,15 +2595,20 @@ func renderCacheView(m model, width int) string {
 }
 
 func renderCacheDelete(m model, width int) string {
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows")
+	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
 	height := cacheViewHeight(m)
 	if len(m.cacheRows) == 0 {
 		msg := menuHelpStyle.Render("Cache empty.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		if width <= 0 {
-			return "\n\n" + block
+		bw := lipgloss.Width(block)
+		effW := width
+		if effW <= 0 {
+			effW = bw
 		}
-		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+		if bw > effW {
+			effW = bw
+		}
+		return "\n\n" + lipgloss.Place(effW, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
 	start := clampInt(m.cacheOffset, 0, maxInt(len(m.cacheRows)-height, 0))
@@ -2392,6 +2621,32 @@ func renderCacheDelete(m model, width int) string {
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 
+	trunc := func(s string, max int) string {
+		if max <= 0 {
+			return ""
+		}
+		if len(s) <= max {
+			return s
+		}
+		if max <= 3 {
+			return s[:max]
+		}
+		return s[:max-3] + "..."
+	}
+
+	// Responsive column caps based on available width.
+	maxClass, maxStart, maxEnd, maxCoord, maxWave := 12, 26, 26, 22, 10
+	if width > 0 {
+		switch {
+		case width < 70:
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 4, 10, 10, 8, 4
+		case width < 90:
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 6, 14, 14, 10, 6
+		case width < 110:
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 8, 18, 18, 14, 8
+		}
+	}
+
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		r := m.cacheRows[i]
@@ -2399,21 +2654,22 @@ func renderCacheDelete(m model, width int) string {
 		if m.cachePick[i] {
 			sel = selMark.Render("[x]")
 		}
+		desc := "..."
 		rows = append(rows, []string{
 			sel,
-			r.desc,
-			r.class,
-			r.start,
-			r.end,
-			r.coord,
-			r.wave,
+			desc,
+			trunc(r.class, maxClass),
+			trunc(r.start, maxStart),
+			trunc(r.end, maxEnd),
+			trunc(r.coord, maxCoord),
+			trunc(r.wave, maxWave),
 		})
 	}
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
-		Headers("SEL", "DESCRIPTION", "CLASS", "START", "END", "COORD", "WAVE").
+		Headers("SEL", "DESC", "CLASS", "START", "END", "COORD", "WAVE").
 		Rows(rows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == lgtbl.HeaderRow {
@@ -2430,16 +2686,30 @@ func renderCacheDelete(m model, width int) string {
 		})
 
 	tableStr := t.String()
-	if width > 0 {
-		tableStr = lipgloss.Place(width, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
-	}
-
 	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter delete • q/esc cancel")
-	body := lipgloss.JoinVertical(lipgloss.Left, title, "", tableStr, "", help)
-	if width <= 0 {
-		return "\n\n" + body
+	innerW := lipgloss.Width(tableStr)
+	if w := lipgloss.Width(title); w > innerW {
+		innerW = w
 	}
-	return "\n\n" + lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
+	if w := lipgloss.Width(help); w > innerW {
+		innerW = w
+	}
+	if innerW == 0 {
+		innerW = width
+	}
+	titleLine := lipgloss.Place(innerW, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+	tableBlock := lipgloss.Place(innerW, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
+	helpLine := lipgloss.Place(innerW, 1, lipgloss.Center, lipgloss.Top, help)
+
+	body := lipgloss.JoinVertical(lipgloss.Center, titleLine, "", tableBlock, "", helpLine)
+	effW := width
+	if effW <= 0 {
+		effW = innerW
+	}
+	if innerW > effW {
+		effW = innerW
+	}
+	return "\n\n" + lipgloss.Place(effW, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
 }
 
 // renderSelectFlaresTable builds the flare selection table with distinct columns and a selectable SEL column.
@@ -3339,7 +3609,30 @@ func (m *model) ensureFlareVisible() {
 
 // ensureCacheVisible keeps the cache cursor within the viewport.
 func (m *model) ensureCacheVisible() {
-	// no-op: cache view now uses viewport for scrolling
+	h := cacheViewHeight(*m)
+	if h <= 0 {
+		m.cacheOffset = 0
+		return
+	}
+	if m.cacheCursor < 0 {
+		m.cacheCursor = 0
+	}
+	if m.cacheCursor >= len(m.cacheRows) {
+		m.cacheCursor = len(m.cacheRows) - 1
+	}
+	if m.cacheCursor < m.cacheOffset {
+		m.cacheOffset = m.cacheCursor
+	}
+	if m.cacheCursor >= m.cacheOffset+h {
+		m.cacheOffset = m.cacheCursor - h + 1
+	}
+	maxOffset := maxInt(len(m.cacheRows)-h, 0)
+	if m.cacheOffset > maxOffset {
+		m.cacheOffset = maxOffset
+	}
+	if m.cacheOffset < 0 {
+		m.cacheOffset = 0
+	}
 }
 
 // renderProgress draws a simple horizontal progress bar.
