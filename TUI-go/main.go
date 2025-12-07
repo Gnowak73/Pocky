@@ -137,17 +137,22 @@ type model struct {
 	flareTable     table.Model
 
 	// Cache submenu
-	cacheMenuOpen  bool
-	cacheMenuItems []string
-	cacheSelected  int
-	cacheOpenFrame int
-	cacheRows      []cacheRow
-	cacheHeader    string
-	cachePick      map[int]bool
-	cacheCursor    int
-	cacheOffset    int
-	cacheViewport  viewport.Model
-	cacheContent   string
+	cacheMenuOpen    bool
+	cacheMenuItems   []string
+	cacheSelected    int
+	cacheOpenFrame   int
+	cacheRows        []cacheRow
+	cacheHeader      string
+	cachePick        map[int]bool
+	cacheCursor      int
+	cacheOffset      int
+	cacheViewport    viewport.Model
+	cacheContent     string
+	cacheFilter      string
+	cacheFiltered    []cacheRow
+	cacheFilterIdx   []int
+	cacheSearching   bool
+	cacheSearchInput string
 
 	// Loading animation
 	spinFrames []string
@@ -233,10 +238,14 @@ func flareViewHeight(m model) int {
 }
 
 func cacheViewHeight(m model) int {
-	if len(m.cacheRows) == 0 {
+	n := len(m.cacheRows)
+	if m.mode == modeCacheDelete && (len(m.cacheFiltered) > 0 || m.cacheFilter != "") {
+		n = len(m.cacheFiltered)
+	}
+	if n == 0 {
 		return 0
 	}
-	return maxInt(7, minInt(25, len(m.cacheRows)))
+	return maxInt(7, minInt(25, n))
 }
 
 func (m model) styledFlareRows() []table.Row {
@@ -445,7 +454,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "ctrl+c":
 					return m, tea.Quit
-				case "esc", "left", "h", "q":
+				case "esc", "left":
 					m.cacheMenuOpen = false
 					return m, nil
 				case "up", "k":
@@ -474,7 +483,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
-							m.cacheContent = renderCacheTableString(rows, m.width)
+							m.applyCacheFilter("", m.width)
 							if m.width > 0 && m.height > 0 {
 								m.cacheViewport.Width = maxInt(m.width-6, 20)
 								m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -495,6 +504,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
+							m.applyCacheFilter("", m.width)
+							m.cacheSearching = true
+							m.cacheSearchInput = ""
 							m.cacheCursor = 0
 							m.cacheOffset = 0
 							m.cachePick = make(map[int]bool)
@@ -515,7 +527,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			switch msg.String() {
-			case "ctrl+c", "q", "esc":
+			case "ctrl+c", "esc":
 				return m, tea.Quit
 			case "up", "k":
 				if m.selected > 0 {
@@ -597,27 +609,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Cache view closed"
 				m.noticeSet = m.frame
-				return m, nil
-			case "delete", "backspace", "ctrl+d":
-				// enter delete mode directly
-				m.mode = modeCacheDelete
-				m.cacheCursor = 0
-				m.cacheOffset = 0
-				m.cachePick = make(map[int]bool)
 				return m, nil
 			}
 			var vpCmd tea.Cmd
 			m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
 			return m, vpCmd
 		} else if m.mode == modeCacheDelete {
+			// Handle search input first when active.
+			if m.cacheSearching {
+				switch msg.Type {
+				case tea.KeyEsc:
+					m.cacheSearching = false
+					m.cacheSearchInput = ""
+					m.applyCacheFilter("", m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeyEnter:
+					m.cacheSearching = false
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeyBackspace:
+					if len(m.cacheSearchInput) > 0 {
+						m.cacheSearchInput = m.cacheSearchInput[:len(m.cacheSearchInput)-1]
+						m.applyCacheFilter(m.cacheSearchInput, m.width)
+						m.ensureCacheVisible()
+					}
+					return m, nil
+				case tea.KeyRunes:
+					m.cacheSearchInput += msg.String()
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeySpace:
+					m.cacheSearchInput += " "
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				}
+				// allow other keys (navigation) to fall through while searching
+			}
+
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q", "left", "h":
+			case "esc", "left":
 				m.mode = modeMain
 				m.notice = "Canceled cache deletion"
 				m.noticeSet = m.frame
@@ -631,13 +671,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cacheCursor++
 					m.ensureCacheVisible()
 				}
-			case "pgup", "b":
+			case "pgup":
 				m.cacheCursor = maxInt(0, m.cacheCursor-5)
 				m.ensureCacheVisible()
-			case "pgdown", "f":
+			case "pgdown":
 				m.cacheCursor = minInt(len(m.cacheRows)-1, m.cacheCursor+5)
 				m.ensureCacheVisible()
-			case " ":
+			case "tab":
 				if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
 					m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
 				}
@@ -658,7 +698,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.cacheHeader = header
 						m.cacheRows = rows
 						m.cachePick = make(map[int]bool)
-						m.cacheContent = renderCacheTableString(rows, m.width)
+						m.applyCacheFilter("", m.width)
 						if m.width > 0 && m.height > 0 {
 							m.cacheViewport.Width = maxInt(m.width-6, 20)
 							m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -692,7 +732,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for _, opt := range m.waveOptions {
 					m.waveSelected[opt.code] = next
 				}
-			case "esc", "q":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Canceled wavelength edit"
 				m.noticeSet = m.frame
@@ -722,7 +762,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Canceled date edit"
 				m.noticeSet = m.frame
@@ -798,14 +838,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Canceled flare filter edit"
 				m.noticeSet = m.frame
 			case "tab", "right", "l":
 				m.flareFocus = (m.flareFocus + 1) % 3
 				m.flareFocusFrame = m.frame
-			case "shift+tab", "left", "h":
+			case "shift+tab", "left":
 				m.flareFocus--
 				if m.flareFocus < 0 {
 					m.flareFocus = 2
@@ -869,7 +909,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Canceled flare selection"
 				m.noticeSet = m.frame
@@ -915,52 +955,84 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notice = "Cache view closed"
 				m.noticeSet = m.frame
 				return m, nil
-			case tea.KeyDelete, tea.KeyBackspace:
-				m.mode = modeCacheDelete
-				m.cacheCursor = 0
-				m.cacheOffset = 0
-				m.cachePick = make(map[int]bool)
-				return m, nil
-			}
-
-			switch msg.String() {
-			case "q":
-				m.mode = modeMain
-				m.notice = "Cache view closed"
-				m.noticeSet = m.frame
-				return m, nil
-			case "ctrl+d":
-				m.mode = modeCacheDelete
-				m.cacheCursor = 0
-				m.cacheOffset = 0
-				m.cachePick = make(map[int]bool)
-				return m, nil
 			}
 
 			var cmd tea.Cmd
 			m.cacheViewport, cmd = m.cacheViewport.Update(msg)
 			return m, cmd
 		} else if m.mode == modeCacheDelete {
+			// Capture search input if in search mode.
+			if m.cacheSearching {
+				switch msg.Type {
+				case tea.KeyEsc:
+					m.cacheSearching = false
+					m.cacheSearchInput = ""
+					m.applyCacheFilter("", m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeyEnter:
+					m.cacheSearching = false
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeyBackspace:
+					if len(m.cacheSearchInput) > 0 {
+						m.cacheSearchInput = m.cacheSearchInput[:len(m.cacheSearchInput)-1]
+						m.applyCacheFilter(m.cacheSearchInput, m.width)
+						m.ensureCacheVisible()
+					}
+					return m, nil
+				case tea.KeyRunes:
+					m.cacheSearchInput += msg.String()
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				case tea.KeySpace:
+					m.cacheSearchInput += " "
+					m.applyCacheFilter(m.cacheSearchInput, m.width)
+					m.ensureCacheVisible()
+					return m, nil
+				}
+				// ignore all other keys while searching
+				return m, nil
+			}
+
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc", "q", "left", "h":
+			case "esc":
 				m.mode = modeMain
 				m.notice = "Canceled cache deletion"
 				m.noticeSet = m.frame
+			case "/":
+				m.cacheSearching = true
+				m.cacheSearchInput = ""
+				m.cacheCursor = 0
+				m.cacheOffset = 0
+				return m, nil
 			case "up", "k":
 				if m.cacheCursor > 0 {
 					m.cacheCursor--
 				}
 				m.ensureCacheVisible()
 			case "down", "j":
-				if m.cacheCursor < len(m.cacheRows)-1 {
+				rows := m.cacheFiltered
+				if rows == nil {
+					rows = m.cacheRows
+				}
+				if m.cacheCursor < len(rows)-1 {
 					m.cacheCursor++
 				}
 				m.ensureCacheVisible()
-			case " ":
-				if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
-					m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
+			case "tab":
+				rows := m.cacheFiltered
+				if rows == nil {
+					rows = m.cacheRows
+				}
+				if m.cacheCursor >= 0 && m.cacheCursor < len(rows) {
+					if idx := m.cacheOriginalIndex(m.cacheCursor); idx >= 0 {
+						m.cachePick[idx] = !m.cachePick[idx]
+					}
 				}
 			case "enter":
 				if len(m.cachePick) == 0 {
@@ -979,7 +1051,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.cacheHeader = header
 						m.cacheRows = rows
 						m.cachePick = make(map[int]bool)
-						m.cacheContent = renderCacheTableString(rows, m.width)
+						m.applyCacheFilter("", m.width)
 						if m.width > 0 && m.height > 0 {
 							m.cacheViewport.Width = maxInt(m.width-6, 20)
 							m.cacheViewport.Height = maxInt(m.height-10, 8)
@@ -1050,6 +1122,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							m.cacheHeader = header
 							m.cacheRows = rows
+							m.cacheSearching = true
+							m.cacheSearchInput = ""
+							m.applyCacheFilter("", m.width)
 							m.cacheCursor = 0
 							m.cacheOffset = 0
 							m.cachePick = make(map[int]bool)
@@ -1872,6 +1947,62 @@ func renderCacheTableString(rows []cacheRow, width int) string {
 	return t.String()
 }
 
+// filterCacheRows returns rows matching the query (case-insensitive) plus their original indices.
+// When query is empty, returns the original rows with an identity index map.
+func filterCacheRows(rows []cacheRow, query string) ([]cacheRow, []int) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		idx := make([]int, len(rows))
+		for i := range rows {
+			idx[i] = i
+		}
+		return rows, idx
+	}
+
+	var out []cacheRow
+	var idx []int
+	for i, r := range rows {
+		if strings.Contains(strings.ToLower(r.desc), q) ||
+			strings.Contains(strings.ToLower(r.class), q) ||
+			strings.Contains(strings.ToLower(r.start), q) ||
+			strings.Contains(strings.ToLower(r.end), q) ||
+			strings.Contains(strings.ToLower(r.coord), q) ||
+			strings.Contains(strings.ToLower(r.wave), q) {
+			out = append(out, r)
+			idx = append(idx, i)
+		}
+	}
+	return out, idx
+}
+
+// cacheOriginalIndex maps a filtered row index back to the original cacheRows index.
+func (m model) cacheOriginalIndex(filteredIdx int) int {
+	if filteredIdx < 0 {
+		return -1
+	}
+	if len(m.cacheFilterIdx) > 0 && filteredIdx < len(m.cacheFilterIdx) {
+		return m.cacheFilterIdx[filteredIdx]
+	}
+	if filteredIdx < len(m.cacheRows) {
+		return filteredIdx
+	}
+	return -1
+}
+
+// applyCacheFilter updates filtered rows, cursor bounds, and rendered content.
+func (m *model) applyCacheFilter(query string, width int) {
+	m.cacheFilter = strings.TrimSpace(query)
+	m.cacheFiltered, m.cacheFilterIdx = filterCacheRows(m.cacheRows, m.cacheFilter)
+	if len(m.cacheFiltered) == 0 {
+		m.cacheCursor = 0
+		m.cacheOffset = 0
+	} else if m.cacheCursor >= len(m.cacheFiltered) {
+		m.cacheCursor = len(m.cacheFiltered) - 1
+	}
+	m.cacheContent = renderCacheTableString(m.cacheFiltered, width)
+	m.ensureCacheVisible()
+}
+
 func clearCacheFile() (string, error) {
 	path := cacheFilePath()
 	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
@@ -2081,7 +2212,7 @@ func renderStatus(m model) string {
 		Render("")
 	infoBox := statusTextStyle.Render(statusLabel)
 	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
-	hints := renderStaticGradientHint("q/esc to quit", available)
+	hints := renderStaticGradientHint("esc to quit", available)
 
 	bar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -2530,11 +2661,15 @@ func renderSelectFlares(m model, width int) string {
 
 func renderCacheView(m model, width int) string {
 	// Always rebuild content so columns/values stay in sync with current cache.
+	rows := m.cacheFiltered
+	if rows == nil {
+		rows = m.cacheRows
+	}
 	availWidth := width
 	if availWidth > 0 {
 		availWidth = maxInt(availWidth-6, 20) // leave room for borders/padding
 	}
-	m.cacheContent = renderCacheTableString(m.cacheRows, availWidth)
+	m.cacheContent = renderCacheTableString(rows, availWidth)
 	contentWidth := lipgloss.Width(m.cacheContent)
 	contentHeight := lipgloss.Height(m.cacheContent)
 	targetW := minInt(maxInt(contentWidth+2, 20), maxInt(availWidth-2, 20))
@@ -2546,7 +2681,7 @@ func renderCacheView(m model, width int) string {
 
 	header := cacheHeaderView(m, width)
 	footer := cacheFooterView(m, width)
-	help := menuHelpStyle.Render("↑/↓ scroll • pgup/pgdown jump • del delete • q/esc back")
+	help := menuHelpStyle.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -2583,7 +2718,11 @@ func renderCacheView(m model, width int) string {
 func renderCacheDelete(m model, width int) string {
 	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
 	height := cacheViewHeight(m)
-	if len(m.cacheRows) == 0 {
+	rows := m.cacheFiltered
+	if rows == nil {
+		rows = m.cacheRows
+	}
+	if len(rows) == 0 {
 		msg := menuHelpStyle.Render("Cache empty.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		bw := lipgloss.Width(block)
@@ -2597,8 +2736,8 @@ func renderCacheDelete(m model, width int) string {
 		return "\n\n" + lipgloss.Place(effW, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	start := clampInt(m.cacheOffset, 0, maxInt(len(m.cacheRows)-height, 0))
-	end := minInt(len(m.cacheRows), start+height)
+	start := clampInt(m.cacheOffset, 0, maxInt(len(rows)-height, 0))
+	end := minInt(len(rows), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
@@ -2633,15 +2772,16 @@ func renderCacheDelete(m model, width int) string {
 		}
 	}
 
-	rows := make([][]string, 0, end-start)
+	tableRows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
-		r := m.cacheRows[i]
+		r := rows[i]
+		orig := m.cacheOriginalIndex(i)
 		sel := "[ ]"
-		if m.cachePick[i] {
+		if orig >= 0 && m.cachePick[orig] {
 			sel = selMark.Render("[x]")
 		}
 		desc := "..."
-		rows = append(rows, []string{
+		tableRows = append(tableRows, []string{
 			sel,
 			desc,
 			trunc(r.class, maxClass),
@@ -2656,7 +2796,7 @@ func renderCacheDelete(m model, width int) string {
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
 		Headers("SEL", "DESC", "CLASS", "START", "END", "COORD", "WAVE").
-		Rows(rows...).
+		Rows(tableRows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == lgtbl.HeaderRow {
 				return headerStyle
@@ -2672,9 +2812,17 @@ func renderCacheDelete(m model, width int) string {
 		})
 
 	tableStr := t.String()
-	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter delete • q/esc cancel")
+	searchText := m.cacheFilter
+	if m.cacheSearching {
+		searchText = m.cacheSearchInput + "▌"
+	}
+	searchLine := menuHelpStyle.Render(fmt.Sprintf("Search: %s", searchText))
+	help := menuHelpStyle.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
 	innerW := lipgloss.Width(tableStr)
 	if w := lipgloss.Width(title); w > innerW {
+		innerW = w
+	}
+	if w := lipgloss.Width(searchLine); w > innerW {
 		innerW = w
 	}
 	if w := lipgloss.Width(help); w > innerW {
@@ -2684,10 +2832,11 @@ func renderCacheDelete(m model, width int) string {
 		innerW = width
 	}
 	titleLine := lipgloss.Place(innerW, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+	searchBlock := lipgloss.Place(innerW, lipgloss.Height(searchLine), lipgloss.Center, lipgloss.Top, searchLine)
 	tableBlock := lipgloss.Place(innerW, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
 	helpLine := lipgloss.Place(innerW, 1, lipgloss.Center, lipgloss.Top, help)
 
-	body := lipgloss.JoinVertical(lipgloss.Center, titleLine, "", tableBlock, "", helpLine)
+	body := lipgloss.JoinVertical(lipgloss.Center, titleLine, "", searchBlock, "", tableBlock, helpLine)
 	effW := width
 	if effW <= 0 {
 		effW = innerW
@@ -3600,11 +3749,15 @@ func (m *model) ensureCacheVisible() {
 		m.cacheOffset = 0
 		return
 	}
+	rows := m.cacheFiltered
+	if rows == nil || m.mode != modeCacheDelete {
+		rows = m.cacheRows
+	}
 	if m.cacheCursor < 0 {
 		m.cacheCursor = 0
 	}
-	if m.cacheCursor >= len(m.cacheRows) {
-		m.cacheCursor = len(m.cacheRows) - 1
+	if m.cacheCursor >= len(rows) {
+		m.cacheCursor = len(rows) - 1
 	}
 	if m.cacheCursor < m.cacheOffset {
 		m.cacheOffset = m.cacheCursor
@@ -3612,7 +3765,7 @@ func (m *model) ensureCacheVisible() {
 	if m.cacheCursor >= m.cacheOffset+h {
 		m.cacheOffset = m.cacheCursor - h + 1
 	}
-	maxOffset := maxInt(len(m.cacheRows)-h, 0)
+	maxOffset := maxInt(len(rows)-h, 0)
 	if m.cacheOffset > maxOffset {
 		m.cacheOffset = maxOffset
 	}
