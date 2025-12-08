@@ -12,46 +12,30 @@ import (
 )
 
 func loadLogo() ([]string, error) {
-	paths := []string{
-		"logo.txt",
-		filepath.Join("..", "logo.txt"),
-	}
+	// we want to find the directory of the exe file to then see
+	// if logo.txt exist in /exeDir..
 
-	if wd, err := os.Getwd(); err == nil {
-		paths = append(paths,
-			filepath.Join(wd, "logo.txt"),
-			filepath.Join(wd, "..", "logo.txt"),
-		)
-	}
-
+	var path string
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
-		paths = append(paths,
-			filepath.Join(exeDir, "logo.txt"),
-			filepath.Join(exeDir, "..", "logo.txt"),
-		)
+		parent := filepath.Dir(exeDir)
+		path = filepath.Join(parent, "logo.txt")
+	}
+	// you CANNOT use "go run ." because this runs the exe
+	// from a tmp directory and not from the disk path
+
+	// we read as bytes, but we want to output the string
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.New("could not find logo.txt in parent /Pocky directory")
 	}
 
-	seen := make(map[string]struct{})
-	for _, p := range paths {
-		if _, ok := seen[p]; ok {
-			continue
-		}
-		seen[p] = struct{}{}
-
-		data, err := os.ReadFile(p)
-		if err != nil || len(data) == 0 {
-			continue
-		}
-
-		content := strings.TrimRight(string(data), "\r\n")
-		if content == "" {
-			continue
-		}
-		return strings.Split(content, "\n"), nil
+	// for cutset we dont want trailing chars
+	content := strings.TrimRight(string(data), "\r\n")
+	if content == "" {
+		return nil, errors.New("logo.txt is empty")
 	}
-
-	return nil, errors.New("could not find logo.txt (looked in CWD, parent, and executable directory)")
+	return strings.Split(content, "\n"), nil
 }
 
 // colorizeLogo renders the logo lines with a vertical gradient and applies a gentle wave offset.

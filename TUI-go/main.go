@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	// logo.go
 	logo, err := loadLogo()
 	if err != nil {
 		fmt.Println("pocky logo:", err)
