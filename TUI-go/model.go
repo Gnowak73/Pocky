@@ -7,18 +7,17 @@ import (
 )
 
 type model struct {
-	logoLines []string
-	colored   []string
+	logoLines []string // string lines for logo.txt
+	colored   []string // colored lines
 	cfg       config
 	blockW    int
 	width     int
 	height    int
 	frame     int
-	pause     int
-	menuItems []string
+	menuItems []string // main menu items
 	selected  int
 	notice    string
-	noticeSet int
+	noticeSet int // frame counter for notice animation
 
 	// Modes
 	mode viewMode
@@ -78,6 +77,8 @@ type model struct {
 }
 
 func newModel(logo []string, cfg config) model {
+	// our aim is to take the lines from the logo, put them in an
+	// array, and pass them through our model to color and animate them
 	blockW := 0
 	for _, l := range logo {
 		if w := lipgloss.Width(l); w > blockW {

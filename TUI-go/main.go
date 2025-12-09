@@ -17,11 +17,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// for now we don't care about final state, just the error
+	// config doesnt need error check because if it doesn't
+	// exist we will have env vars unset and save them later
 	cfg := loadConfig()
+
+	// we will use the logo and config to initialize our model since
+	// the main menu is build from config + logo + options as a basis
 	m := newModel(logo, cfg)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	if _, err := p.Run(); err != nil {
+		// for now we don't care about final state, just the error
 		fmt.Println("tui error:", err)
 		os.Exit(1)
 	}

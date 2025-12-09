@@ -33,8 +33,9 @@ func loadLogo() ([]string, error) {
 	return strings.Split(content, "\n"), nil
 }
 
-// colorizeLogo renders the logo lines with a vertical gradient and applies a gentle wave offset.
 func colorizeLogo(lines []string, blockW int, frame int) []string {
+	// we want to colorize the logo with vertical gradien  for glamour
+	// and a gentle wave animation using basic trig.
 	if len(lines) == 0 {
 		return nil
 	}
