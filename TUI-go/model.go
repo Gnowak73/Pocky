@@ -10,7 +10,7 @@ type model struct {
 	logoLines []string // string lines for logo.txt
 	colored   []string // colored lines
 	cfg       config
-	blockW    int
+	blockW    int // column width for logo to occupy
 	width     int
 	height    int
 	frame     int
@@ -78,12 +78,14 @@ type model struct {
 
 func newModel(logo []string, cfg config) model {
 	// our aim is to take the lines from the logo, put them in an
-	// array, and pass them through our model to color and animate them
+	// array, and pass them through our model to color and animate them.
+	// Then we will make a selectable menu and present config vars
+
+	// first we need the visual width of the logo as drawn on the TUI,
+	// measurement is in column number (terminals draw based on a grid)
 	blockW := 0
 	for _, l := range logo {
-		if w := lipgloss.Width(l); w > blockW {
-			blockW = w
-		}
+		blockW = max(blockW, lipgloss.Width(l))
 	}
 
 	colored := colorizeLogo(logo, blockW, 0)
