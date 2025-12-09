@@ -3,69 +3,56 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
 func loadConfig() config {
-	paths := []string{
-		".vars.env",
-		filepath.Join("..", ".vars.env"),
-	}
+	// we need to see if the config file is
+	// in the parent directory for the ui model
+	// no global var for path used since its infrequent
 
+	path := parentDirFile(".vars.env")
+	data, _ := os.ReadFile(path)
 	var cfg config
-	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err != nil {
+
+	// we need to search through the config to set env vars
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		lines := strings.Split(string(data), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			key := parts[0]
-			val := strings.Trim(parts[1], "\"")
-			switch key {
-			case "WAVE":
-				cfg.WAVE = val
-			case "START":
-				cfg.START = val
-			case "END":
-				cfg.END = val
-			case "SOURCE":
-				cfg.SOURCE = val
-			case "FLARE_CLASS":
-				cfg.FLARE_CLASS = val
-			case "COMPARATOR":
-				cfg.COMPARATOR = val
-			case "DL_EMAIL":
-				cfg.DL_EMAIL = val
-			}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
 		}
-		break
+		key := parts[0]
+		val := strings.Trim(parts[1], "\"")
+		switch key {
+		case "WAVE":
+			cfg.WAVE = val
+		case "START":
+			cfg.START = val
+		case "END":
+			cfg.END = val
+		case "SOURCE":
+			cfg.SOURCE = val
+		case "FLARE_CLASS":
+			cfg.FLARE_CLASS = val
+		case "COMPARATOR":
+			cfg.COMPARATOR = val
+		case "DL_EMAIL":
+			cfg.DL_EMAIL = val
+		}
 	}
 	return cfg
 }
 
 func saveConfig(cfg config) error {
-	paths := []string{
-		".vars.env",
-		filepath.Join("..", ".vars.env"),
-	}
-
-	target := paths[0]
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			target = p
-			break
-		}
-	}
+	// we need to save the config where it should be
+	// To prevents errors from crashing while saving, we will use
+	// a tmp file with os.rename which is atomic (all or nothing)
+	target := parentDirFile(".vars.env")
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "WAVE=\"%s\"\n", cfg.WAVE)

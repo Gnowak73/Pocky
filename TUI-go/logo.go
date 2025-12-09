@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -15,12 +14,8 @@ func loadLogo() ([]string, error) {
 	// we want to find the directory of the exe file to then see
 	// if logo.txt exist in /exeDir..
 
-	var path string
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		parent := filepath.Dir(exeDir)
-		path = filepath.Join(parent, "logo.txt")
-	}
+	path := parentDirFile("logo.txt")
+
 	// you CANNOT use "go run ." because this runs the exe
 	// from a tmp directory and not from the disk path
 

@@ -1,12 +1,28 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
 )
+
+func parentDirFile(filename string) string {
+	// we need to pull parent directory files or the
+	// parent directory itself (use filename="") for env files, etc.
+	// defines parent each time, if too much overhead consider global var
+	var parent string
+
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		parent = filepath.Dir(exeDir)
+		return filepath.Join(parent, filename)
+	}
+	return ""
+}
 
 func isoToHuman(s string) string {
 	s = strings.TrimSpace(s)
