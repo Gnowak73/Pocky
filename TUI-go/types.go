@@ -89,6 +89,17 @@ type cacheSubmenuState struct {
 	searchInput string
 }
 
+type spinnerState struct {
+	frames []string
+	index  int
+}
+
+type dateEditorState struct {
+	start string
+	end   string
+	focus int
+}
+
 // post model initialization
 type tickMsg struct{}
 

@@ -29,15 +29,15 @@ func renderDateEditor(m model, width int) string {
 
 	startField := renderField(
 		"Start date (YYYY-MM-DD) -- leave blank to remain same",
-		strings.TrimSpace(m.dateStart),
+		strings.TrimSpace(m.date.start),
 		strings.TrimSpace(m.cfg.start),
-		m.dateFocus == 0,
+		m.date.focus == 0,
 	)
 	endField := renderField(
 		"End date   (YYYY-MM-DD) -- leave blank to remain same",
-		strings.TrimSpace(m.dateEnd),
+		strings.TrimSpace(m.date.end),
 		strings.TrimSpace(m.cfg.end),
-		m.dateFocus == 1,
+		m.date.focus == 1,
 	)
 
 	block := lipgloss.JoinVertical(lipgloss.Left,

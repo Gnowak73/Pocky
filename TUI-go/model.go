@@ -38,13 +38,10 @@ type model struct {
 	cache cacheSubmenuState
 
 	// Loading animation
-	spinFrames []string
-	spinIndex  int
+	spinner spinnerState
 
 	// Date editor
-	dateStart string
-	dateEnd   string
-	dateFocus int
+	date dateEditorState
 }
 
 func newModel(logoLines []string, cfg config) model {
@@ -60,13 +57,13 @@ func newModel(logoLines []string, cfg config) model {
 	}
 	colored := colorizeLogo(logoLines, blockW, 0)
 
-	logoStateDefault := logoState{
+	logoDefault := logoState{
 		lines:   logoLines,
 		colored: colored,
 		blockW:  blockW,
 	}
 
-	waveStateDefault := waveEditorState{
+	waveDefault := waveEditorState{
 		options:  defaultWaveOptions(),
 		selected: parseWaves(cfg.wave),
 	}
@@ -99,10 +96,16 @@ func newModel(logoLines []string, cfg config) model {
 		"Back",
 	}
 
-	cachesubmenuDefault := cacheSubmenuState{
+	cacheSubmenuDefault := cacheSubmenuState{
 		menuItems: cacheMenu,
 		pick:      make(map[int]bool),
 		viewport:  viewport.New(80, 20),
+	}
+
+	dateEditorDefault := dateEditorState{}
+
+	spinnerDefault := spinnerState{
+		frames: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
 	}
 
 	menu := []string{
@@ -116,14 +119,15 @@ func newModel(logoLines []string, cfg config) model {
 	}
 
 	return model{
-		logo:          logoStateDefault,
+		logo:          logoDefault,
 		cfg:           cfg,
-		wave:          waveStateDefault,
+		wave:          waveDefault,
 		flareFilter:   flareFilterDefault,
 		menuItems:     menu,
 		mode:          modeMain,
 		flareSelector: flareSelectorDefault,
-		spinFrames:    []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
-		cache:         cachesubmenuDefault,
+		spinner:       spinnerDefault,
+		date:          dateEditorDefault,
+		cache:         cacheSubmenuDefault,
 	}
 }

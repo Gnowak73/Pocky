@@ -34,8 +34,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.notice != "" && m.noticeSet > 0 && m.frame-m.noticeSet > 19 {
 			m.notice = ""
 		}
-		if m.flareSelector.loading && len(m.spinFrames) > 0 {
-			m.spinIndex = (m.spinIndex + 1) % len(m.spinFrames)
+		if m.flareSelector.loading && len(m.spinner.frames) > 0 {
+			m.spinner.index = (m.spinner.index + 1) % len(m.spinner.frames)
 		}
 		return m, tick()
 	case flaresLoadedMsg:
@@ -337,12 +337,12 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.notice = "Canceled date edit"
 		m.noticeSet = m.frame
 	case "tab", "down":
-		m.dateFocus = 1
+		m.date.focus = 1
 	case "shift+tab", "up":
-		m.dateFocus = 0
+		m.date.focus = 0
 	case "enter":
-		start := strings.TrimSpace(m.dateStart)
-		end := strings.TrimSpace(m.dateEnd)
+		start := strings.TrimSpace(m.date.start)
+		end := strings.TrimSpace(m.date.end)
 		if start == "" {
 			start = strings.TrimSpace(m.cfg.start)
 		}
@@ -370,13 +370,13 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.noticeSet = m.frame
 		m.mode = modeMain
 	case "backspace", "delete":
-		if m.dateFocus == 0 {
-			if len(m.dateStart) > 0 {
-				m.dateStart = m.dateStart[:len(m.dateStart)-1]
+		if m.date.focus == 0 {
+			if len(m.date.start) > 0 {
+				m.date.start = m.date.start[:len(m.date.start)-1]
 			}
 		} else {
-			if len(m.dateEnd) > 0 {
-				m.dateEnd = m.dateEnd[:len(m.dateEnd)-1]
+			if len(m.date.end) > 0 {
+				m.date.end = m.date.end[:len(m.date.end)-1]
 			}
 		}
 	default:
@@ -391,9 +391,9 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if len(runes) > 0 {
-				target := &m.dateStart
-				if m.dateFocus == 1 {
-					target = &m.dateEnd
+				target := &m.date.start
+				if m.date.focus == 1 {
+					target = &m.date.end
 				}
 				if len(*target) < len("2006-01-02") {
 					*target += string(runes)
@@ -697,9 +697,9 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Date Range":
 		m.cache.menuOpen = false
 		m.mode = modeDateRange
-		m.dateStart = ""
-		m.dateEnd = ""
-		m.dateFocus = 0
+		m.date.start = ""
+		m.date.end = ""
+		m.date.focus = 0
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Edit Flare Class Filter":

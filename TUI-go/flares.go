@@ -125,8 +125,8 @@ func renderSelectFlares(m model, width int) string {
 
 	if m.flareSelector.loading {
 		spin := ""
-		if len(m.spinFrames) > 0 {
-			spin = m.spinFrames[m.spinIndex]
+		if len(m.spinner.frames) > 0 {
+			spin = m.spinner.frames[m.spinner.index]
 		}
 		msg := menuHelpStyle.Render(fmt.Sprintf("Loading flares %s", spin))
 		block := lipgloss.JoinVertical(lipgloss.Center, "", msg)
