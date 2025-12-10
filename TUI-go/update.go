@@ -416,48 +416,48 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.notice = "Canceled flare filter edit"
 		m.noticeSet = m.frame
 	case "tab", "right", "l":
-		m.flareFocus = (m.flareFocus + 1) % 3
-		m.flareFocusFrame = m.frame
+		m.flareFilter.focus = (m.flareFilter.focus + 1) % 3
+		m.flareFilter.focusFrame = m.frame
 	case "shift+tab", "left":
-		m.flareFocus--
-		if m.flareFocus < 0 {
-			m.flareFocus = 2
+		m.flareFilter.focus--
+		if m.flareFilter.focus < 0 {
+			m.flareFilter.focus = 2
 		}
-		m.flareFocusFrame = m.frame
+		m.flareFilter.focusFrame = m.frame
 	case "up", "k":
-		switch m.flareFocus {
+		switch m.flareFilter.focus {
 		case 0:
-			if m.flareCompIdx > 0 {
-				m.flareCompIdx--
+			if m.flareFilter.compIdx > 0 {
+				m.flareFilter.compIdx--
 			}
 		case 1:
-			if m.flareLetterIdx > 0 {
-				m.flareLetterIdx--
+			if m.flareFilter.letterIdx > 0 {
+				m.flareFilter.letterIdx--
 			}
 		case 2:
-			if m.flareMagIdx > 0 {
-				m.flareMagIdx--
+			if m.flareFilter.magIdx > 0 {
+				m.flareFilter.magIdx--
 			}
 		}
 	case "down", "j":
-		switch m.flareFocus {
+		switch m.flareFilter.focus {
 		case 0:
-			if m.flareCompIdx < len(m.flareCompDisplays)-1 {
-				m.flareCompIdx++
+			if m.flareFilter.compIdx < len(m.flareFilter.compDisplays)-1 {
+				m.flareFilter.compIdx++
 			}
 		case 1:
-			if m.flareLetterIdx < len(m.flareClassLetters)-1 {
-				m.flareLetterIdx++
+			if m.flareFilter.letterIdx < len(m.flareFilter.classLetters)-1 {
+				m.flareFilter.letterIdx++
 			}
 		case 2:
-			if m.flareMagIdx < len(m.flareMagnitudes)-1 {
-				m.flareMagIdx++
+			if m.flareFilter.magIdx < len(m.flareFilter.magnitudes)-1 {
+				m.flareFilter.magIdx++
 			}
 		}
 	case "enter":
-		compVal := m.flareComps[m.flareCompIdx].value
-		letter := m.flareClassLetters[m.flareLetterIdx]
-		mag := m.flareMagnitudes[m.flareMagIdx]
+		compVal := m.flareFilter.comps[m.flareFilter.compIdx].value
+		letter := m.flareFilter.classLetters[m.flareFilter.letterIdx]
+		mag := m.flareFilter.magnitudes[m.flareFilter.magIdx]
 		if compVal == "All" {
 			m.cfg.comparator = "All"
 			m.cfg.flareClass = "Any"
@@ -612,49 +612,49 @@ func (m model) handleWavelengthMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	col, row, ok := m.flareHit(msg.X, msg.Y)
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion && ok {
-		m.flareFocus = col
+		m.flareFilter.focus = col
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		switch m.flareFocus {
+		switch m.flareFilter.focus {
 		case 0:
-			if m.flareCompIdx > 0 {
-				m.flareCompIdx--
+			if m.flareFilter.compIdx > 0 {
+				m.flareFilter.compIdx--
 			}
 		case 1:
-			if m.flareLetterIdx > 0 {
-				m.flareLetterIdx--
+			if m.flareFilter.letterIdx > 0 {
+				m.flareFilter.letterIdx--
 			}
 		case 2:
-			if m.flareMagIdx > 0 {
-				m.flareMagIdx--
+			if m.flareFilter.magIdx > 0 {
+				m.flareFilter.magIdx--
 			}
 		}
 	case tea.MouseButtonWheelDown:
-		switch m.flareFocus {
+		switch m.flareFilter.focus {
 		case 0:
-			if m.flareCompIdx < len(m.flareCompDisplays)-1 {
-				m.flareCompIdx++
+			if m.flareFilter.compIdx < len(m.flareFilter.compDisplays)-1 {
+				m.flareFilter.compIdx++
 			}
 		case 1:
-			if m.flareLetterIdx < len(m.flareClassLetters)-1 {
-				m.flareLetterIdx++
+			if m.flareFilter.letterIdx < len(m.flareFilter.classLetters)-1 {
+				m.flareFilter.letterIdx++
 			}
 		case 2:
-			if m.flareMagIdx < len(m.flareMagnitudes)-1 {
-				m.flareMagIdx++
+			if m.flareFilter.magIdx < len(m.flareFilter.magnitudes)-1 {
+				m.flareFilter.magIdx++
 			}
 		}
 	case tea.MouseButtonLeft:
 		if ok && msg.Action == tea.MouseActionRelease {
-			m.flareFocus = col
+			m.flareFilter.focus = col
 			switch col {
 			case 0:
-				m.flareCompIdx = clampInt(row, 0, len(m.flareCompDisplays)-1)
+				m.flareFilter.compIdx = clampInt(row, 0, len(m.flareFilter.compDisplays)-1)
 			case 1:
-				m.flareLetterIdx = clampInt(row, 0, len(m.flareClassLetters)-1)
+				m.flareFilter.letterIdx = clampInt(row, 0, len(m.flareFilter.classLetters)-1)
 			case 2:
-				m.flareMagIdx = clampInt(row, 0, len(m.flareMagnitudes)-1)
+				m.flareFilter.magIdx = clampInt(row, 0, len(m.flareFilter.magnitudes)-1)
 			}
 		}
 	}
@@ -705,9 +705,9 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Flare Class Filter":
 		m.cacheMenuOpen = false
 		m.mode = modeFlare
-		m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareComps, m.flareClassLetters)
-		m.flareFocus = 0
-		m.flareFocusFrame = m.frame
+		m.flareFilter.compIdx, m.flareFilter.letterIdx, m.flareFilter.magIdx = parseFlareSelection(m.cfg, m.flareFilter.comps, m.flareFilter.classLetters)
+		m.flareFilter.focus = 0
+		m.flareFilter.focusFrame = m.frame
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Select Flares":

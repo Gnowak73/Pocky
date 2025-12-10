@@ -30,15 +30,7 @@ type model struct {
 	wave waveEditorState
 
 	// Flare filter editor
-	flareComps        []comparator
-	flareCompDisplays []string // dont want to compute display list every render
-	flareClassLetters []string
-	flareMagnitudes   []string
-	flareFocus        int // 0=comp,1=letter,2=mag
-	flareCompIdx      int
-	flareLetterIdx    int
-	flareMagIdx       int
-	flareFocusFrame   int
+	flareFilter flareFilterState
 
 	// Flare selection
 	flareList      []flareEntry
@@ -107,6 +99,17 @@ func newModel(logoLines []string, cfg config) model {
 	mags := defaultMagnitudes()
 	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, comp, letters)
 
+	flareFilterDefault := flareFilterState{
+		comps:        comp,
+		compDisplays: comparatorDisplayList(comp),
+		classLetters: letters,
+		magnitudes:   mags,
+		compIdx:      compIdx,
+		letterIdx:    letterIdx,
+		magIdx:       magIdx,
+		focusFrame:   0,
+	}
+
 	menu := []string{
 		"Edit Wavelength",
 		"Edit Date Range",
@@ -124,24 +127,17 @@ func newModel(logoLines []string, cfg config) model {
 	}
 
 	return model{
-		logo:              logoStateDefault,
-		cfg:               cfg,
-		wave:              waveStateDefault,
-		menuItems:         menu,
-		mode:              modeMain,
-		flareComps:        comp,
-		flareCompDisplays: comparatorDisplayList(comp),
-		flareClassLetters: letters,
-		flareMagnitudes:   mags,
-		flareCompIdx:      compIdx,
-		flareLetterIdx:    letterIdx,
-		flareMagIdx:       magIdx,
-		flareFocusFrame:   0,
-		flareSelected:     make(map[int]bool),
-		spinFrames:        []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
-		flareOffset:       0,
-		cacheMenuItems:    cacheMenu,
-		cachePick:         make(map[int]bool),
-		cacheViewport:     viewport.New(80, 20),
+		logo:           logoStateDefault,
+		cfg:            cfg,
+		wave:           waveStateDefault,
+		flareFilter:    flareFilterDefault,
+		menuItems:      menu,
+		mode:           modeMain,
+		flareSelected:  make(map[int]bool),
+		spinFrames:     []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		flareOffset:    0,
+		cacheMenuItems: cacheMenu,
+		cachePick:      make(map[int]bool),
+		cacheViewport:  viewport.New(80, 20),
 	}
 }

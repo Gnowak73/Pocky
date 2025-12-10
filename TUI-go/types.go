@@ -1,7 +1,5 @@
 package main
 
-// requires pre model initialization
-
 type comparator struct {
 	display string // what user sees (unicode)
 	value   string // what gets stores in config (ASCII)
@@ -32,6 +30,18 @@ type logoState struct {
 	lines   []string // string lines for logo.txt
 	colored []string // colored lines
 	blockW  int      // column width for logo to occupy
+}
+
+type flareFilterState struct {
+	comps        []comparator
+	compDisplays []string // dont want to compute display list every render
+	classLetters []string
+	magnitudes   []string
+	focus        int // 0=comp, 1=letter, 2=mag "Comp+Class+Mag"
+	compIdx      int // menu index for selection
+	letterIdx    int
+	magIdx       int
+	focusFrame   int // counter for wire box cursor animation
 }
 
 // post model initialization
