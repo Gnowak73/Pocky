@@ -120,9 +120,9 @@ func renderFlareColumns(m model) []string {
 	renderColumn := func(title string, opts []string, selected int, focused bool, window int) string {
 		start := 0
 		if len(opts) > window {
-			start = clampInt(selected-window/2, 0, len(opts)-window)
+			start = clamp(selected-window/2, 0, len(opts)-window)
 		}
-		end := minInt(len(opts), start+window)
+		end := min(len(opts), start+window)
 
 		var rows []string
 		for i := start; i < end; i++ {
@@ -136,7 +136,7 @@ func renderFlareColumns(m model) []string {
 
 		headerText := headerStyle.Copy().Foreground(lipgloss.Color("#3A3A3A")).Render(title)
 		if focused {
-			headerAnimT := clamp(float64(maxInt(m.frame-m.flare.filter.focusFrame, 0))/8.0, 0, 1)
+			headerAnimT := clamp(float64(max(m.frame-m.flare.filter.focusFrame, 0))/8.0, 0, 1)
 			headerText = renderGradientText(
 				title,
 				blendHex("#7D5FFF", "#FFB7D5", headerAnimT),
@@ -195,7 +195,7 @@ func renderFlareEditor(m model, width int) string {
 	if colWidth < lipgloss.Width(title) {
 		colWidth = lipgloss.Width(title)
 	}
-	divWidth := maxInt(colWidth, lipgloss.Width(title)+6)
+	divWidth := max(colWidth, lipgloss.Width(title)+6)
 	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
 	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
 	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
@@ -248,7 +248,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 	if colWidth < lipgloss.Width(title) {
 		colWidth = lipgloss.Width(title)
 	}
-	divWidth := maxInt(colWidth, lipgloss.Width(title)+6)
+	divWidth := max(colWidth, lipgloss.Width(title)+6)
 	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
 	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
 	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
@@ -323,7 +323,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 			window = maxRows
 		}
 		if maxRows > window {
-			start = clampInt(m.flare.filter.magIdx-window/2, 0, maxRows-window)
+			start = clamp(m.flare.filter.magIdx-window/2, 0, maxRows-window)
 		}
 	default:
 		return 0, 0, false

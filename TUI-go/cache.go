@@ -63,7 +63,7 @@ func cacheViewHeight(m model) int {
 	if n == 0 {
 		return 0
 	}
-	return maxInt(7, minInt(25, n))
+	return max(7, min(25, n))
 }
 
 // filterCacheRows returns rows matching the query (case-insensitive) plus their original indices.
@@ -170,7 +170,7 @@ func cacheHeaderView(m model, width int) string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		Padding(0, 1).
 		Render("flare_cache.tsv")
-	line := strings.Repeat("─", maxInt(0, m.cache.viewport.Width-lipgloss.Width(title)))
+	line := strings.Repeat("─", max(0, m.cache.viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
@@ -179,7 +179,7 @@ func cacheFooterView(m model, width int) string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		Padding(0, 1).
 		Render(fmt.Sprintf("%3.0f%%", m.cache.viewport.ScrollPercent()*100))
-	line := strings.Repeat("─", maxInt(0, m.cache.viewport.Width-lipgloss.Width(info)))
+	line := strings.Repeat("─", max(0, m.cache.viewport.Width-lipgloss.Width(info)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
 
@@ -254,13 +254,13 @@ func renderCacheView(m model, width int) string {
 	}
 	availWidth := width
 	if availWidth > 0 {
-		availWidth = maxInt(availWidth-6, 20)
+		availWidth = max(availWidth-6, 20)
 	}
 	m.cache.content = renderCacheTableString(rows, availWidth)
 	contentWidth := lipgloss.Width(m.cache.content)
 	contentHeight := lipgloss.Height(m.cache.content)
-	targetW := minInt(maxInt(contentWidth+2, 20), maxInt(availWidth-2, 20))
-	targetH := minInt(contentHeight+2, maxInt(m.height-10, 5))
+	targetW := min(max(contentWidth+2, 20), max(availWidth-2, 20))
+	targetH := min(contentHeight+2, max(m.height-10, 5))
 	m.cache.viewport.Width = targetW
 	m.cache.viewport.Height = targetH
 	centered := centerContent(m.cache.content, m.cache.viewport.Width)
@@ -322,8 +322,8 @@ func renderCacheDelete(m model, width int) string {
 		return "\n\n" + lipgloss.Place(effW, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	start := clampInt(m.cache.offset, 0, maxInt(len(rows)-height, 0))
-	end := minInt(len(rows), start+height)
+	start := clamp(m.cache.offset, 0, max(len(rows)-height, 0))
+	end := min(len(rows), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
@@ -455,7 +455,7 @@ func (m *model) ensureCacheVisible() {
 	if m.cache.cursor >= m.cache.offset+h {
 		m.cache.offset = m.cache.cursor - h + 1
 	}
-	maxOffset := maxInt(len(rows)-h, 0)
+	maxOffset := max(len(rows)-h, 0)
 	if m.cache.offset > maxOffset {
 		m.cache.offset = maxOffset
 	}

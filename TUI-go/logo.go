@@ -64,7 +64,7 @@ func colorizeLogo(lines []string, blockW int, frame int) []string {
 
 		shift := int(math.Round(math.Sin(float64(frame)*speed+float64(i)*phase+offset) * amp))
 
-		left := clampInt(basePad+shift, 0, extra)
+		left := clamp(basePad+shift, 0, extra)
 		right := extra - left
 
 		// we add spaces to left to move the lines and to the right so that

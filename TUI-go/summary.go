@@ -12,12 +12,12 @@ func renderSummary(cfg config, width int) string {
 		val   string
 	}{
 		{"Wavelength", waveDisplay(cfg.wave)},
-		{"Date Start", prettyValue(cfg.start)},
-		{"Date End", prettyValue(cfg.end)},
-		{"Data Source", prettyValue(cfg.source)},
-		{"Flare Class", prettyValue(cfg.flareClass)},
+		{"Date Start", unsetValue(cfg.start)},
+		{"Date End", unsetValue(cfg.end)},
+		{"Data Source", unsetValue(cfg.source)},
+		{"Flare Class", unsetValue(cfg.flareClass)},
 		{"Comparator", prettyComparator(cfg.comparator)},
-		{"Last Email", prettyValue(cfg.dlEmail)},
+		{"Last Email", unsetValue(cfg.dlEmail)},
 	}
 
 	purple := lipgloss.Color("99")

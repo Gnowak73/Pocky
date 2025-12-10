@@ -38,17 +38,22 @@ func isoToHuman(s string) string {
 }
 
 func centerContent(content string, width int) string {
+	// aftering centering a viewport or "block" of info, the block
+	// will be in the center of the screen but the text will still be
+	// left oriented in the block, so we pad it accordingly
+
 	if width <= 0 {
 		return content
 	}
+
+	// may case uneven splitting for odd widths, keep note
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
 		w := lipgloss.Width(line)
-		if w >= width {
-			continue
+		if w < width {
+			pad := (width - w) / 2
+			lines[i] = strings.Repeat(" ", pad) + line
 		}
-		pad := (width - w) / 2
-		lines[i] = strings.Repeat(" ", pad) + line
 	}
 	return strings.Join(lines, "\n")
 }
@@ -76,50 +81,30 @@ func renderGradientText(text, startHex, endHex string, base lipgloss.Style) stri
 			t = float64(i) / float64(steps-1)
 		}
 		col := start.BlendHcl(end, t)
-		parts = append(parts, base.Copy().Foreground(lipgloss.Color(col.Hex())).Render(string(r)))
+		// we copy the base style because if we pass through the original,
+		// then when we apply the color on the return we are changing the base itself
+		// making all text appear the gradient of the last run-through
+		s := base
+		parts = append(parts, s.Foreground(lipgloss.Color(col.Hex())).Render(string(r)))
 	}
 	return strings.Join(parts, "")
 }
 
-func prettyValue(val string) string {
+func unsetValue(val string) string {
 	if strings.TrimSpace(val) == "" {
 		return "<unset>"
 	}
 	return val
 }
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func clampInt(v, min, max int) int {
-	if v < min {
+func clamp[T int | float64](x, min, max T) T {
+	if x < min {
 		return min
 	}
-	if v > max {
+	if x > max {
 		return max
 	}
-	return v
-}
-
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
+	return x
 }
 
 func validDate(val string) bool {

@@ -169,7 +169,7 @@ func (m model) waveIndexAt(x, y int) (int, bool) {
 
 func renderWavelengthEditor(m model, width int) string {
 	title := summaryHeaderStyle.Copy().Bold(false).Render("Select AIA Wavelength Channels")
-	divWidth := maxInt(lipgloss.Width(title)+6, 32)
+	divWidth := max(lipgloss.Width(title)+6, 32)
 	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
 	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
 

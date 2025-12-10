@@ -103,7 +103,7 @@ func renderMenuWithCache(m model, width int) string {
 			if delta < 0 {
 				delta = 0
 			}
-			heightAnim := minInt(targetHeight, (delta+1)*3)
+			heightAnim := min(targetHeight, (delta+1)*3)
 			if heightAnim < 1 {
 				heightAnim = 1
 			}
@@ -252,7 +252,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 
 	summary := renderSummary(m.cfg, w)
 	header := box + "\n" + versionLine + summary
-	menuTop := maxInt(lipgloss.Height(header)+1, 0)
+	menuTop := max(lipgloss.Height(header)+1, 0)
 
 	var lines []string
 	maxText := 0

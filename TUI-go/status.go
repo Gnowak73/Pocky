@@ -47,7 +47,7 @@ func renderStatus(m model) string {
 		Background(statusKeyStyle.GetBackground()).
 		Render("")
 	infoBox := statusTextStyle.Render(statusLabel)
-	available := maxInt(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
+	available := max(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
 	hints := renderStaticGradientHint("esc to quit", available)
 
 	bar := lipgloss.JoinHorizontal(
@@ -151,7 +151,7 @@ func renderProgress(current, total, width int) string {
 		fillCount = width
 	}
 	filled := strings.Repeat("█", fillCount)
-	empty := strings.Repeat("─", maxInt(width-fillCount, 0))
+	empty := strings.Repeat("─", max(width-fillCount, 0))
 	label := fmt.Sprintf(" %3.0f%%", percent*100)
 	bar := filled + empty
 	if len(label) <= len(bar) {

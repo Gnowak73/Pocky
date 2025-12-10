@@ -18,7 +18,7 @@ func flareViewHeight(m model) int {
 	if len(m.flare.sel.list) == 0 {
 		return 0
 	}
-	return maxInt(7, minInt(12, len(m.flare.sel.list)))
+	return max(7, min(12, len(m.flare.sel.list)))
 }
 
 func (m model) styledFlareRows() []table.Row {
@@ -52,7 +52,7 @@ func (m *model) rebuildFlareTable() {
 	}
 
 	rows := m.styledFlareRows()
-	height := maxInt(7, minInt(12, len(rows)))
+	height := max(7, min(12, len(rows)))
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
@@ -189,8 +189,8 @@ func renderSelectFlares(m model, width int) string {
 func renderSelectFlaresTable(m model, width int, height int) string {
 	// we want to build the flare selection table with distinct columns
 	// and a selectabel SEL column.
-	start := clampInt(m.flare.sel.offset, 0, maxInt(len(m.flare.sel.list)-height, 0))
-	end := minInt(len(m.flare.sel.list), start+height)
+	start := clamp(m.flare.sel.offset, 0, max(len(m.flare.sel.list)-height, 0))
+	end := min(len(m.flare.sel.list), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
@@ -417,7 +417,7 @@ func (m *model) ensureFlareVisible() {
 	if m.flare.sel.cursor >= m.flare.sel.offset+h {
 		m.flare.sel.offset = m.flare.sel.cursor - h + 1
 	}
-	maxOffset := maxInt(len(m.flare.sel.list)-h, 0)
+	maxOffset := max(len(m.flare.sel.list)-h, 0)
 	if m.flare.sel.offset > maxOffset {
 		m.flare.sel.offset = maxOffset
 	}

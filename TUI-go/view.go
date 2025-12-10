@@ -15,7 +15,7 @@ func (m model) View() string {
 		body := renderCacheView(m, m.width)
 		status := renderStatus(m)
 		if m.height > 0 {
-			gap := maxInt(m.height-lipgloss.Height(body)-lipgloss.Height(status), 0)
+			gap := max(m.height-lipgloss.Height(body)-lipgloss.Height(status), 0)
 			return body + strings.Repeat("\n", gap) + status
 		}
 		return body + "\n" + status
@@ -73,7 +73,7 @@ func (m model) View() string {
 	status := renderStatus(m)
 	if m.height > 0 {
 		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
-		gap := maxInt(m.height-contentHeight-lipgloss.Height(status), 0)
+		gap := max(m.height-contentHeight-lipgloss.Height(status), 0)
 		return box + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
 	}
 

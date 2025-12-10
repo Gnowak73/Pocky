@@ -288,8 +288,8 @@ func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cache.pick = make(map[int]bool)
 				m.applyCacheFilter("", m.width)
 				if m.width > 0 && m.height > 0 {
-					m.cache.viewport.Width = maxInt(m.width-6, 20)
-					m.cache.viewport.Height = maxInt(m.height-10, 8)
+					m.cache.viewport.Width = max(m.width-6, 20)
+					m.cache.viewport.Height = max(m.height-10, 8)
 				}
 				m.cache.viewport.SetContent(m.cache.content)
 			} else {
@@ -673,11 +673,11 @@ func (m model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.flare.filter.focus = col
 			switch col {
 			case 0:
-				m.flare.filter.compIdx = clampInt(row, 0, len(m.flare.filter.compDisplays)-1)
+				m.flare.filter.compIdx = clamp(row, 0, len(m.flare.filter.compDisplays)-1)
 			case 1:
-				m.flare.filter.letterIdx = clampInt(row, 0, len(m.flare.filter.classLetters)-1)
+				m.flare.filter.letterIdx = clamp(row, 0, len(m.flare.filter.classLetters)-1)
 			case 2:
-				m.flare.filter.magIdx = clampInt(row, 0, len(m.flare.filter.magnitudes)-1)
+				m.flare.filter.magIdx = clamp(row, 0, len(m.flare.filter.magnitudes)-1)
 			}
 		}
 	}
@@ -793,8 +793,8 @@ func (m model) handleCacheMenuAction(action string) (tea.Model, tea.Cmd) {
 		m.cache.rows = rows
 		m.applyCacheFilter("", m.width)
 		if m.width > 0 && m.height > 0 {
-			m.cache.viewport.Width = maxInt(m.width-6, 20)
-			m.cache.viewport.Height = maxInt(m.height-10, 8)
+			m.cache.viewport.Width = max(m.width-6, 20)
+			m.cache.viewport.Height = max(m.height-10, 8)
 		} else {
 			m.cache.viewport.Width = 80
 			m.cache.viewport.Height = 20
