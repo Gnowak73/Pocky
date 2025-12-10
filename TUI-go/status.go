@@ -109,10 +109,10 @@ func (m model) noticeLine(width int) string {
 	if m.menu.notice == "" {
 		return ""
 	}
-	if m.menu.noticeSet <= 0 {
+	if m.menu.noticeFrame <= 0 {
 		return ""
 	}
-	elapsed := m.frame - m.menu.noticeSet
+	elapsed := m.frame - m.menu.noticeFrame
 	const hold = 10
 	const life = 19
 	if elapsed >= life {

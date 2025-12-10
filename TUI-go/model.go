@@ -25,12 +25,10 @@ type model struct {
 func newModel(logoLines []string, cfg config) model {
 	// set defaults
 
-	// our aim is to take the lines from the logo, put them in an
-	// array, and pass them through our model to color and animate them.
-	// first we need the visual width of the logo as drawn on the TUI,
-	// measurement is in column number (terminals draw based on a grid)
 	blockW := 0
 	for _, l := range logoLines {
+		// the visual width of the logo as drawn by the TUI, measured
+		// as column number (terminal draws based on grid)
 		blockW = max(blockW, lipgloss.Width(l))
 	}
 	colored := colorizeLogo(logoLines, blockW, 0)

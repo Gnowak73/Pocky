@@ -24,6 +24,11 @@ func main() {
 	// we will use the logo and config to initialize our model since
 	// the main menu is build from config + logo + options as a basis
 	m := newModel(logo, cfg)
+
+	// bubbletea will immediate call Init(), then go into a loop of
+	// Update() -> View() for the duration of the program,
+	// it will render only when an update is being put through tea.Msg(),
+	// else it stays static
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	if _, err := p.Run(); err != nil {
 		// for now we don't care about final state, just the error

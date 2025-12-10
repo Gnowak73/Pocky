@@ -106,22 +106,23 @@ type dateEditorState struct {
 }
 
 type menuState struct {
-	items     []string
-	selected  int // index for selected option
-	notice    string
-	noticeSet int // frame counter for notice animation
+	items       []string
+	selected    int // index for selected option
+	notice      string
+	noticeFrame int // frame counter for notice animation
 }
 
-// post model initialization
-type tickMsg struct{}
+// post model build types
+type (
+	tickMsg  struct{}
+	viewMode int
+)
 
 type flaresLoadedMsg struct {
 	entries []flareEntry
 	header  string
 	err     error
 }
-
-type viewMode int
 
 const (
 	modeMain viewMode = iota

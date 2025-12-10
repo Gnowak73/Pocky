@@ -8,35 +8,58 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// The cycle of the TUI is Init() -> return tea.Cmd function -> eval tea.Cmd
+// Then we go into the loop of Update() -> return model + tea.Cmd -> View()
+// -> eval tea.Cmd from Update -> Update()
+
+// Tea will automatically take messages and pass them etc.
+// tea.Cmd is a function type that returns a tea.Msg to tell the TUI to update.
+// We will start with a tick function that will start the initial animations for menus.
+
 func tick() tea.Cmd {
+	// We take the time, plug it into the function, return a tick Msg empty struct
+	// Note that tea.Msg is an empty interfact type, so any type (such as tickMsg)
+	// can be used to satisfy tea.Msg.
+
 	return tea.Tick(time.Millisecond*80, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
 func (m model) Init() tea.Cmd {
+	// to start, we get a tickMsg then we move to Update()
 	return tick()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// we input a message, then return an updated model along with another
+	// message through tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		if msg.Width > 0 && msg.Height > 0 {
-			m.cache.viewport.Width = maxInt(msg.Width-6, 20)
-			m.cache.viewport.Height = maxInt(msg.Height-10, 8)
+			m.cache.viewport.Width = max(msg.Width-6, 20)
+			m.cache.viewport.Height = max(msg.Height-10, 8)
 			if m.mode == modeCacheView && m.cache.content != "" {
+				// we need to to set new content that matches the smaller
+				// window size in view cache
 				m.cache.viewport.SetContent(m.cache.content)
 			}
 		}
 	case tickMsg:
+		// frame is the global animation counter
 		m.frame++
+		// for now we are passing m.logo.lines through each frame. Im sure in
+		// the future we may find a more efficient method
 		m.logo.colored = colorizeLogo(m.logo.lines, m.logo.blockW, m.frame)
-		if m.menu.notice != "" && m.menu.noticeSet > 0 && m.frame-m.menu.noticeSet > 19 {
+		if m.menu.notice != "" && m.menu.noticeFrame > 0 && m.frame-m.menu.noticeFrame > 19 {
 			m.menu.notice = ""
 		}
 		if m.flare.sel.loading && len(m.spinner.frames) > 0 {
 			m.spinner.index = (m.spinner.index + 1) % len(m.spinner.frames)
 		}
+		// if we started with a tickMsg we end by calling another to
+		// keep animations going
 		return m, tick()
 	case flaresLoadedMsg:
 		return m.handleFlaresLoaded(msg)
@@ -53,7 +76,7 @@ func (m model) handleFlaresLoaded(msg flaresLoadedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.flare.sel.loadError = msg.err.Error()
 		m.menu.notice = m.flare.sel.loadError
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		m.mode = modeMain
 		return m, nil
 	}
@@ -62,7 +85,7 @@ func (m model) handleFlaresLoaded(msg flaresLoadedMsg) (tea.Model, tea.Cmd) {
 	m.flare.sel.selected = make(map[int]bool)
 	if len(m.flare.sel.list) == 0 {
 		m.menu.notice = "No flares found."
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		m.mode = modeMain
 		return m, nil
 	}
@@ -168,7 +191,7 @@ func (m model) handleCacheViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeMain
 		m.menu.notice = "Cache view closed"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		return m, nil
 	}
 	var vpCmd tea.Cmd
@@ -216,7 +239,7 @@ func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "left":
 		m.mode = modeMain
 		m.menu.notice = "Canceled cache deletion"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "/":
 		m.cache.searching = true
 		m.cache.searchInput = ""
@@ -251,7 +274,7 @@ func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.cache.pick) == 0 {
 			m.mode = modeMain
 			m.menu.notice = "No rows selected."
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		if err := saveCachePruned(m.cache.header, m.cache.rows, m.cache.pick); err != nil {
@@ -274,7 +297,7 @@ func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cache.pick = make(map[int]bool)
 			}
 		}
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		m.mode = modeMain
 	}
 	return m, nil
@@ -302,7 +325,7 @@ func (m model) handleWavelengthKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeMain
 		m.menu.notice = "Canceled wavelength edit"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "up", "k":
 		if m.wave.focus > 0 {
 			m.wave.focus--
@@ -317,10 +340,10 @@ func (m model) handleWavelengthKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cfg.wave = buildWaveValue(m.wave.options, m.wave.selected)
 		if err := saveConfig(m.cfg); err != nil {
 			m.menu.notice = fmt.Sprintf("Save failed: %v", err)
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 		} else {
 			m.menu.notice = "Wavelength saved"
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 		}
 		m.mode = modeMain
 	}
@@ -335,7 +358,7 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeMain
 		m.menu.notice = "Canceled date edit"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "tab", "down":
 		m.date.focus = 1
 	case "shift+tab", "up":
@@ -351,23 +374,23 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if !validDate(start) || !validDate(end) {
 			m.menu.notice = "Dates must be YYYY-MM-DD"
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		if !chronological(start, end) {
 			m.menu.notice = "Start must be on/before End"
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		m.cfg.start = start
 		m.cfg.end = end
 		if err := saveConfig(m.cfg); err != nil {
 			m.menu.notice = fmt.Sprintf("Save failed: %v", err)
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		m.menu.notice = "Date range saved"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		m.mode = modeMain
 	case "backspace", "delete":
 		if m.date.focus == 0 {
@@ -414,7 +437,7 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeMain
 		m.menu.notice = "Canceled flare filter edit"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "tab", "right", "l":
 		m.flare.filter.focus = (m.flare.filter.focus + 1) % 3
 		m.flare.filter.focusFrame = m.frame
@@ -467,11 +490,11 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if err := saveConfig(m.cfg); err != nil {
 			m.menu.notice = fmt.Sprintf("Save failed: %v", err)
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		m.menu.notice = "Flare filter saved"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 		m.mode = modeMain
 	}
 	return m, nil
@@ -484,7 +507,7 @@ func (m model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeMain
 		m.menu.notice = "Canceled flare selection"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case " ":
 		if m.flare.sel.cursor >= 0 && m.flare.sel.cursor < len(m.flare.sel.list) {
 			m.flare.sel.selected[m.flare.sel.cursor] = !m.flare.sel.selected[m.flare.sel.cursor]
@@ -492,16 +515,16 @@ func (m model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(m.flare.sel.selected) == 0 {
 			m.menu.notice = "No flares selected."
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			m.mode = modeMain
 			break
 		}
 		if err := saveFlareSelection(m.flare.sel.header, m.flare.sel.list, m.flare.sel.selected); err != nil {
 			m.menu.notice = fmt.Sprintf("Save failed: %v", err)
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 		} else {
 			m.menu.notice = fmt.Sprintf("Saved %d flares", len(m.flare.sel.selected))
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 		}
 		m.mode = modeMain
 	case "up", "k":
@@ -693,7 +716,7 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.wave.selected = parseWaves(m.cfg.wave)
 		m.wave.focus = 0
 		m.menu.notice = ""
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "Edit Date Range":
 		m.cache.menuOpen = false
 		m.mode = modeDateRange
@@ -701,7 +724,7 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.date.end = ""
 		m.date.focus = 0
 		m.menu.notice = ""
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "Edit Flare Class Filter":
 		m.cache.menuOpen = false
 		m.mode = modeFlare
@@ -709,21 +732,21 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.flare.filter.focus = 0
 		m.flare.filter.focusFrame = m.frame
 		m.menu.notice = ""
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "Select Flares":
 		if strings.TrimSpace(m.cfg.start) == "" || strings.TrimSpace(m.cfg.end) == "" {
 			m.menu.notice = "Set a date range first."
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		if strings.TrimSpace(m.cfg.wave) == "" {
 			m.menu.notice = "Select at least one wavelength first."
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		if strings.TrimSpace(m.cfg.comparator) == "" {
 			m.menu.notice = "Set a comparator first."
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			break
 		}
 		m.cache.menuOpen = false
@@ -736,19 +759,19 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.flare.sel.list = nil
 		m.flare.sel.header = ""
 		m.menu.notice = ""
-		m.menu.noticeSet = 0
+		m.menu.noticeFrame = 0
 		return m, loadFlaresCmd(m.cfg)
 	case "Cache Options":
 		m.cache.menuOpen = true
 		m.cache.openFrame = m.frame
 		m.cache.selected = 0
 		m.menu.notice = ""
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "Quit":
 		return m, tea.Quit
 	default:
 		m.menu.notice = fmt.Sprintf("Selected: %s (not implemented yet)", choice)
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	}
 	return m, nil
 }
@@ -758,7 +781,7 @@ func (m model) handleCacheMenuAction(action string) (tea.Model, tea.Cmd) {
 	case "Back":
 		m.cache.menuOpen = false
 		m.menu.notice = "Cache menu closed"
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	case "View Cache":
 		header, rows, err := loadCache()
 		m.cache.menuOpen = false
@@ -783,7 +806,7 @@ func (m model) handleCacheMenuAction(action string) (tea.Model, tea.Cmd) {
 		m.cache.menuOpen = false
 		if err != nil || len(rows) == 0 {
 			m.menu.notice = "Cache empty or missing"
-			m.menu.noticeSet = m.frame
+			m.menu.noticeFrame = m.frame
 			return m, nil
 		}
 		m.cache.header = header
@@ -802,7 +825,7 @@ func (m model) handleCacheMenuAction(action string) (tea.Model, tea.Cmd) {
 		} else {
 			m.menu.notice = "Cleared flare cache"
 		}
-		m.menu.noticeSet = m.frame
+		m.menu.noticeFrame = m.frame
 	}
 	return m, nil
 }
