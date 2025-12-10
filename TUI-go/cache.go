@@ -205,11 +205,11 @@ func renderCacheTableString(rows []flareEntry, width int) string {
 	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
 	rowEven := base.Inherit(grayStyle)
 	rowOdd := base.Inherit(lightGrayStyle)
-	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	descStyle := lightGrayStyle
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		BorderStyle(faintGrayStyle).
 		Headers("ROW", "DESC", "CLASS", "START", "END", "COORD", "WAVE")
 
 	for i, r := range rows {
@@ -326,9 +326,9 @@ func renderCacheDelete(m model, width int) string {
 	end := min(len(rows), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
-	rowEven := base.Foreground(lipgloss.Color("245"))
-	rowOdd := base.Foreground(lipgloss.Color("252"))
+	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
+	rowEven := base.Inherit(grayStyle)
+	rowOdd := base.Inherit(veryLightGrayStyle)
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 
@@ -379,7 +379,7 @@ func renderCacheDelete(m model, width int) string {
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		BorderStyle(faintGrayStyle).
 		Headers("SEL", "DESC", "CLASS", "START", "END", "COORD", "WAVE").
 		Rows(tableRows...).
 		StyleFunc(func(row, col int) lipgloss.Style {

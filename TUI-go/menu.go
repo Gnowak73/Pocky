@@ -123,7 +123,7 @@ func renderMenuWithCache(m model, width int) string {
 				top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
 				sub = append(sub, top)
 				for j, subItem := range m.cache.menuItems {
-					sStyle := menuItemStyle.Copy().Foreground(lipgloss.Color("252"))
+					sStyle := veryLightGrayStyle
 					sCursor := "  "
 					if j == m.cache.selected {
 						sStyle = menuSelectedStyle

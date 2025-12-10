@@ -66,6 +66,12 @@ var (
 	pinkOptionStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FFB7D5"))
 
+	faintGrayStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("238"))
+
+	grayBorderStyle = lipgloss.NewStyle().
+			BorderForeground(lipgloss.Color("238"))
+
 	summaryHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#EAEAFF")).
 				Bold(true).

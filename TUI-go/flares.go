@@ -62,21 +62,21 @@ func (m *model) rebuildFlareTable() {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("238")).
+		Inherit(grayBorderStyle).
 		BorderBottom(true).
-		Foreground(lipgloss.Color("252")).
+		Inherit(veryLightGrayStyle).
 		Bold(true).
 		PaddingLeft(1).
 		PaddingRight(1)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("245")).
+		Inherit(grayStyle).
 		Background(lipgloss.Color("")).
 		Bold(false).
 		PaddingLeft(1).
 		PaddingRight(1)
 	s.Cell = s.Cell.
 		Align(lipgloss.Left).
-		Foreground(lipgloss.Color("245")).
+		Inherit(grayStyle).
 		PaddingLeft(1).
 		PaddingRight(1)
 	t.SetStyles(s)
@@ -224,7 +224,7 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		BorderStyle(faintGrayStyle).
 		Headers("SEL", "CLASS", "START", "END", "COORDINATES").
 		Rows(rows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
