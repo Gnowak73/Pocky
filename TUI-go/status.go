@@ -17,7 +17,7 @@ func renderStatus(m model) string {
 	statusLabel := func() string {
 		switch m.mode {
 		case modeMain:
-			if m.cacheMenuOpen {
+			if m.cache.menuOpen {
 				return " Cache Options"
 			}
 			return " Main Menu"
@@ -28,7 +28,7 @@ func renderStatus(m model) string {
 		case modeFlare:
 			return " Edit Flare Class Filter"
 		case modeSelectFlares:
-			if m.flareLoading {
+			if m.flareSelector.loading {
 				return " Loading Flares..."
 			}
 			return " Select Flares"

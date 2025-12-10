@@ -56,9 +56,9 @@ func loadCache() (string, []cacheRow, error) {
 }
 
 func cacheViewHeight(m model) int {
-	n := len(m.cacheRows)
-	if m.mode == modeCacheDelete && (len(m.cacheFiltered) > 0 || m.cacheFilter != "") {
-		n = len(m.cacheFiltered)
+	n := len(m.cache.rows)
+	if m.mode == modeCacheDelete && (len(m.cache.filtered) > 0 || m.cache.filter != "") {
+		n = len(m.cache.filtered)
 	}
 	if n == 0 {
 		return 0
@@ -98,10 +98,10 @@ func (m model) cacheOriginalIndex(filteredIdx int) int {
 	if filteredIdx < 0 {
 		return -1
 	}
-	if len(m.cacheFilterIdx) > 0 && filteredIdx < len(m.cacheFilterIdx) {
-		return m.cacheFilterIdx[filteredIdx]
+	if len(m.cache.filterIdx) > 0 && filteredIdx < len(m.cache.filterIdx) {
+		return m.cache.filterIdx[filteredIdx]
 	}
-	if filteredIdx < len(m.cacheRows) {
+	if filteredIdx < len(m.cache.rows) {
 		return filteredIdx
 	}
 	return -1
@@ -109,15 +109,15 @@ func (m model) cacheOriginalIndex(filteredIdx int) int {
 
 // applyCacheFilter updates filtered rows, cursor bounds, and rendered content.
 func (m *model) applyCacheFilter(query string, width int) {
-	m.cacheFilter = strings.TrimSpace(query)
-	m.cacheFiltered, m.cacheFilterIdx = filterCacheRows(m.cacheRows, m.cacheFilter)
-	if len(m.cacheFiltered) == 0 {
-		m.cacheCursor = 0
-		m.cacheOffset = 0
-	} else if m.cacheCursor >= len(m.cacheFiltered) {
-		m.cacheCursor = len(m.cacheFiltered) - 1
+	m.cache.filter = strings.TrimSpace(query)
+	m.cache.filtered, m.cache.filterIdx = filterCacheRows(m.cache.rows, m.cache.filter)
+	if len(m.cache.filtered) == 0 {
+		m.cache.cursor = 0
+		m.cache.offset = 0
+	} else if m.cache.cursor >= len(m.cache.filtered) {
+		m.cache.cursor = len(m.cache.filtered) - 1
 	}
-	m.cacheContent = renderCacheTableString(m.cacheFiltered, width)
+	m.cache.content = renderCacheTableString(m.cache.filtered, width)
 	m.ensureCacheVisible()
 }
 
@@ -170,7 +170,7 @@ func cacheHeaderView(m model, width int) string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		Padding(0, 1).
 		Render("flare_cache.tsv")
-	line := strings.Repeat("─", maxInt(0, m.cacheViewport.Width-lipgloss.Width(title)))
+	line := strings.Repeat("─", maxInt(0, m.cache.viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
@@ -178,8 +178,8 @@ func cacheFooterView(m model, width int) string {
 	info := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		Padding(0, 1).
-		Render(fmt.Sprintf("%3.0f%%", m.cacheViewport.ScrollPercent()*100))
-	line := strings.Repeat("─", maxInt(0, m.cacheViewport.Width-lipgloss.Width(info)))
+		Render(fmt.Sprintf("%3.0f%%", m.cache.viewport.ScrollPercent()*100))
+	line := strings.Repeat("─", maxInt(0, m.cache.viewport.Width-lipgloss.Width(info)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
 
@@ -189,15 +189,15 @@ func renderCacheTableString(rows []cacheRow, width int) string {
 		width = 80
 	}
 	rowCap, descCap := 4, 3
-	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 8
+	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 18
 	if width > 0 {
 		switch {
 		case width < 70:
-			classCap, startCap, endCap, coordCap, waveCap = 5, 12, 12, 9, 5
+			classCap, startCap, endCap, coordCap, waveCap = 5, 12, 12, 9, 10
 		case width < 90:
-			classCap, startCap, endCap, coordCap, waveCap = 7, 18, 18, 14, 7
+			classCap, startCap, endCap, coordCap, waveCap = 7, 18, 18, 14, 14
 		case width < 110:
-			classCap, startCap, endCap, coordCap, waveCap = 9, 22, 22, 18, 8
+			classCap, startCap, endCap, coordCap, waveCap = 9, 22, 22, 18, 18
 		}
 	}
 	maxWidths := []int{rowCap, descCap, classCap, startCap, endCap, coordCap, waveCap}
@@ -248,23 +248,23 @@ func truncateCell(s string, max int) string {
 }
 
 func renderCacheView(m model, width int) string {
-	rows := m.cacheFiltered
+	rows := m.cache.filtered
 	if rows == nil {
-		rows = m.cacheRows
+		rows = m.cache.rows
 	}
 	availWidth := width
 	if availWidth > 0 {
 		availWidth = maxInt(availWidth-6, 20)
 	}
-	m.cacheContent = renderCacheTableString(rows, availWidth)
-	contentWidth := lipgloss.Width(m.cacheContent)
-	contentHeight := lipgloss.Height(m.cacheContent)
+	m.cache.content = renderCacheTableString(rows, availWidth)
+	contentWidth := lipgloss.Width(m.cache.content)
+	contentHeight := lipgloss.Height(m.cache.content)
 	targetW := minInt(maxInt(contentWidth+2, 20), maxInt(availWidth-2, 20))
 	targetH := minInt(contentHeight+2, maxInt(m.height-10, 5))
-	m.cacheViewport.Width = targetW
-	m.cacheViewport.Height = targetH
-	centered := centerContent(m.cacheContent, m.cacheViewport.Width)
-	m.cacheViewport.SetContent(centered)
+	m.cache.viewport.Width = targetW
+	m.cache.viewport.Height = targetH
+	centered := centerContent(m.cache.content, m.cache.viewport.Width)
+	m.cache.viewport.SetContent(centered)
 
 	header := cacheHeaderView(m, width)
 	footer := cacheFooterView(m, width)
@@ -274,14 +274,14 @@ func renderCacheView(m model, width int) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#8B5EDB")).
 		Padding(0, 1).
-		Width(m.cacheViewport.Width + 2)
+		Width(m.cache.viewport.Width + 2)
 
 	centeredView := lipgloss.Place(
-		m.cacheViewport.Width,
-		lipgloss.Height(m.cacheViewport.View()),
+		m.cache.viewport.Width,
+		lipgloss.Height(m.cache.viewport.View()),
 		lipgloss.Center,
 		lipgloss.Top,
-		m.cacheViewport.View(),
+		m.cache.viewport.View(),
 	)
 
 	mainBlock := box.Render(centeredView)
@@ -304,9 +304,9 @@ func renderCacheView(m model, width int) string {
 func renderCacheDelete(m model, width int) string {
 	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
 	height := cacheViewHeight(m)
-	rows := m.cacheFiltered
+	rows := m.cache.filtered
 	if rows == nil {
-		rows = m.cacheRows
+		rows = m.cache.rows
 	}
 	if len(rows) == 0 {
 		msg := menuHelpStyle.Render("Cache empty.")
@@ -322,7 +322,7 @@ func renderCacheDelete(m model, width int) string {
 		return "\n\n" + lipgloss.Place(effW, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	start := clampInt(m.cacheOffset, 0, maxInt(len(rows)-height, 0))
+	start := clampInt(m.cache.offset, 0, maxInt(len(rows)-height, 0))
 	end := minInt(len(rows), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
@@ -345,15 +345,15 @@ func renderCacheDelete(m model, width int) string {
 		return s[:max-3] + "..."
 	}
 
-	maxClass, maxStart, maxEnd, maxCoord, maxWave := 12, 26, 26, 22, 10
+	maxClass, maxStart, maxEnd, maxCoord, maxWave := 12, 26, 26, 22, 18
 	if width > 0 {
 		switch {
 		case width < 70:
-			maxClass, maxStart, maxEnd, maxCoord, maxWave = 4, 10, 10, 8, 4
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 4, 10, 10, 8, 6
 		case width < 90:
-			maxClass, maxStart, maxEnd, maxCoord, maxWave = 6, 14, 14, 10, 6
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 6, 14, 14, 10, 8
 		case width < 110:
-			maxClass, maxStart, maxEnd, maxCoord, maxWave = 8, 18, 18, 14, 8
+			maxClass, maxStart, maxEnd, maxCoord, maxWave = 8, 18, 18, 14, 11
 		}
 	}
 
@@ -362,7 +362,7 @@ func renderCacheDelete(m model, width int) string {
 		r := rows[i]
 		orig := m.cacheOriginalIndex(i)
 		sel := "[ ]"
-		if orig >= 0 && m.cachePick[orig] {
+		if orig >= 0 && m.cache.pick[orig] {
 			sel = selMark.Render("[x]")
 		}
 		desc := "..."
@@ -387,7 +387,7 @@ func renderCacheDelete(m model, width int) string {
 				return headerStyle
 			}
 			abs := start + row
-			if abs == m.cacheCursor {
+			if abs == m.cache.cursor {
 				return cursorStyle
 			}
 			if abs%2 == 0 {
@@ -397,9 +397,9 @@ func renderCacheDelete(m model, width int) string {
 		})
 
 	tableStr := t.String()
-	searchText := m.cacheFilter
-	if m.cacheSearching {
-		searchText = m.cacheSearchInput + "▌"
+	searchText := m.cache.filter
+	if m.cache.searching {
+		searchText = m.cache.searchInput + "▌"
 	}
 	searchLine := menuHelpStyle.Render(fmt.Sprintf("Search: %s", searchText))
 	help := menuHelpStyle.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
@@ -436,30 +436,30 @@ func renderCacheDelete(m model, width int) string {
 func (m *model) ensureCacheVisible() {
 	h := cacheViewHeight(*m)
 	if h <= 0 {
-		m.cacheOffset = 0
+		m.cache.offset = 0
 		return
 	}
-	rows := m.cacheFiltered
+	rows := m.cache.filtered
 	if rows == nil || m.mode != modeCacheDelete {
-		rows = m.cacheRows
+		rows = m.cache.rows
 	}
-	if m.cacheCursor < 0 {
-		m.cacheCursor = 0
+	if m.cache.cursor < 0 {
+		m.cache.cursor = 0
 	}
-	if m.cacheCursor >= len(rows) {
-		m.cacheCursor = len(rows) - 1
+	if m.cache.cursor >= len(rows) {
+		m.cache.cursor = len(rows) - 1
 	}
-	if m.cacheCursor < m.cacheOffset {
-		m.cacheOffset = m.cacheCursor
+	if m.cache.cursor < m.cache.offset {
+		m.cache.offset = m.cache.cursor
 	}
-	if m.cacheCursor >= m.cacheOffset+h {
-		m.cacheOffset = m.cacheCursor - h + 1
+	if m.cache.cursor >= m.cache.offset+h {
+		m.cache.offset = m.cache.cursor - h + 1
 	}
 	maxOffset := maxInt(len(rows)-h, 0)
-	if m.cacheOffset > maxOffset {
-		m.cacheOffset = maxOffset
+	if m.cache.offset > maxOffset {
+		m.cache.offset = maxOffset
 	}
-	if m.cacheOffset < 0 {
-		m.cacheOffset = 0
+	if m.cache.offset < 0 {
+		m.cache.offset = 0
 	}
 }

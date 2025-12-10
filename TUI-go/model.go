@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -33,32 +32,10 @@ type model struct {
 	flareFilter flareFilterState
 
 	// Flare selection
-	flareList      []flareEntry
-	flareHeader    string
-	flareSelected  map[int]bool
-	flareCursor    int
-	flareOffset    int
-	flareLoading   bool
-	flareLoadError string
-	flareTable     table.Model
+	flareSelector flareSelectorState
 
 	// Cache submenu
-	cacheMenuOpen    bool
-	cacheMenuItems   []string
-	cacheSelected    int
-	cacheOpenFrame   int
-	cacheRows        []cacheRow
-	cacheHeader      string
-	cachePick        map[int]bool
-	cacheCursor      int
-	cacheOffset      int
-	cacheViewport    viewport.Model
-	cacheContent     string
-	cacheFilter      string
-	cacheFiltered    []cacheRow
-	cacheFilterIdx   []int
-	cacheSearching   bool
-	cacheSearchInput string
+	cache cacheSubmenuState
 
 	// Loading animation
 	spinFrames []string
@@ -110,6 +87,24 @@ func newModel(logoLines []string, cfg config) model {
 		focusFrame:   0,
 	}
 
+	flareSelectorDefault := flareSelectorState{
+		selected: make(map[int]bool),
+		offset:   0,
+	}
+
+	cacheMenu := []string{
+		"View Cache",
+		"Delete Rows",
+		"Clear Cache",
+		"Back",
+	}
+
+	cachesubmenuDefault := cacheSubmenuState{
+		menuItems: cacheMenu,
+		pick:      make(map[int]bool),
+		viewport:  viewport.New(80, 20),
+	}
+
 	menu := []string{
 		"Edit Wavelength",
 		"Edit Date Range",
@@ -119,25 +114,16 @@ func newModel(logoLines []string, cfg config) model {
 		"Download FITS",
 		"Quit",
 	}
-	cacheMenu := []string{
-		"View Cache",
-		"Delete Rows",
-		"Clear Cache",
-		"Back",
-	}
 
 	return model{
-		logo:           logoStateDefault,
-		cfg:            cfg,
-		wave:           waveStateDefault,
-		flareFilter:    flareFilterDefault,
-		menuItems:      menu,
-		mode:           modeMain,
-		flareSelected:  make(map[int]bool),
-		spinFrames:     []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
-		flareOffset:    0,
-		cacheMenuItems: cacheMenu,
-		cachePick:      make(map[int]bool),
-		cacheViewport:  viewport.New(80, 20),
+		logo:          logoStateDefault,
+		cfg:           cfg,
+		wave:          waveStateDefault,
+		flareFilter:   flareFilterDefault,
+		menuItems:     menu,
+		mode:          modeMain,
+		flareSelector: flareSelectorDefault,
+		spinFrames:    []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		cache:         cachesubmenuDefault,
 	}
 }

@@ -58,7 +58,7 @@ func (m model) View() string {
 	case modeCacheDelete:
 		body = renderCacheDelete(m, w)
 	default:
-		if m.cacheMenuOpen {
+		if m.cache.menuOpen {
 			body = summary + renderMenuWithCache(m, w)
 		} else {
 			body = summary + renderMenu(m, w)

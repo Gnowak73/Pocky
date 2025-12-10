@@ -22,10 +22,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if msg.Width > 0 && msg.Height > 0 {
-			m.cacheViewport.Width = maxInt(msg.Width-6, 20)
-			m.cacheViewport.Height = maxInt(msg.Height-10, 8)
-			if m.mode == modeCacheView && m.cacheContent != "" {
-				m.cacheViewport.SetContent(m.cacheContent)
+			m.cache.viewport.Width = maxInt(msg.Width-6, 20)
+			m.cache.viewport.Height = maxInt(msg.Height-10, 8)
+			if m.mode == modeCacheView && m.cache.content != "" {
+				m.cache.viewport.SetContent(m.cache.content)
 			}
 		}
 	case tickMsg:
@@ -34,7 +34,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.notice != "" && m.noticeSet > 0 && m.frame-m.noticeSet > 19 {
 			m.notice = ""
 		}
-		if m.flareLoading && len(m.spinFrames) > 0 {
+		if m.flareSelector.loading && len(m.spinFrames) > 0 {
 			m.spinIndex = (m.spinIndex + 1) % len(m.spinFrames)
 		}
 		return m, tick()
@@ -49,25 +49,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleFlaresLoaded(msg flaresLoadedMsg) (tea.Model, tea.Cmd) {
-	m.flareLoading = false
+	m.flareSelector.loading = false
 	if msg.err != nil {
-		m.flareLoadError = msg.err.Error()
-		m.notice = m.flareLoadError
+		m.flareSelector.loadError = msg.err.Error()
+		m.notice = m.flareSelector.loadError
 		m.noticeSet = m.frame
 		m.mode = modeMain
 		return m, nil
 	}
-	m.flareList = msg.entries
-	m.flareHeader = msg.header
-	m.flareSelected = make(map[int]bool)
-	if len(m.flareList) == 0 {
+	m.flareSelector.list = msg.entries
+	m.flareSelector.header = msg.header
+	m.flareSelector.selected = make(map[int]bool)
+	if len(m.flareSelector.list) == 0 {
 		m.notice = "No flares found."
 		m.noticeSet = m.frame
 		m.mode = modeMain
 		return m, nil
 	}
-	m.flareCursor = 0
-	m.flareOffset = 0
+	m.flareSelector.cursor = 0
+	m.flareSelector.offset = 0
 	m.rebuildFlareTable()
 	return m, nil
 }
@@ -99,7 +99,7 @@ func (m model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleMainMouse(msg)
 	case modeCacheView:
 		var cmd tea.Cmd
-		m.cacheViewport, cmd = m.cacheViewport.Update(msg)
+		m.cache.viewport, cmd = m.cache.viewport.Update(msg)
 		return m, cmd
 	case modeCacheDelete:
 		return m.handleCacheDeleteMouse(msg)
@@ -117,26 +117,26 @@ func (m model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // Mode handlers
 
 func (m model) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.cacheMenuOpen {
+	if m.cache.menuOpen {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc", "left":
-			m.cacheMenuOpen = false
+			m.cache.menuOpen = false
 			return m, nil
 		case "up", "k":
-			if m.cacheSelected > 0 {
-				m.cacheSelected--
+			if m.cache.selected > 0 {
+				m.cache.selected--
 			}
 			return m, nil
 		case "down", "j":
-			if m.cacheSelected < len(m.cacheMenuItems)-1 {
-				m.cacheSelected++
+			if m.cache.selected < len(m.cache.menuItems)-1 {
+				m.cache.selected++
 			}
 			return m, nil
 		case "enter", " ":
-			if m.cacheSelected >= 0 && m.cacheSelected < len(m.cacheMenuItems) {
-				return m.handleCacheMenuAction(m.cacheMenuItems[m.cacheSelected])
+			if m.cache.selected >= 0 && m.cache.selected < len(m.cache.menuItems) {
+				return m.handleCacheMenuAction(m.cache.menuItems[m.cache.selected])
 			}
 			return m, nil
 		}
@@ -172,39 +172,39 @@ func (m model) handleCacheViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	var vpCmd tea.Cmd
-	m.cacheViewport, vpCmd = m.cacheViewport.Update(msg)
+	m.cache.viewport, vpCmd = m.cache.viewport.Update(msg)
 	return m, vpCmd
 }
 
 func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.cacheSearching {
+	if m.cache.searching {
 		switch msg.Type {
 		case tea.KeyEsc:
-			m.cacheSearching = false
-			m.cacheSearchInput = ""
+			m.cache.searching = false
+			m.cache.searchInput = ""
 			m.applyCacheFilter("", m.width)
 			m.ensureCacheVisible()
 			return m, nil
 		case tea.KeyEnter:
-			m.cacheSearching = false
-			m.applyCacheFilter(m.cacheSearchInput, m.width)
+			m.cache.searching = false
+			m.applyCacheFilter(m.cache.searchInput, m.width)
 			m.ensureCacheVisible()
 			return m, nil
 		case tea.KeyBackspace:
-			if len(m.cacheSearchInput) > 0 {
-				m.cacheSearchInput = m.cacheSearchInput[:len(m.cacheSearchInput)-1]
-				m.applyCacheFilter(m.cacheSearchInput, m.width)
+			if len(m.cache.searchInput) > 0 {
+				m.cache.searchInput = m.cache.searchInput[:len(m.cache.searchInput)-1]
+				m.applyCacheFilter(m.cache.searchInput, m.width)
 				m.ensureCacheVisible()
 			}
 			return m, nil
 		case tea.KeyRunes:
-			m.cacheSearchInput += msg.String()
-			m.applyCacheFilter(m.cacheSearchInput, m.width)
+			m.cache.searchInput += msg.String()
+			m.applyCacheFilter(m.cache.searchInput, m.width)
 			m.ensureCacheVisible()
 			return m, nil
 		case tea.KeySpace:
-			m.cacheSearchInput += " "
-			m.applyCacheFilter(m.cacheSearchInput, m.width)
+			m.cache.searchInput += " "
+			m.applyCacheFilter(m.cache.searchInput, m.width)
 			m.ensureCacheVisible()
 			return m, nil
 		}
@@ -218,60 +218,60 @@ func (m model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.notice = "Canceled cache deletion"
 		m.noticeSet = m.frame
 	case "/":
-		m.cacheSearching = true
-		m.cacheSearchInput = ""
-		m.cacheCursor = 0
-		m.cacheOffset = 0
+		m.cache.searching = true
+		m.cache.searchInput = ""
+		m.cache.cursor = 0
+		m.cache.offset = 0
 		return m, nil
 	case "up", "k":
-		if m.cacheCursor > 0 {
-			m.cacheCursor--
+		if m.cache.cursor > 0 {
+			m.cache.cursor--
 			m.ensureCacheVisible()
 		}
 	case "down", "j":
-		rows := m.cacheFiltered
+		rows := m.cache.filtered
 		if rows == nil {
-			rows = m.cacheRows
+			rows = m.cache.rows
 		}
-		if m.cacheCursor < len(rows)-1 {
-			m.cacheCursor++
+		if m.cache.cursor < len(rows)-1 {
+			m.cache.cursor++
 			m.ensureCacheVisible()
 		}
 	case "tab":
-		rows := m.cacheFiltered
+		rows := m.cache.filtered
 		if rows == nil {
-			rows = m.cacheRows
+			rows = m.cache.rows
 		}
-		if m.cacheCursor >= 0 && m.cacheCursor < len(rows) {
-			if idx := m.cacheOriginalIndex(m.cacheCursor); idx >= 0 {
-				m.cachePick[idx] = !m.cachePick[idx]
+		if m.cache.cursor >= 0 && m.cache.cursor < len(rows) {
+			if idx := m.cacheOriginalIndex(m.cache.cursor); idx >= 0 {
+				m.cache.pick[idx] = !m.cache.pick[idx]
 			}
 		}
 	case "enter":
-		if len(m.cachePick) == 0 {
+		if len(m.cache.pick) == 0 {
 			m.mode = modeMain
 			m.notice = "No rows selected."
 			m.noticeSet = m.frame
 			break
 		}
-		if err := saveCachePruned(m.cacheHeader, m.cacheRows, m.cachePick); err != nil {
+		if err := saveCachePruned(m.cache.header, m.cache.rows, m.cache.pick); err != nil {
 			m.notice = fmt.Sprintf("Delete failed: %v", err)
 		} else {
-			m.notice = fmt.Sprintf("Deleted %d rows", len(m.cachePick))
+			m.notice = fmt.Sprintf("Deleted %d rows", len(m.cache.pick))
 			header, rows, err := loadCache()
 			if err == nil {
-				m.cacheHeader = header
-				m.cacheRows = rows
-				m.cachePick = make(map[int]bool)
+				m.cache.header = header
+				m.cache.rows = rows
+				m.cache.pick = make(map[int]bool)
 				m.applyCacheFilter("", m.width)
 				if m.width > 0 && m.height > 0 {
-					m.cacheViewport.Width = maxInt(m.width-6, 20)
-					m.cacheViewport.Height = maxInt(m.height-10, 8)
+					m.cache.viewport.Width = maxInt(m.width-6, 20)
+					m.cache.viewport.Height = maxInt(m.height-10, 8)
 				}
-				m.cacheViewport.SetContent(m.cacheContent)
+				m.cache.viewport.SetContent(m.cache.content)
 			} else {
-				m.cacheRows = nil
-				m.cachePick = make(map[int]bool)
+				m.cache.rows = nil
+				m.cache.pick = make(map[int]bool)
 			}
 		}
 		m.noticeSet = m.frame
@@ -486,32 +486,32 @@ func (m model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.notice = "Canceled flare selection"
 		m.noticeSet = m.frame
 	case " ":
-		if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
-			m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
+		if m.flareSelector.cursor >= 0 && m.flareSelector.cursor < len(m.flareSelector.list) {
+			m.flareSelector.selected[m.flareSelector.cursor] = !m.flareSelector.selected[m.flareSelector.cursor]
 		}
 	case "enter":
-		if len(m.flareSelected) == 0 {
+		if len(m.flareSelector.selected) == 0 {
 			m.notice = "No flares selected."
 			m.noticeSet = m.frame
 			m.mode = modeMain
 			break
 		}
-		if err := saveFlareSelection(m.flareHeader, m.flareList, m.flareSelected); err != nil {
+		if err := saveFlareSelection(m.flareSelector.header, m.flareSelector.list, m.flareSelector.selected); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
 			m.noticeSet = m.frame
 		} else {
-			m.notice = fmt.Sprintf("Saved %d flares", len(m.flareSelected))
+			m.notice = fmt.Sprintf("Saved %d flares", len(m.flareSelector.selected))
 			m.noticeSet = m.frame
 		}
 		m.mode = modeMain
 	case "up", "k":
-		if m.flareCursor > 0 {
-			m.flareCursor--
+		if m.flareSelector.cursor > 0 {
+			m.flareSelector.cursor--
 		}
 		m.ensureFlareVisible()
 	case "down", "j":
-		if m.flareCursor < len(m.flareList)-1 {
-			m.flareCursor++
+		if m.flareSelector.cursor < len(m.flareSelector.list)-1 {
+			m.flareSelector.cursor++
 		}
 		m.ensureFlareVisible()
 	}
@@ -521,23 +521,23 @@ func (m model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Mouse handlers
 
 func (m model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.cacheMenuOpen {
+	if m.cache.menuOpen {
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			if m.cacheSelected > 0 {
-				m.cacheSelected--
+			if m.cache.selected > 0 {
+				m.cache.selected--
 			}
 		case tea.MouseButtonWheelDown:
-			if m.cacheSelected < len(m.cacheMenuItems)-1 {
-				m.cacheSelected++
+			if m.cache.selected < len(m.cache.menuItems)-1 {
+				m.cache.selected++
 			}
 		case tea.MouseButtonNone:
 			if idx, ok := m.cacheMenuIndexAt(msg.X, msg.Y); ok {
-				m.cacheSelected = idx
+				m.cache.selected = idx
 			}
 		case tea.MouseButtonLeft:
 			if msg.Action == tea.MouseActionRelease {
-				return m.handleCacheMenuAction(m.cacheMenuItems[m.cacheSelected])
+				return m.handleCacheMenuAction(m.cache.menuItems[m.cache.selected])
 			}
 		}
 		return m, nil
@@ -545,7 +545,7 @@ func (m model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
 		if idx, ok := m.cacheMenuIndexAt(msg.X, msg.Y); ok {
-			m.cacheSelected = idx
+			m.cache.selected = idx
 			return m, nil
 		}
 		if idx, ok := m.menuIndexAt(msg.X, msg.Y); ok {
@@ -575,19 +575,19 @@ func (m model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleCacheDeleteMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		if m.cacheCursor > 0 {
-			m.cacheCursor--
+		if m.cache.cursor > 0 {
+			m.cache.cursor--
 			m.ensureCacheVisible()
 		}
 	case tea.MouseButtonWheelDown:
-		if m.cacheCursor < len(m.cacheRows)-1 {
-			m.cacheCursor++
+		if m.cache.cursor < len(m.cache.rows)-1 {
+			m.cache.cursor++
 			m.ensureCacheVisible()
 		}
 	case tea.MouseButtonLeft:
 		if msg.Action == tea.MouseActionRelease {
-			if m.cacheCursor >= 0 && m.cacheCursor < len(m.cacheRows) {
-				m.cachePick[m.cacheCursor] = !m.cachePick[m.cacheCursor]
+			if m.cache.cursor >= 0 && m.cache.cursor < len(m.cache.rows) {
+				m.cache.pick[m.cache.cursor] = !m.cache.pick[m.cache.cursor]
 			}
 		}
 	}
@@ -664,19 +664,19 @@ func (m model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleSelectFlaresMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		if m.flareCursor > 0 {
-			m.flareCursor--
+		if m.flareSelector.cursor > 0 {
+			m.flareSelector.cursor--
 			m.ensureFlareVisible()
 		}
 	case tea.MouseButtonWheelDown:
-		if m.flareCursor < len(m.flareList)-1 {
-			m.flareCursor++
+		if m.flareSelector.cursor < len(m.flareSelector.list)-1 {
+			m.flareSelector.cursor++
 			m.ensureFlareVisible()
 		}
 	case tea.MouseButtonLeft:
 		if msg.Action == tea.MouseActionRelease {
-			if m.flareCursor >= 0 && m.flareCursor < len(m.flareList) {
-				m.flareSelected[m.flareCursor] = !m.flareSelected[m.flareCursor]
+			if m.flareSelector.cursor >= 0 && m.flareSelector.cursor < len(m.flareSelector.list) {
+				m.flareSelector.selected[m.flareSelector.cursor] = !m.flareSelector.selected[m.flareSelector.cursor]
 			}
 		}
 	}
@@ -688,14 +688,14 @@ func (m model) handleSelectFlaresMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	switch choice {
 	case "Edit Wavelength":
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		m.mode = modeWavelength
 		m.wave.selected = parseWaves(m.cfg.wave)
 		m.wave.focus = 0
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Edit Date Range":
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		m.mode = modeDateRange
 		m.dateStart = ""
 		m.dateEnd = ""
@@ -703,7 +703,7 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Edit Flare Class Filter":
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		m.mode = modeFlare
 		m.flareFilter.compIdx, m.flareFilter.letterIdx, m.flareFilter.magIdx = parseFlareSelection(m.cfg, m.flareFilter.comps, m.flareFilter.classLetters)
 		m.flareFilter.focus = 0
@@ -726,22 +726,22 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 			m.noticeSet = m.frame
 			break
 		}
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		m.mode = modeSelectFlares
-		m.flareLoading = true
-		m.flareLoadError = ""
-		m.flareSelected = make(map[int]bool)
-		m.flareCursor = 0
-		m.flareOffset = 0
-		m.flareList = nil
-		m.flareHeader = ""
+		m.flareSelector.loading = true
+		m.flareSelector.loadError = ""
+		m.flareSelector.selected = make(map[int]bool)
+		m.flareSelector.cursor = 0
+		m.flareSelector.offset = 0
+		m.flareSelector.list = nil
+		m.flareSelector.header = ""
 		m.notice = ""
 		m.noticeSet = 0
 		return m, loadFlaresCmd(m.cfg)
 	case "Cache Options":
-		m.cacheMenuOpen = true
-		m.cacheOpenFrame = m.frame
-		m.cacheSelected = 0
+		m.cache.menuOpen = true
+		m.cache.openFrame = m.frame
+		m.cache.selected = 0
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Quit":
@@ -756,47 +756,47 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 func (m model) handleCacheMenuAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
 	case "Back":
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		m.notice = "Cache menu closed"
 		m.noticeSet = m.frame
 	case "View Cache":
 		header, rows, err := loadCache()
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		if err != nil {
 			header = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
 			rows = nil
 		}
-		m.cacheHeader = header
-		m.cacheRows = rows
+		m.cache.header = header
+		m.cache.rows = rows
 		m.applyCacheFilter("", m.width)
 		if m.width > 0 && m.height > 0 {
-			m.cacheViewport.Width = maxInt(m.width-6, 20)
-			m.cacheViewport.Height = maxInt(m.height-10, 8)
+			m.cache.viewport.Width = maxInt(m.width-6, 20)
+			m.cache.viewport.Height = maxInt(m.height-10, 8)
 		} else {
-			m.cacheViewport.Width = 80
-			m.cacheViewport.Height = 20
+			m.cache.viewport.Width = 80
+			m.cache.viewport.Height = 20
 		}
-		m.cacheViewport.SetContent(m.cacheContent)
+		m.cache.viewport.SetContent(m.cache.content)
 		m.mode = modeCacheView
 	case "Delete Rows":
 		header, rows, err := loadCache()
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		if err != nil || len(rows) == 0 {
 			m.notice = "Cache empty or missing"
 			m.noticeSet = m.frame
 			return m, nil
 		}
-		m.cacheHeader = header
-		m.cacheRows = rows
+		m.cache.header = header
+		m.cache.rows = rows
 		m.applyCacheFilter("", m.width)
-		m.cacheSearching = true
-		m.cacheSearchInput = ""
-		m.cacheCursor = 0
-		m.cacheOffset = 0
-		m.cachePick = make(map[int]bool)
+		m.cache.searching = true
+		m.cache.searchInput = ""
+		m.cache.cursor = 0
+		m.cache.offset = 0
+		m.cache.pick = make(map[int]bool)
 		m.mode = modeCacheDelete
 	case "Clear Cache":
-		m.cacheMenuOpen = false
+		m.cache.menuOpen = false
 		if _, err := clearCacheFile(); err != nil {
 			m.notice = fmt.Sprintf("Clear failed: %v", err)
 		} else {

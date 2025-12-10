@@ -90,16 +90,16 @@ func renderMenuWithCache(m model, width int) string {
 		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
 		lines = append(lines, line)
 
-		if item == "Cache Options" && m.cacheMenuOpen {
+		if item == "Cache Options" && m.cache.menuOpen {
 			maxCache := 0
-			for _, it := range m.cacheMenuItems {
+			for _, it := range m.cache.menuItems {
 				if w := lipgloss.Width(it); w > maxCache {
 					maxCache = w
 				}
 			}
 			innerWidth := maxCache + 4
-			targetHeight := len(m.cacheMenuItems) + 2
-			delta := m.frame - m.cacheOpenFrame
+			targetHeight := len(m.cache.menuItems) + 2
+			delta := m.frame - m.cache.openFrame
 			if delta < 0 {
 				delta = 0
 			}
@@ -122,10 +122,10 @@ func renderMenuWithCache(m model, width int) string {
 				var sub []string
 				top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
 				sub = append(sub, top)
-				for j, subItem := range m.cacheMenuItems {
+				for j, subItem := range m.cache.menuItems {
 					sStyle := menuItemStyle.Copy().Foreground(lipgloss.Color("252"))
 					sCursor := "  "
-					if j == m.cacheSelected {
+					if j == m.cache.selected {
 						sStyle = menuSelectedStyle
 						sCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("» ")
 					}
@@ -229,7 +229,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 
 // cacheMenuIndexAt maps mouse coords to a cache submenu item when open.
 func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
-	if !m.cacheMenuOpen || m.mode != modeMain {
+	if !m.cache.menuOpen || m.mode != modeMain {
 		return 0, false
 	}
 
@@ -272,14 +272,14 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 		if item == "Cache Options" {
 			cacheOptLine = len(lines) - 1
 			maxCache := 0
-			for _, it := range m.cacheMenuItems {
+			for _, it := range m.cache.menuItems {
 				if w := lipgloss.Width(it); w > maxCache {
 					maxCache = w
 				}
 			}
 			innerWidth := maxCache + 4
 			lines = append(lines, "   ╭"+strings.Repeat("─", innerWidth)+"╮")
-			for _, subItem := range m.cacheMenuItems {
+			for _, subItem := range m.cache.menuItems {
 				sLine := "  " + menuItemStyle.Render(subItem)
 				if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
 					sLine += strings.Repeat(" ", pad)
@@ -302,11 +302,11 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 	relativeY := y - menuTop
 	subStart := cacheOptLine + 1
 	itemStart := subStart + 1
-	if relativeY < itemStart || relativeY >= itemStart+len(m.cacheMenuItems) {
+	if relativeY < itemStart || relativeY >= itemStart+len(m.cache.menuItems) {
 		return 0, false
 	}
 	idx := relativeY - itemStart
-	if idx < 0 || idx >= len(m.cacheMenuItems) {
+	if idx < 0 || idx >= len(m.cache.menuItems) {
 		return 0, false
 	}
 	return idx, true
