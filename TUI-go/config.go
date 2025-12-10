@@ -38,11 +38,11 @@ func loadConfig() config {
 		case "SOURCE":
 			cfg.Source = val
 		case "FLARE_CLASS":
-			cfg.Flare_Class = val
+			cfg.FlareClass = val
 		case "COMPARATOR":
 			cfg.Comparator = val
 		case "DL_EMAIL":
-			cfg.Dl_email = val
+			cfg.Dlemail = val
 		}
 	}
 	return cfg
@@ -59,9 +59,9 @@ func saveConfig(cfg config) error {
 	fmt.Fprintf(&b, "START=\"%s\"\n", cfg.Start)
 	fmt.Fprintf(&b, "END=\"%s\"\n", cfg.End)
 	fmt.Fprintf(&b, "SOURCE=\"%s\"\n", cfg.Source)
-	fmt.Fprintf(&b, "FLARE_CLASS=\"%s\"\n", cfg.Flare_Class)
+	fmt.Fprintf(&b, "FLARE_CLASS=\"%s\"\n", cfg.FlareClass)
 	fmt.Fprintf(&b, "COMPARATOR=\"%s\"\n", cfg.Comparator)
-	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.Dl_email)
+	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.Dlemail)
 
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {

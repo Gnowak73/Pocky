@@ -442,7 +442,7 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		switch m.flareFocus {
 		case 0:
-			if m.flareCompIdx < len(m.flareCompOptions)-1 {
+			if m.flareCompIdx < len(m.flareCompDisplays)-1 {
 				m.flareCompIdx++
 			}
 		case 1:
@@ -455,19 +455,15 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		comp := m.flareCompOptions[m.flareCompIdx]
-		compVal := m.flareCompMap[comp]
-		if compVal == "" {
-			compVal = comp
-		}
+		compVal := m.flareComps[m.flareCompIdx].value
 		letter := m.flareClassLetters[m.flareLetterIdx]
 		mag := m.flareMagnitudes[m.flareMagIdx]
 		if compVal == "All" {
 			m.cfg.Comparator = "All"
-			m.cfg.Flare_Class = "Any"
+			m.cfg.FlareClass = "Any"
 		} else {
 			m.cfg.Comparator = compVal
-			m.cfg.Flare_Class = fmt.Sprintf("%s%s", letter, mag)
+			m.cfg.FlareClass = fmt.Sprintf("%s%s", letter, mag)
 		}
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
@@ -637,7 +633,7 @@ func (m model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelDown:
 		switch m.flareFocus {
 		case 0:
-			if m.flareCompIdx < len(m.flareCompOptions)-1 {
+			if m.flareCompIdx < len(m.flareCompDisplays)-1 {
 				m.flareCompIdx++
 			}
 		case 1:
@@ -654,7 +650,7 @@ func (m model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.flareFocus = col
 			switch col {
 			case 0:
-				m.flareCompIdx = clampInt(row, 0, len(m.flareCompOptions)-1)
+				m.flareCompIdx = clampInt(row, 0, len(m.flareCompDisplays)-1)
 			case 1:
 				m.flareLetterIdx = clampInt(row, 0, len(m.flareClassLetters)-1)
 			case 2:
@@ -709,7 +705,7 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Flare Class Filter":
 		m.cacheMenuOpen = false
 		m.mode = modeFlare
-		m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters)
+		m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareComps, m.flareClassLetters)
 		m.flareFocus = 0
 		m.flareFocusFrame = m.frame
 		m.notice = ""

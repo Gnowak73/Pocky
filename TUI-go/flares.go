@@ -274,7 +274,7 @@ func loadFlaresCmd(cfg config) tea.Cmd {
 			return flaresLoadedMsg{err: fmt.Errorf("missing required fields")}
 		}
 
-		flareClass := cfg.Flare_Class
+		flareClass := cfg.FlareClass
 		if strings.TrimSpace(flareClass) == "" {
 			flareClass = "A0.0"
 		}

@@ -142,3 +142,11 @@ func chronological(start, end string) bool {
 	}
 	return !s.After(e)
 }
+
+func comparatorDisplayList(comp []comparator) []string {
+	out := make([]string, len(comp))
+	for i, c := range comp {
+		out[i] = c.display
+	}
+	return out
+}

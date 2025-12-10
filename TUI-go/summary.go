@@ -15,9 +15,9 @@ func renderSummary(cfg config, width int) string {
 		{"Date Start", prettyValue(cfg.Start)},
 		{"Date End", prettyValue(cfg.End)},
 		{"Data Source", prettyValue(cfg.Source)},
-		{"Flare Class", prettyValue(cfg.Flare_Class)},
+		{"Flare Class", prettyValue(cfg.FlareClass)},
 		{"Comparator", prettyComparator(cfg.Comparator)},
-		{"Last Email", prettyValue(cfg.Dl_email)},
+		{"Last Email", prettyValue(cfg.Dlemail)},
 	}
 
 	purple := lipgloss.Color("99")

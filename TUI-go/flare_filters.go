@@ -7,19 +7,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func defaultComparator() ([]string, map[string]string) {
-	// We need a map to make get copmarator from unicode geq leq,
-	// and return copy of defaults
-	opts := []string{">", "≥", "==", "≤", "<", "All"}
-	m := map[string]string{
-		">":   ">",
-		"≥":   ">=",
-		"==":  "==",
-		"≤":   "<=",
-		"<":   "<",
-		"All": "All",
+func defaultComparator() []comparator {
+	// Instead of map, we make comparators a struct for ascii and
+	// unicode values
+	comp := []comparator{
+		{">", ">"},
+		{"≥", ">="},
+		{"==", "=="},
+		{"≤", "<="},
+		{"<", "<"},
+		{"All", "All"},
 	}
-	return opts, m
+	return comp
 }
 
 func defaultClassLetters() []string {
@@ -37,7 +36,7 @@ func defaultMagnitudes() []string {
 	return mags
 }
 
-func parseFlareSelection(cfg config, compOpts []string, compMap map[string]string, letters []string) (int, int, int) {
+func parseFlareSelection(cfg config, comps []comparator, letters []string) (int, int, int) {
 	// we input the config, comparator options/map, GOES letters, and magnitudes
 	// our goal is to find the index for the magnitude, comprator, and goes letter
 	// These indexes will be used to create scrolling windows in TUI selection
@@ -46,14 +45,14 @@ func parseFlareSelection(cfg config, compOpts []string, compMap map[string]strin
 	magIdx := 0
 
 	currentComp := strings.TrimSpace(cfg.Comparator)
-	currentClass := strings.TrimSpace(cfg.Flare_Class)
+	currentClass := strings.TrimSpace(cfg.FlareClass)
 
 	// looping over 4-5 values for compatator and class isnt bad, but when we get
 	// to the 100 digits, we can just take the string, subtract '0' to transform
 	// ascii value to number, and multiply by 10 since x.y it at index xy
 
-	for i, opt := range compOpts {
-		if opt == currentComp {
+	for i, c := range comps {
+		if c.value == currentComp {
 			compIdx = i
 			break
 		}
@@ -162,7 +161,7 @@ func renderFlareColumns(m model) []string {
 			Render(content)
 	}
 
-	compCol := renderColumn("Comparator", m.flareCompOptions, m.flareCompIdx, m.flareFocus == 0, len(m.flareCompOptions))
+	compCol := renderColumn("Comparator", m.flareCompDisplays, m.flareCompIdx, m.flareFocus == 0, len(m.flareCompDisplays))
 	letCol := renderColumn("GOES Class", m.flareClassLetters, m.flareLetterIdx, m.flareFocus == 1, len(m.flareClassLetters))
 	magCol := renderColumn("Magnitude (Scroll)", m.flareMagnitudes, m.flareMagIdx, m.flareFocus == 2, 9)
 
@@ -296,9 +295,9 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 	var start, window, maxRows int
 	switch colIdx {
 	case 0:
-		window = len(m.flareCompOptions)
+		window = len(m.flareCompDisplays)
 		start = 0
-		maxRows = len(m.flareCompOptions)
+		maxRows = len(m.flareCompDisplays)
 	case 1:
 		window = len(m.flareClassLetters)
 		start = 0

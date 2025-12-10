@@ -28,8 +28,8 @@ type model struct {
 	waveFocus    int
 
 	// Flare filter editor
-	flareCompOptions  []string
-	flareCompMap      map[string]string
+	flareComps        []comparator
+	flareCompDisplays []string // dont want to compute display list every render
 	flareClassLetters []string
 	flareMagnitudes   []string
 	flareFocus        int // 0=comp,1=letter,2=mag
@@ -93,10 +93,10 @@ func newModel(logo []string, cfg config) model {
 	// we need to grab current defaults for runtime
 	waveOpts := defaultWaveOptions()
 	selected := parseWaves(cfg.Wave)
-	compOpts, compMap := defaultComparator()
+	comp := defaultComparator()
 	letters := defaultClassLetters()
 	mags := defaultMagnitudes()
-	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, compOpts, compMap, letters)
+	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, comp, letters)
 
 	menu := []string{
 		"Edit Wavelength",
@@ -123,8 +123,8 @@ func newModel(logo []string, cfg config) model {
 		mode:              modeMain,
 		waveOptions:       waveOpts,
 		waveSelected:      selected,
-		flareCompOptions:  compOpts,
-		flareCompMap:      compMap,
+		flareComps:        comp,
+		flareCompDisplays: comparatorDisplayList(comp),
 		flareClassLetters: letters,
 		flareMagnitudes:   mags,
 		flareCompIdx:      compIdx,
