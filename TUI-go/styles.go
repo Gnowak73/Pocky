@@ -53,11 +53,6 @@ var (
 	menuHelpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 
-	summaryLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FFB7D5")).
-				Width(12).
-				Align(lipgloss.Right)
-
 	summaryValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FFB7D5"))
 
@@ -66,11 +61,4 @@ var (
 				Bold(true).
 				Padding(0, 1).
 				Align(lipgloss.Center)
-
-	summaryBodyStyle = lipgloss.NewStyle().
-				Padding(0, 1).
-				Align(lipgloss.Left)
-
-	summaryBorderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#3A3A3A"))
 )
