@@ -190,7 +190,7 @@ func renderWavelengthEditor(m model, width int) string {
 			check,
 			" ",
 			codeStyle.Render(opt.code+"Å"),
-			menuHelpStyle.Render("  │  "),
+			lightGrayStyle.Render("  │  "),
 			descStyle.Render(opt.desc),
 		)
 		if i == m.wave.focus {
@@ -201,7 +201,7 @@ func renderWavelengthEditor(m model, width int) string {
 
 	list := strings.Join(rows, "\n")
 	list = " " + strings.ReplaceAll(list, "\n", "\n ")
-	help := menuHelpStyle.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
+	help := lightGrayStyle.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
 
 	block := lipgloss.JoinVertical(lipgloss.Left,
 		titleBlock,

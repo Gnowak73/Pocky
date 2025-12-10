@@ -107,8 +107,8 @@ func prettyComparator(val string) string {
 }
 
 func renderFlareColumns(m model) []string {
-	headerStyle := menuHelpStyle.Copy()
-	itemStyle := summaryValueStyle.Copy()
+	headerStyle := lightGrayStyle.Copy()
+	itemStyle := pinkOptionStyle.Copy()
 	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 	focusBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -202,7 +202,7 @@ func renderFlareEditor(m model, width int) string {
 
 	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
 
-	help := menuHelpStyle.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
+	help := lightGrayStyle.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
 
 	if width <= 0 {
 		return "\n\n" + block + "\n\n" + help

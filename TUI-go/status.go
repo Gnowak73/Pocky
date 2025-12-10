@@ -159,5 +159,5 @@ func renderProgress(current, total, width int) string {
 	} else {
 		bar += label
 	}
-	return menuHelpStyle.Render(bar)
+	return lightGrayStyle.Render(bar)
 }

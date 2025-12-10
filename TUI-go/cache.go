@@ -202,9 +202,9 @@ func renderCacheTableString(rows []flareEntry, width int) string {
 	}
 	maxWidths := []int{rowCap, descCap, classCap, startCap, endCap, coordCap, waveCap}
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
-	rowEven := base.Foreground(lipgloss.Color("245"))
-	rowOdd := base.Foreground(lipgloss.Color("241"))
+	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
+	rowEven := base.Inherit(grayStyle)
+	rowOdd := base.Inherit(lightGrayStyle)
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	t := lgtbl.New().
@@ -268,7 +268,7 @@ func renderCacheView(m model, width int) string {
 
 	header := cacheHeaderView(m, width)
 	footer := cacheFooterView(m, width)
-	help := menuHelpStyle.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
+	help := lightGrayStyle.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -309,7 +309,7 @@ func renderCacheDelete(m model, width int) string {
 		rows = m.cache.rows
 	}
 	if len(rows) == 0 {
-		msg := menuHelpStyle.Render("Cache empty.")
+		msg := lightGrayStyle.Render("Cache empty.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		bw := lipgloss.Width(block)
 		effW := width
@@ -401,8 +401,8 @@ func renderCacheDelete(m model, width int) string {
 	if m.cache.searching {
 		searchText = m.cache.searchInput + "▌"
 	}
-	searchLine := menuHelpStyle.Render(fmt.Sprintf("Search: %s", searchText))
-	help := menuHelpStyle.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
+	searchLine := lightGrayStyle.Render(fmt.Sprintf("Search: %s", searchText))
+	help := lightGrayStyle.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
 	innerW := lipgloss.Width(tableStr)
 	if w := lipgloss.Width(title); w > innerW {
 		innerW = w

@@ -29,9 +29,13 @@ var (
 			MarginRight(1).
 			Bold(true)
 
+		// We inherits the base status bar style so we can
+		// customize the text separately in the future.
 	statusTextStyle = lipgloss.NewStyle().
 			Inherit(statusBarStyle)
 
+	// later this will be blending with a gradient, so this is just the base
+	// color
 	statusHintStyle = lipgloss.NewStyle().
 			Inherit(statusBarStyle).
 			Foreground(lipgloss.Color("#D147FF")).
@@ -50,11 +54,17 @@ var (
 	menuSelectedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#F785D1"))
 
-	menuHelpStyle = lipgloss.NewStyle().
+	grayStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245"))
+
+	lightGrayStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 
-	summaryValueStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FFB7D5"))
+	veryLightGrayStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("252"))
+
+	pinkOptionStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFB7D5"))
 
 	summaryHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#EAEAFF")).

@@ -128,7 +128,7 @@ func renderSelectFlares(m model, width int) string {
 		if len(m.spinner.frames) > 0 {
 			spin = m.spinner.frames[m.spinner.index]
 		}
-		msg := menuHelpStyle.Render(fmt.Sprintf("Loading flares %s", spin))
+		msg := lightGrayStyle.Render(fmt.Sprintf("Loading flares %s", spin))
 		block := lipgloss.JoinVertical(lipgloss.Center, "", msg)
 		if width <= 0 {
 			return "\n" + block
@@ -146,7 +146,7 @@ func renderSelectFlares(m model, width int) string {
 	}
 
 	if len(m.flare.sel.list) == 0 {
-		msg := menuHelpStyle.Render("No flares found.")
+		msg := lightGrayStyle.Render("No flares found.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
 			return "\n\n" + block
@@ -159,7 +159,7 @@ func renderSelectFlares(m model, width int) string {
 		m.flare.sel.cursor = 0
 	}
 	if height == 0 {
-		msg := menuHelpStyle.Render("No flares found.")
+		msg := lightGrayStyle.Render("No flares found.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
 			return "\n\n" + block
@@ -174,7 +174,7 @@ func renderSelectFlares(m model, width int) string {
 		titleLine = lipgloss.Place(lipgloss.Width(tableStr), lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, titleLine, "", tableStr)
-	help := menuHelpStyle.Render("↑/↓ move • space toggle • enter save • esc cancel")
+	help := lightGrayStyle.Render("↑/↓ move • space toggle • enter save • esc cancel")
 
 	if width <= 0 {
 		return "\n\n" + body + "\n\n" + help
@@ -193,17 +193,17 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 	end := min(len(m.flare.sel.list), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
+	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
 	selectColStyle := base.Foreground(lipgloss.Color("#C7CDD6"))
-	classEvenStyle := base.Foreground(lipgloss.Color("245"))
-	classOddStyle := base.Foreground(lipgloss.Color("252"))
+	classEvenStyle := base.Inherit(grayStyle)
+	classOddStyle := base.Inherit(veryLightGrayStyle)
 	coordEvenStyle := base.Foreground(lipgloss.Color("#B8C3D9"))
 	coordOddStyle := base.Foreground(lipgloss.Color("#A0A9BE"))
-	startendEvenStyle := base.Foreground(lipgloss.Color("241"))
-	startendOddStyle := base.Foreground(lipgloss.Color("245"))
-	evenStyle := base.Foreground(lipgloss.Color("245"))
-	oddStyle := base.Foreground(lipgloss.Color("252"))
+	startendEvenStyle := base.Inherit(lightGrayStyle)
+	startendOddStyle := base.Inherit(grayStyle)
+	evenStyle := base.Inherit(grayStyle)
+	oddStyle := base.Inherit(veryLightGrayStyle)
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 
 	rows := make([][]string, 0, end-start)

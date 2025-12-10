@@ -40,7 +40,7 @@ func renderMenu(m model, width int) string {
 	helpText := "↑/k up • ↓/j down • enter submit"
 
 	if width <= 0 {
-		help := menuHelpStyle.Render(helpText)
+		help := lightGrayStyle.Render(helpText)
 		if noticeLine != "" {
 			return "\n\n" + menuBlock + "\n\n" + "  " + noticeLine + "\n\n" + help
 		}
@@ -48,7 +48,7 @@ func renderMenu(m model, width int) string {
 	}
 
 	placed := lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
-	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, menuHelpStyle.Render(helpText))
+	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, lightGrayStyle.Render(helpText))
 	var shifted []string
 	for _, line := range strings.Split(placed, "\n") {
 		if strings.HasPrefix(line, " ") {
@@ -161,7 +161,7 @@ func renderMenuWithCache(m model, width int) string {
 	mainBlock := strings.Join(lines, "\n")
 
 	helpText := "↑/k up • ↓/j down • enter submit • esc close cache"
-	help := menuHelpStyle.Render(helpText)
+	help := lightGrayStyle.Render(helpText)
 	joined := mainBlock
 
 	if width <= 0 {
