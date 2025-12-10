@@ -7,14 +7,19 @@ import (
 )
 
 func renderDateEditor(m model, width int) string {
-	valueStyle := summaryValueStyle.Copy()
-	focusStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2A262A"))
-	headerStyle := menuHelpStyle.Copy()
-	promptStyle := menuHelpStyle.Copy().Bold(true)
-	ghostStyle := menuHelpStyle.Copy().Faint(true)
+	// this function will be called in view to update every time a keystroke is done
+	// inside one of the inputs
 
-	renderField := func(header, val, placeholder string, focused bool) string {
+	// lipgloss styles return by value
+	valueStyle := summaryValueStyle
+	focusStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2A262A"))
+	headerStyle := menuHelpStyle
+	promptStyle := menuHelpStyle.Bold(true)
+	ghostStyle := menuHelpStyle.Faint(true)
+
+	renderField := func(val, placeholder string, focused bool) string {
 		line := lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), valueStyle.Render(val))
+		// if user leaves blank, we want the default value to show
 		if strings.TrimSpace(val) == "" {
 			if placeholder == "" {
 				placeholder = "YYYY-MM-DD"
@@ -27,14 +32,13 @@ func renderDateEditor(m model, width int) string {
 		return line
 	}
 
+	// val is the value as seen by the current keystrokes, placeholder is the config determined default
 	startField := renderField(
-		"Start date (YYYY-MM-DD) -- leave blank to remain same",
 		strings.TrimSpace(m.date.start),
 		strings.TrimSpace(m.cfg.start),
 		m.date.focus == 0,
 	)
 	endField := renderField(
-		"End date   (YYYY-MM-DD) -- leave blank to remain same",
 		strings.TrimSpace(m.date.end),
 		strings.TrimSpace(m.cfg.end),
 		m.date.focus == 1,
@@ -51,20 +55,8 @@ func renderDateEditor(m model, width int) string {
 
 	help := menuHelpStyle.Render("tab switch • enter save • esc cancel")
 
-	indent := func(s string) string {
-		return " " + strings.ReplaceAll(s, "\n", "\n ")
-	}
-
-	if width <= 0 {
-		helpLine := lipgloss.PlaceHorizontal(width, lipgloss.Center, help)
-		combined := lipgloss.JoinVertical(lipgloss.Left, block, "", "", helpLine)
-		return "\n\n" + indent(combined)
-	}
-
 	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	placed = indent(placed)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
-	helpLine = indent(helpLine)
 	combined := lipgloss.JoinVertical(lipgloss.Left, placed, "", "", helpLine)
 	return "\n\n" + combined
 }
