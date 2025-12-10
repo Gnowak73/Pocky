@@ -15,20 +15,20 @@ import (
 )
 
 func flareViewHeight(m model) int {
-	if len(m.flareSelector.list) == 0 {
+	if len(m.flare.sel.list) == 0 {
 		return 0
 	}
-	return maxInt(7, minInt(12, len(m.flareSelector.list)))
+	return maxInt(7, minInt(12, len(m.flare.sel.list)))
 }
 
 func (m model) styledFlareRows() []table.Row {
-	if len(m.flareSelector.list) == 0 {
+	if len(m.flare.sel.list) == 0 {
 		return nil
 	}
-	rows := make([]table.Row, 0, len(m.flareSelector.list))
-	for i, entry := range m.flareSelector.list {
+	rows := make([]table.Row, 0, len(m.flare.sel.list))
+	for i, entry := range m.flare.sel.list {
 		check := "[ ]"
-		if m.flareSelector.selected[i] {
+		if m.flare.sel.selected[i] {
 			check = "[x]"
 		}
 		rows = append(rows, table.Row{check, entry.class, entry.start, entry.end, entry.coord})
@@ -37,8 +37,8 @@ func (m model) styledFlareRows() []table.Row {
 }
 
 func (m *model) rebuildFlareTable() {
-	if len(m.flareSelector.list) == 0 {
-		m.flareSelector.table = table.Model{}
+	if len(m.flare.sel.list) == 0 {
+		m.flare.sel.table = table.Model{}
 		return
 	}
 
@@ -80,17 +80,17 @@ func (m *model) rebuildFlareTable() {
 		PaddingLeft(1).
 		PaddingRight(1)
 	t.SetStyles(s)
-	t.SetCursor(m.flareSelector.cursor)
-	m.flareSelector.table = t
+	t.SetCursor(m.flare.sel.cursor)
+	m.flare.sel.table = t
 }
 
 func (m *model) updateFlareTableRows() {
-	if len(m.flareSelector.list) == 0 || m.flareSelector.table.Columns() == nil {
+	if len(m.flare.sel.list) == 0 || m.flare.sel.table.Columns() == nil {
 		return
 	}
 	rows := m.styledFlareRows()
-	m.flareSelector.table.SetRows(rows)
-	m.flareSelector.table.SetCursor(m.flareSelector.cursor)
+	m.flare.sel.table.SetRows(rows)
+	m.flare.sel.table.SetCursor(m.flare.sel.cursor)
 }
 
 func flareTableWidths(m model) (int, int, int, int, int) {
@@ -102,7 +102,7 @@ func flareTableWidths(m model) (int, int, int, int, int) {
 	wstart := lipgloss.Width("start")
 	wend := lipgloss.Width("end")
 	wCoord := lipgloss.Width("Coordinates")
-	for _, e := range m.flareSelector.list {
+	for _, e := range m.flare.sel.list {
 		if w := lipgloss.Width(e.class); w > wClass {
 			wClass = w
 		}
@@ -123,7 +123,7 @@ func flareTableWidths(m model) (int, int, int, int, int) {
 func renderSelectFlares(m model, width int) string {
 	title := summaryHeaderStyle.Copy().Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 
-	if m.flareSelector.loading {
+	if m.flare.sel.loading {
 		spin := ""
 		if len(m.spinner.frames) > 0 {
 			spin = m.spinner.frames[m.spinner.index]
@@ -136,8 +136,8 @@ func renderSelectFlares(m model, width int) string {
 		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	if m.flareSelector.loadError != "" {
-		msg := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.flareSelector.loadError)
+	if m.flare.sel.loadError != "" {
+		msg := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(m.flare.sel.loadError)
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
 			return "\n\n" + block
@@ -145,7 +145,7 @@ func renderSelectFlares(m model, width int) string {
 		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
-	if len(m.flareSelector.list) == 0 {
+	if len(m.flare.sel.list) == 0 {
 		msg := menuHelpStyle.Render("No flares found.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
@@ -155,8 +155,8 @@ func renderSelectFlares(m model, width int) string {
 	}
 
 	height := flareViewHeight(m)
-	if m.flareSelector.cursor < 0 {
-		m.flareSelector.cursor = 0
+	if m.flare.sel.cursor < 0 {
+		m.flare.sel.cursor = 0
 	}
 	if height == 0 {
 		msg := menuHelpStyle.Render("No flares found.")
@@ -189,8 +189,8 @@ func renderSelectFlares(m model, width int) string {
 func renderSelectFlaresTable(m model, width int, height int) string {
 	// we want to build the flare selection table with distinct columns
 	// and a selectabel SEL column.
-	start := clampInt(m.flareSelector.offset, 0, maxInt(len(m.flareSelector.list)-height, 0))
-	end := minInt(len(m.flareSelector.list), start+height)
+	start := clampInt(m.flare.sel.offset, 0, maxInt(len(m.flare.sel.list)-height, 0))
+	end := minInt(len(m.flare.sel.list), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Foreground(lipgloss.Color("252")).Bold(true)
@@ -208,9 +208,9 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
-		entry := m.flareSelector.list[i]
+		entry := m.flare.sel.list[i]
 		sel := "[ ]"
-		if m.flareSelector.selected[i] {
+		if m.flare.sel.selected[i] {
 			sel = selMark.Render("[x]")
 		}
 		rows = append(rows, []string{
@@ -232,7 +232,7 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 				return headerStyle
 			}
 			abs := start + row
-			if abs == m.flareSelector.cursor {
+			if abs == m.flare.sel.cursor {
 				return cursorStyle
 			}
 			if col == 0 {
@@ -402,26 +402,26 @@ func saveFlareSelection(header string, entries []flareEntry, selected map[int]bo
 func (m *model) ensureFlareVisible() {
 	h := flareViewHeight(*m)
 	if h <= 0 {
-		m.flareSelector.offset = 0
+		m.flare.sel.offset = 0
 		return
 	}
-	if m.flareSelector.cursor < 0 {
-		m.flareSelector.cursor = 0
+	if m.flare.sel.cursor < 0 {
+		m.flare.sel.cursor = 0
 	}
-	if m.flareSelector.cursor >= len(m.flareSelector.list) {
-		m.flareSelector.cursor = len(m.flareSelector.list) - 1
+	if m.flare.sel.cursor >= len(m.flare.sel.list) {
+		m.flare.sel.cursor = len(m.flare.sel.list) - 1
 	}
-	if m.flareSelector.cursor < m.flareSelector.offset {
-		m.flareSelector.offset = m.flareSelector.cursor
+	if m.flare.sel.cursor < m.flare.sel.offset {
+		m.flare.sel.offset = m.flare.sel.cursor
 	}
-	if m.flareSelector.cursor >= m.flareSelector.offset+h {
-		m.flareSelector.offset = m.flareSelector.cursor - h + 1
+	if m.flare.sel.cursor >= m.flare.sel.offset+h {
+		m.flare.sel.offset = m.flare.sel.cursor - h + 1
 	}
-	maxOffset := maxInt(len(m.flareSelector.list)-h, 0)
-	if m.flareSelector.offset > maxOffset {
-		m.flareSelector.offset = maxOffset
+	maxOffset := maxInt(len(m.flare.sel.list)-h, 0)
+	if m.flare.sel.offset > maxOffset {
+		m.flare.sel.offset = maxOffset
 	}
-	if m.flareSelector.offset < 0 {
-		m.flareSelector.offset = 0
+	if m.flare.sel.offset < 0 {
+		m.flare.sel.offset = 0
 	}
 }

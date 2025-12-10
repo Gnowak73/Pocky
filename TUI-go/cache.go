@@ -14,7 +14,7 @@ func cacheFilePath() string {
 	return filepath.Join("..", "flare_cache.tsv")
 }
 
-func loadCache() (string, []cacheRow, error) {
+func loadCache() (string, []flareEntry, error) {
 	path := cacheFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -25,13 +25,13 @@ func loadCache() (string, []cacheRow, error) {
 		return "", nil, fmt.Errorf("cache empty")
 	}
 	header := lines[0]
-	var rows []cacheRow
+	var rows []flareEntry
 	for _, line := range lines[1:] {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		row := cacheRow{full: line}
+		row := flareEntry{full: line}
 		if len(fields) > 0 {
 			row.desc = fields[0]
 		}
@@ -67,7 +67,7 @@ func cacheViewHeight(m model) int {
 }
 
 // filterCacheRows returns rows matching the query (case-insensitive) plus their original indices.
-func filterCacheRows(rows []cacheRow, query string) ([]cacheRow, []int) {
+func filterCacheRows(rows []flareEntry, query string) ([]flareEntry, []int) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
 		idx := make([]int, len(rows))
@@ -77,7 +77,7 @@ func filterCacheRows(rows []cacheRow, query string) ([]cacheRow, []int) {
 		return rows, idx
 	}
 
-	var out []cacheRow
+	var out []flareEntry
 	var idx []int
 	for i, r := range rows {
 		if strings.Contains(strings.ToLower(r.desc), q) ||
@@ -93,7 +93,7 @@ func filterCacheRows(rows []cacheRow, query string) ([]cacheRow, []int) {
 	return out, idx
 }
 
-// cacheOriginalIndex maps a filtered row index back to the original cacheRows index.
+// cacheOriginalIndex maps a filtered row index back to the original flareEntrys index.
 func (m model) cacheOriginalIndex(filteredIdx int) int {
 	if filteredIdx < 0 {
 		return -1
@@ -140,7 +140,7 @@ func clearCacheFile() (string, error) {
 	return header, nil
 }
 
-func saveCachePruned(header string, rows []cacheRow, delete map[int]bool) error {
+func saveCachePruned(header string, rows []flareEntry, delete map[int]bool) error {
 	path := cacheFilePath()
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
@@ -184,7 +184,7 @@ func cacheFooterView(m model, width int) string {
 }
 
 // renderCacheTableString builds a styled table (similar to previous layout).
-func renderCacheTableString(rows []cacheRow, width int) string {
+func renderCacheTableString(rows []flareEntry, width int) string {
 	if width <= 0 {
 		width = 80
 	}

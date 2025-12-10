@@ -12,7 +12,7 @@ func renderMenu(m model, width int) string {
 	}
 	var lines []string
 	maxText := 0
-	for _, item := range m.menuItems {
+	for _, item := range m.menu.items {
 		if w := lipgloss.Width(item); w > maxText {
 			maxText = w
 		}
@@ -21,11 +21,11 @@ func renderMenu(m model, width int) string {
 	if nl := m.noticeLine(width); nl != "" {
 		noticeLine = nl
 	}
-	for i, item := range m.menuItems {
+	for i, item := range m.menu.items {
 		style := menuItemStyle
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
-		if i == m.selected {
+		if i == m.menu.selected {
 			style = menuSelectedStyle
 			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
 			cursorW = lipgloss.Width(cursor)
@@ -67,7 +67,7 @@ func renderMenu(m model, width int) string {
 func renderMenuWithCache(m model, width int) string {
 	var lines []string
 	maxText := 0
-	for _, item := range m.menuItems {
+	for _, item := range m.menu.items {
 		if w := lipgloss.Width(item); w > maxText {
 			maxText = w
 		}
@@ -77,11 +77,11 @@ func renderMenuWithCache(m model, width int) string {
 		noticeLine = nl
 	}
 
-	for i, item := range m.menuItems {
+	for i, item := range m.menu.items {
 		style := menuItemStyle
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
-		if i == m.selected {
+		if i == m.menu.selected {
 			style = menuSelectedStyle
 			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
 			cursorW = lipgloss.Width(cursor)
@@ -182,7 +182,7 @@ func renderMenuWithCache(m model, width int) string {
 }
 
 func (m model) menuIndexAt(x, y int) (int, bool) {
-	if y < 0 || x < 0 || len(m.menuItems) == 0 {
+	if y < 0 || x < 0 || len(m.menu.items) == 0 {
 		return 0, false
 	}
 
@@ -220,7 +220,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 	relativeY := y - menuTop
 	start := 1
 	itemY := relativeY - start
-	if itemY < 0 || itemY >= len(m.menuItems) {
+	if itemY < 0 || itemY >= len(m.menu.items) {
 		return 0, false
 	}
 
@@ -256,14 +256,14 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 
 	var lines []string
 	maxText := 0
-	for _, item := range m.menuItems {
+	for _, item := range m.menu.items {
 		if val := lipgloss.Width(item); val > maxText {
 			maxText = val
 		}
 	}
 
 	cacheOptLine := -1
-	for _, item := range m.menuItems {
+	for _, item := range m.menu.items {
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
 		lineContent := cursor + menuItemStyle.Render(item)

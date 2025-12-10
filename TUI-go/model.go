@@ -6,42 +6,20 @@ import (
 )
 
 type model struct {
-	// config
-	cfg config
-
-	// logo
-	logo logoState
+	cfg     config
+	logo    logoState
+	menu    menuState
+	mode    viewMode
+	wave    waveEditorState
+	flare   flareState // flare selector and filter
+	cache   cacheSubmenuState
+	spinner spinnerState
+	date    dateEditorState
 
 	// TUI window
 	width  int
 	height int
 	frame  int
-
-	menuItems []string // main menu items
-	selected  int
-	notice    string
-	noticeSet int // frame counter for notice animation
-
-	// Modes
-	mode viewMode
-
-	// Wavelength editor
-	wave waveEditorState
-
-	// Flare filter editor
-	flareFilter flareFilterState
-
-	// Flare selection
-	flareSelector flareSelectorState
-
-	// Cache submenu
-	cache cacheSubmenuState
-
-	// Loading animation
-	spinner spinnerState
-
-	// Date editor
-	date dateEditorState
 }
 
 func newModel(logoLines []string, cfg config) model {
@@ -68,14 +46,14 @@ func newModel(logoLines []string, cfg config) model {
 		selected: parseWaves(cfg.wave),
 	}
 
-	comp := defaultComparator()
+	comps := defaultComparator()
 	letters := defaultClassLetters()
 	mags := defaultMagnitudes()
-	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, comp, letters)
+	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, comps, letters)
 
 	flareFilterDefault := flareFilterState{
-		comps:        comp,
-		compDisplays: comparatorDisplayList(comp),
+		comps:        comps,
+		compDisplays: comparatorDisplayList(comps),
 		classLetters: letters,
 		magnitudes:   mags,
 		compIdx:      compIdx,
@@ -87,6 +65,11 @@ func newModel(logoLines []string, cfg config) model {
 	flareSelectorDefault := flareSelectorState{
 		selected: make(map[int]bool),
 		offset:   0,
+	}
+
+	flareDefault := flareState{
+		filter: flareFilterDefault,
+		sel:    flareSelectorDefault,
 	}
 
 	cacheMenu := []string{
@@ -108,7 +91,7 @@ func newModel(logoLines []string, cfg config) model {
 		frames: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
 	}
 
-	menu := []string{
+	items := []string{
 		"Edit Wavelength",
 		"Edit Date Range",
 		"Edit Flare Class Filter",
@@ -118,16 +101,19 @@ func newModel(logoLines []string, cfg config) model {
 		"Quit",
 	}
 
+	menuDefault := menuState{
+		items: items,
+	}
+
 	return model{
-		logo:          logoDefault,
-		cfg:           cfg,
-		wave:          waveDefault,
-		flareFilter:   flareFilterDefault,
-		menuItems:     menu,
-		mode:          modeMain,
-		flareSelector: flareSelectorDefault,
-		spinner:       spinnerDefault,
-		date:          dateEditorDefault,
-		cache:         cacheSubmenuDefault,
+		logo:    logoDefault,
+		cfg:     cfg,
+		wave:    waveDefault,
+		flare:   flareDefault,
+		menu:    menuDefault,
+		mode:    modeMain,
+		spinner: spinnerDefault,
+		date:    dateEditorDefault,
+		cache:   cacheSubmenuDefault,
 	}
 }

@@ -49,6 +49,16 @@ type flareFilterState struct {
 	focusFrame   int // counter for wire box cursor animation
 }
 
+type flareEntry struct {
+	desc  string
+	class string
+	start string
+	end   string
+	coord string
+	full  string
+	wave  string
+}
+
 type flareSelectorState struct {
 	list      []flareEntry // list which is turned into table
 	header    string
@@ -60,22 +70,17 @@ type flareSelectorState struct {
 	table     table.Model
 }
 
-type cacheRow struct {
-	desc  string
-	class string
-	start string
-	end   string
-	coord string
-	wave  string
-	full  string
+type flareState struct {
+	filter flareFilterState
+	sel    flareSelectorState
 }
 
 type cacheSubmenuState struct {
 	menuOpen    bool // status of the submenu being open
 	menuItems   []string
-	selected    int        // index of submenu option chosen
-	openFrame   int        // frame counter for submenu open animation
-	rows        []cacheRow // raw cache data
+	selected    int          // index of submenu option chosen
+	openFrame   int          // frame counter for submenu open animation
+	rows        []flareEntry // raw cache data
 	header      string
 	pick        map[int]bool // the selected rows for deletion
 	cursor      int
@@ -83,7 +88,7 @@ type cacheSubmenuState struct {
 	viewport    viewport.Model // view for viewing cache
 	content     string         // the rendered text used by the viewport (view cache)
 	filter      string
-	filtered    []cacheRow
+	filtered    []flareEntry
 	filterIdx   []int
 	searching   bool
 	searchInput string
@@ -98,6 +103,13 @@ type dateEditorState struct {
 	start string
 	end   string
 	focus int
+}
+
+type menuState struct {
+	items     []string
+	selected  int // index for selected option
+	notice    string
+	noticeSet int // frame counter for notice animation
 }
 
 // post model initialization
@@ -120,12 +132,3 @@ const (
 	modeCacheView
 	modeCacheDelete
 )
-
-type flareEntry struct {
-	desc  string
-	class string
-	start string
-	end   string
-	coord string
-	full  string
-}

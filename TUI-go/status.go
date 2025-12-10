@@ -28,7 +28,7 @@ func renderStatus(m model) string {
 		case modeFlare:
 			return " Edit Flare Class Filter"
 		case modeSelectFlares:
-			if m.flareSelector.loading {
+			if m.flare.sel.loading {
 				return " Loading Flares..."
 			}
 			return " Select Flares"
@@ -106,13 +106,13 @@ func renderStaticGradientHint(text string, available int) string {
 // It intentionally does not directly render itself: callers (renderMenu/renderMenuWithCache and View)
 // append its output in place to keep the notice centered above the status bar.
 func (m model) noticeLine(width int) string {
-	if m.notice == "" {
+	if m.menu.notice == "" {
 		return ""
 	}
-	if m.noticeSet <= 0 {
+	if m.menu.noticeSet <= 0 {
 		return ""
 	}
-	elapsed := m.frame - m.noticeSet
+	elapsed := m.frame - m.menu.noticeSet
 	const hold = 10
 	const life = 19
 	if elapsed >= life {
@@ -123,7 +123,7 @@ func (m model) noticeLine(width int) string {
 		t = clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
 	}
 	col := blendHex("#FF6B81", "#353533", t)
-	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(m.notice)
+	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(m.menu.notice)
 	widthTarget := width
 	if widthTarget <= 0 {
 		widthTarget = lipgloss.Width(text)
