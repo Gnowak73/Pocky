@@ -286,8 +286,8 @@ func (m model) handleWavelengthKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "ctrl+a":
 		allSelected := true
-		for _, opt := range m.waveOptions {
-			if !m.waveSelected[opt.code] {
+		for _, opt := range m.wave.options {
+			if !m.wave.selected[opt.code] {
 				allSelected = false
 				break
 			}
@@ -296,25 +296,25 @@ func (m model) handleWavelengthKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if allSelected {
 			next = false
 		}
-		for _, opt := range m.waveOptions {
-			m.waveSelected[opt.code] = next
+		for _, opt := range m.wave.options {
+			m.wave.selected[opt.code] = next
 		}
 	case "esc":
 		m.mode = modeMain
 		m.notice = "Canceled wavelength edit"
 		m.noticeSet = m.frame
 	case "up", "k":
-		if m.waveFocus > 0 {
-			m.waveFocus--
+		if m.wave.focus > 0 {
+			m.wave.focus--
 		}
 	case "down", "j":
-		if m.waveFocus < len(m.waveOptions)-1 {
-			m.waveFocus++
+		if m.wave.focus < len(m.wave.options)-1 {
+			m.wave.focus++
 		}
 	case " ":
-		m.toggleWave(m.waveFocus)
+		m.toggleWave(m.wave.focus)
 	case "enter":
-		m.cfg.Wave = buildWaveValue(m.waveOptions, m.waveSelected)
+		m.cfg.wave = buildWaveValue(m.wave.options, m.wave.selected)
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
 			m.noticeSet = m.frame
@@ -344,10 +344,10 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		start := strings.TrimSpace(m.dateStart)
 		end := strings.TrimSpace(m.dateEnd)
 		if start == "" {
-			start = strings.TrimSpace(m.cfg.Start)
+			start = strings.TrimSpace(m.cfg.start)
 		}
 		if end == "" {
-			end = strings.TrimSpace(m.cfg.End)
+			end = strings.TrimSpace(m.cfg.end)
 		}
 		if !validDate(start) || !validDate(end) {
 			m.notice = "Dates must be YYYY-MM-DD"
@@ -359,8 +359,8 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.noticeSet = m.frame
 			break
 		}
-		m.cfg.Start = start
-		m.cfg.End = end
+		m.cfg.start = start
+		m.cfg.end = end
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
 			m.noticeSet = m.frame
@@ -459,11 +459,11 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		letter := m.flareClassLetters[m.flareLetterIdx]
 		mag := m.flareMagnitudes[m.flareMagIdx]
 		if compVal == "All" {
-			m.cfg.Comparator = "All"
-			m.cfg.FlareClass = "Any"
+			m.cfg.comparator = "All"
+			m.cfg.flareClass = "Any"
 		} else {
-			m.cfg.Comparator = compVal
-			m.cfg.FlareClass = fmt.Sprintf("%s%s", letter, mag)
+			m.cfg.comparator = compVal
+			m.cfg.flareClass = fmt.Sprintf("%s%s", letter, mag)
 		}
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
@@ -597,12 +597,12 @@ func (m model) handleCacheDeleteMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleWavelengthMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
 		if idx, ok := m.waveIndexAt(msg.X, msg.Y); ok {
-			m.waveFocus = idx
+			m.wave.focus = idx
 		}
 	}
 	if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
 		if idx, ok := m.waveIndexAt(msg.X, msg.Y); ok {
-			m.waveFocus = idx
+			m.wave.focus = idx
 			m.toggleWave(idx)
 		}
 	}
@@ -690,8 +690,8 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Wavelength":
 		m.cacheMenuOpen = false
 		m.mode = modeWavelength
-		m.waveSelected = parseWaves(m.cfg.Wave)
-		m.waveFocus = 0
+		m.wave.selected = parseWaves(m.cfg.wave)
+		m.wave.focus = 0
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Edit Date Range":
@@ -711,17 +711,17 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Select Flares":
-		if strings.TrimSpace(m.cfg.Start) == "" || strings.TrimSpace(m.cfg.End) == "" {
+		if strings.TrimSpace(m.cfg.start) == "" || strings.TrimSpace(m.cfg.end) == "" {
 			m.notice = "Set a date range first."
 			m.noticeSet = m.frame
 			break
 		}
-		if strings.TrimSpace(m.cfg.Wave) == "" {
+		if strings.TrimSpace(m.cfg.wave) == "" {
 			m.notice = "Select at least one wavelength first."
 			m.noticeSet = m.frame
 			break
 		}
-		if strings.TrimSpace(m.cfg.Comparator) == "" {
+		if strings.TrimSpace(m.cfg.comparator) == "" {
 			m.notice = "Set a comparator first."
 			m.noticeSet = m.frame
 			break

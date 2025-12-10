@@ -30,13 +30,13 @@ func renderDateEditor(m model, width int) string {
 	startField := renderField(
 		"Start date (YYYY-MM-DD) -- leave blank to remain same",
 		strings.TrimSpace(m.dateStart),
-		strings.TrimSpace(m.cfg.Start),
+		strings.TrimSpace(m.cfg.start),
 		m.dateFocus == 0,
 	)
 	endField := renderField(
 		"End date   (YYYY-MM-DD) -- leave blank to remain same",
 		strings.TrimSpace(m.dateEnd),
-		strings.TrimSpace(m.cfg.End),
+		strings.TrimSpace(m.cfg.end),
 		m.dateFocus == 1,
 	)
 

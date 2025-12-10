@@ -50,11 +50,11 @@ func buildWaveValue(opts []waveOption, sel map[string]bool) string {
 }
 
 func (m *model) toggleWave(idx int) {
-	if idx < 0 || idx >= len(m.waveOptions) {
+	if idx < 0 || idx >= len(m.wave.options) {
 		return
 	}
-	code := m.waveOptions[idx].code
-	m.waveSelected[code] = !m.waveSelected[code]
+	code := m.wave.options[idx].code
+	m.wave.selected[code] = !m.wave.selected[code]
 }
 
 func waveDisplay(val string) string {
@@ -161,7 +161,7 @@ func (m model) waveIndexAt(x, y int) (int, bool) {
 		}
 	}
 
-	if rowIdx < 0 || rowIdx >= len(m.waveOptions) {
+	if rowIdx < 0 || rowIdx >= len(m.wave.options) {
 		return 0, false
 	}
 	return rowIdx, true
@@ -180,9 +180,9 @@ func renderWavelengthEditor(m model, width int) string {
 		Background(lipgloss.Color("#2A262A"))
 
 	var rows []string
-	for i, opt := range m.waveOptions {
+	for i, opt := range m.wave.options {
 		check := "[ ]"
-		if m.waveSelected[opt.code] {
+		if m.wave.selected[opt.code] {
 			check = checkStyle.Render("[x]")
 		}
 		row := lipgloss.JoinHorizontal(
@@ -193,7 +193,7 @@ func renderWavelengthEditor(m model, width int) string {
 			menuHelpStyle.Render("  │  "),
 			descStyle.Render(opt.desc),
 		)
-		if i == m.waveFocus {
+		if i == m.wave.focus {
 			row = focusStyle.Render(row)
 		}
 		rows = append(rows, row)

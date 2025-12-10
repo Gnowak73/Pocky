@@ -42,12 +42,12 @@ func (m *model) rebuildFlareTable() {
 		return
 	}
 
-	wSel, wClass, wStart, wEnd, wCoord := flareTableWidths(*m)
+	wSel, wClass, wstart, wend, wCoord := flareTableWidths(*m)
 	columns := []table.Column{
 		{Title: "SEL", Width: wSel},
 		{Title: "CLASS", Width: wClass},
-		{Title: "START", Width: wStart},
-		{Title: "END", Width: wEnd},
+		{Title: "START", Width: wstart},
+		{Title: "END", Width: wend},
 		{Title: "COORDINATES", Width: wCoord},
 	}
 
@@ -99,25 +99,25 @@ func flareTableWidths(m model) (int, int, int, int, int) {
 		wSel = lipgloss.Width("[x]")
 	}
 	wClass := lipgloss.Width("Class")
-	wStart := lipgloss.Width("Start")
-	wEnd := lipgloss.Width("End")
+	wstart := lipgloss.Width("start")
+	wend := lipgloss.Width("end")
 	wCoord := lipgloss.Width("Coordinates")
 	for _, e := range m.flareList {
 		if w := lipgloss.Width(e.class); w > wClass {
 			wClass = w
 		}
-		if w := lipgloss.Width(e.start); w > wStart {
-			wStart = w
+		if w := lipgloss.Width(e.start); w > wstart {
+			wstart = w
 		}
-		if w := lipgloss.Width(e.end); w > wEnd {
-			wEnd = w
+		if w := lipgloss.Width(e.end); w > wend {
+			wend = w
 		}
 		if w := lipgloss.Width(e.coord); w > wCoord {
 			wCoord = w
 		}
 	}
 	pad := 2
-	return wSel + pad, wClass + pad, wStart + pad, wEnd + pad, wCoord + pad
+	return wSel + pad, wClass + pad, wstart + pad, wend + pad, wCoord + pad
 }
 
 func renderSelectFlares(m model, width int) string {
@@ -198,8 +198,8 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 	classOddStyle := base.Foreground(lipgloss.Color("252"))
 	coordEvenStyle := base.Foreground(lipgloss.Color("#B8C3D9"))
 	coordOddStyle := base.Foreground(lipgloss.Color("#A0A9BE"))
-	startEndEvenStyle := base.Foreground(lipgloss.Color("241"))
-	startEndOddStyle := base.Foreground(lipgloss.Color("245"))
+	startendEvenStyle := base.Foreground(lipgloss.Color("241"))
+	startendOddStyle := base.Foreground(lipgloss.Color("245"))
 	evenStyle := base.Foreground(lipgloss.Color("245"))
 	oddStyle := base.Foreground(lipgloss.Color("252"))
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
@@ -245,9 +245,9 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 				return classOddStyle
 			case 2, 3:
 				if evenRow {
-					return startEndEvenStyle
+					return startendEvenStyle
 				}
-				return startEndOddStyle
+				return startendOddStyle
 			case 4:
 				if evenRow {
 					return coordEvenStyle
@@ -269,12 +269,12 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 
 func loadFlaresCmd(cfg config) tea.Cmd {
 	return func() tea.Msg {
-		cmp := comparatorASCII(cfg.Comparator)
-		if strings.TrimSpace(cfg.Start) == "" || strings.TrimSpace(cfg.End) == "" || strings.TrimSpace(cfg.Wave) == "" || cmp == "" {
+		cmp := comparatorASCII(cfg.comparator)
+		if strings.TrimSpace(cfg.start) == "" || strings.TrimSpace(cfg.end) == "" || strings.TrimSpace(cfg.wave) == "" || cmp == "" {
 			return flaresLoadedMsg{err: fmt.Errorf("missing required fields")}
 		}
 
-		flareClass := cfg.FlareClass
+		flareClass := cfg.flareClass
 		if strings.TrimSpace(flareClass) == "" {
 			flareClass = "A0.0"
 		}
@@ -287,7 +287,7 @@ func loadFlaresCmd(cfg config) tea.Cmd {
 		tmpPath := tmp.Name()
 		defer os.Remove(tmpPath)
 
-		cmd := exec.Command("python", "query.py", cfg.Start, cfg.End, cmp, flareClass, cfg.Wave, tmpPath)
+		cmd := exec.Command("python", "query.py", cfg.start, cfg.end, cmp, flareClass, cfg.wave, tmpPath)
 		cmd.Dir = ".."
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return flaresLoadedMsg{err: fmt.Errorf("flare listing failed: %v (%s)", err, strings.TrimSpace(string(output)))}

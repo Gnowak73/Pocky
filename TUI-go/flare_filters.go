@@ -44,8 +44,8 @@ func parseFlareSelection(cfg config, comps []comparator, letters []string) (int,
 	letterIdx := 0
 	magIdx := 0
 
-	currentComp := strings.TrimSpace(cfg.Comparator)
-	currentClass := strings.TrimSpace(cfg.FlareClass)
+	currentComp := strings.TrimSpace(cfg.comparator)
+	currentClass := strings.TrimSpace(cfg.flareClass)
 
 	// looping over 4-5 values for compatator and class isnt bad, but when we get
 	// to the 100 digits, we can just take the string, subtract '0' to transform

@@ -23,9 +23,7 @@ type model struct {
 	mode viewMode
 
 	// Wavelength editor
-	waveOptions  []waveOption
-	waveSelected map[string]bool
-	waveFocus    int
+	wave WaveEditorState
 
 	// Flare filter editor
 	flareComps        []comparator
@@ -91,8 +89,11 @@ func newModel(logo []string, cfg config) model {
 	colored := colorizeLogo(logo, blockW, 0)
 
 	// we need to grab current defaults for runtime
-	waveOpts := defaultWaveOptions()
-	selected := parseWaves(cfg.Wave)
+	waveStateDefault := WaveEditorState{
+		options:  defaultWaveOptions(),
+		selected: parseWaves(cfg.wave),
+	}
+
 	comp := defaultComparator()
 	letters := defaultClassLetters()
 	mags := defaultMagnitudes()
@@ -119,10 +120,9 @@ func newModel(logo []string, cfg config) model {
 		colored:           colored,
 		cfg:               cfg,
 		blockW:            blockW,
+		wave:              waveStateDefault,
 		menuItems:         menu,
 		mode:              modeMain,
-		waveOptions:       waveOpts,
-		waveSelected:      selected,
 		flareComps:        comp,
 		flareCompDisplays: comparatorDisplayList(comp),
 		flareClassLetters: letters,
