@@ -30,19 +30,19 @@ func loadConfig() config {
 		val := strings.Trim(parts[1], "\"")
 		switch key {
 		case "WAVE":
-			cfg.WAVE = val
+			cfg.Wave = val
 		case "START":
-			cfg.START = val
+			cfg.Start = val
 		case "END":
-			cfg.END = val
+			cfg.End = val
 		case "SOURCE":
-			cfg.SOURCE = val
+			cfg.Source = val
 		case "FLARE_CLASS":
-			cfg.FLARE_CLASS = val
+			cfg.Flare_Class = val
 		case "COMPARATOR":
-			cfg.COMPARATOR = val
+			cfg.Comparator = val
 		case "DL_EMAIL":
-			cfg.DL_EMAIL = val
+			cfg.Dl_email = val
 		}
 	}
 	return cfg
@@ -55,13 +55,13 @@ func saveConfig(cfg config) error {
 	target := parentDirFile(".vars.env")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "WAVE=\"%s\"\n", cfg.WAVE)
-	fmt.Fprintf(&b, "START=\"%s\"\n", cfg.START)
-	fmt.Fprintf(&b, "END=\"%s\"\n", cfg.END)
-	fmt.Fprintf(&b, "SOURCE=\"%s\"\n", cfg.SOURCE)
-	fmt.Fprintf(&b, "FLARE_CLASS=\"%s\"\n", cfg.FLARE_CLASS)
-	fmt.Fprintf(&b, "COMPARATOR=\"%s\"\n", cfg.COMPARATOR)
-	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.DL_EMAIL)
+	fmt.Fprintf(&b, "WAVE=\"%s\"\n", cfg.Wave)
+	fmt.Fprintf(&b, "START=\"%s\"\n", cfg.Start)
+	fmt.Fprintf(&b, "END=\"%s\"\n", cfg.End)
+	fmt.Fprintf(&b, "SOURCE=\"%s\"\n", cfg.Source)
+	fmt.Fprintf(&b, "FLARE_CLASS=\"%s\"\n", cfg.Flare_Class)
+	fmt.Fprintf(&b, "COMPARATOR=\"%s\"\n", cfg.Comparator)
+	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.Dl_email)
 
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {

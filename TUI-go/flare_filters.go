@@ -7,7 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func defaultComparatorOptions() ([]string, map[string]string) {
+func defaultComparator() ([]string, map[string]string) {
+	// We need a map to make get copmarator from unicode geq leq,
+	// and return copy of defaults
 	opts := []string{">", "≥", "==", "≤", "<", "All"}
 	m := map[string]string{
 		">":   ">",
@@ -25,33 +27,35 @@ func defaultClassLetters() []string {
 }
 
 func defaultMagnitudes() []string {
-	var mags []string
-	for i := 0; i <= 9; i++ {
-		for t := 0; t <= 9; t++ {
+	// we need 100 spots for all decimal items 0.0 - 9.9
+	mags := make([]string, 0, 100)
+	for i := range 10 {
+		for t := range 10 {
 			mags = append(mags, fmt.Sprintf("%d.%d", i, t))
 		}
 	}
 	return mags
 }
 
-func parseFlareSelection(cfg config, compOpts []string, compMap map[string]string, letters, mags []string) (int, int, int) {
+func parseFlareSelection(cfg config, compOpts []string, compMap map[string]string, letters []string) (int, int, int) {
+	// we input the config, comparator options/map, GOES letters, and magnitudes
+	// our goal is to find the index for the magnitude, comprator, and goes letter
+	// These indexes will be used to create scrolling windows in TUI selection
 	compIdx := 0
 	letterIdx := 0
 	magIdx := 0
 
-	currentComp := strings.TrimSpace(cfg.COMPARATOR)
-	currentClass := strings.TrimSpace(cfg.FLARE_CLASS)
+	currentComp := strings.TrimSpace(cfg.Comparator)
+	currentClass := strings.TrimSpace(cfg.Flare_Class)
 
-	if currentComp != "" {
-		for i, opt := range compOpts {
-			val := compMap[opt]
-			if val == "" {
-				val = opt
-			}
-			if val == currentComp {
-				compIdx = i
-				break
-			}
+	// looping over 4-5 values for compatator and class isnt bad, but when we get
+	// to the 100 digits, we can just take the string, subtract '0' to transform
+	// ascii value to number, and multiply by 10 since x.y it at index xy
+
+	for i, opt := range compOpts {
+		if opt == currentComp {
+			compIdx = i
+			break
 		}
 	}
 
@@ -63,14 +67,11 @@ func parseFlareSelection(cfg config, compOpts []string, compMap map[string]strin
 				break
 			}
 		}
-		if len(currentClass) > 1 {
-			mag := currentClass[1:]
-			for i, m := range mags {
-				if m == mag {
-					magIdx = i
-					break
-				}
-			}
+		// under the case we have "All" or "Any", we need to make sure len(mag) == 3,
+		// or has Ax.y format for GOES letter A and mag x.y
+		mag := currentClass[1:]
+		if len(mag) > 2 {
+			magIdx = int(mag[0]-'0')*10 + int(mag[2]-'0')
 		}
 	}
 

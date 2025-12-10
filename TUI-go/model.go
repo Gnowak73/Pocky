@@ -90,8 +90,13 @@ func newModel(logo []string, cfg config) model {
 
 	colored := colorizeLogo(logo, blockW, 0)
 
-	waves := defaultWaveOptions()
-	selected := parseWaves(cfg.WAVE, waves)
+	// we need to grab current defaults for runtime
+	waveOpts := defaultWaveOptions()
+	selected := parseWaves(cfg.Wave)
+	compOpts, compMap := defaultComparator()
+	letters := defaultClassLetters()
+	mags := defaultMagnitudes()
+	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, compOpts, compMap, letters)
 
 	menu := []string{
 		"Edit Wavelength",
@@ -109,11 +114,6 @@ func newModel(logo []string, cfg config) model {
 		"Back",
 	}
 
-	compOpts, compMap := defaultComparatorOptions()
-	letters := defaultClassLetters()
-	mags := defaultMagnitudes()
-	compIdx, letterIdx, magIdx := parseFlareSelection(cfg, compOpts, compMap, letters, mags)
-
 	return model{
 		logoLines:         logo,
 		colored:           colored,
@@ -121,7 +121,7 @@ func newModel(logo []string, cfg config) model {
 		blockW:            blockW,
 		menuItems:         menu,
 		mode:              modeMain,
-		waveOptions:       waves,
+		waveOptions:       waveOpts,
 		waveSelected:      selected,
 		flareCompOptions:  compOpts,
 		flareCompMap:      compMap,

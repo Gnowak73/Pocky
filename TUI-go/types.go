@@ -1,13 +1,13 @@
 package main
 
 type config struct {
-	WAVE        string
-	START       string
-	END         string
-	SOURCE      string
-	FLARE_CLASS string
-	COMPARATOR  string
-	DL_EMAIL    string
+	Wave        string
+	Start       string
+	End         string
+	Source      string
+	Flare_Class string
+	Comparator  string
+	Dl_email    string
 }
 
 type tickMsg struct{}

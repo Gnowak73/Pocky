@@ -314,7 +314,7 @@ func (m model) handleWavelengthKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.toggleWave(m.waveFocus)
 	case "enter":
-		m.cfg.WAVE = buildWaveValue(m.waveOptions, m.waveSelected)
+		m.cfg.Wave = buildWaveValue(m.waveOptions, m.waveSelected)
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
 			m.noticeSet = m.frame
@@ -344,10 +344,10 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		start := strings.TrimSpace(m.dateStart)
 		end := strings.TrimSpace(m.dateEnd)
 		if start == "" {
-			start = strings.TrimSpace(m.cfg.START)
+			start = strings.TrimSpace(m.cfg.Start)
 		}
 		if end == "" {
-			end = strings.TrimSpace(m.cfg.END)
+			end = strings.TrimSpace(m.cfg.End)
 		}
 		if !validDate(start) || !validDate(end) {
 			m.notice = "Dates must be YYYY-MM-DD"
@@ -359,8 +359,8 @@ func (m model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.noticeSet = m.frame
 			break
 		}
-		m.cfg.START = start
-		m.cfg.END = end
+		m.cfg.Start = start
+		m.cfg.End = end
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
 			m.noticeSet = m.frame
@@ -463,11 +463,11 @@ func (m model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		letter := m.flareClassLetters[m.flareLetterIdx]
 		mag := m.flareMagnitudes[m.flareMagIdx]
 		if compVal == "All" {
-			m.cfg.COMPARATOR = "All"
-			m.cfg.FLARE_CLASS = "Any"
+			m.cfg.Comparator = "All"
+			m.cfg.Flare_Class = "Any"
 		} else {
-			m.cfg.COMPARATOR = compVal
-			m.cfg.FLARE_CLASS = fmt.Sprintf("%s%s", letter, mag)
+			m.cfg.Comparator = compVal
+			m.cfg.Flare_Class = fmt.Sprintf("%s%s", letter, mag)
 		}
 		if err := saveConfig(m.cfg); err != nil {
 			m.notice = fmt.Sprintf("Save failed: %v", err)
@@ -694,7 +694,7 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Wavelength":
 		m.cacheMenuOpen = false
 		m.mode = modeWavelength
-		m.waveSelected = parseWaves(m.cfg.WAVE, m.waveOptions)
+		m.waveSelected = parseWaves(m.cfg.Wave)
 		m.waveFocus = 0
 		m.notice = ""
 		m.noticeSet = m.frame
@@ -709,23 +709,23 @@ func (m model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 	case "Edit Flare Class Filter":
 		m.cacheMenuOpen = false
 		m.mode = modeFlare
-		m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters, m.flareMagnitudes)
+		m.flareCompIdx, m.flareLetterIdx, m.flareMagIdx = parseFlareSelection(m.cfg, m.flareCompOptions, m.flareCompMap, m.flareClassLetters)
 		m.flareFocus = 0
 		m.flareFocusFrame = m.frame
 		m.notice = ""
 		m.noticeSet = m.frame
 	case "Select Flares":
-		if strings.TrimSpace(m.cfg.START) == "" || strings.TrimSpace(m.cfg.END) == "" {
+		if strings.TrimSpace(m.cfg.Start) == "" || strings.TrimSpace(m.cfg.End) == "" {
 			m.notice = "Set a date range first."
 			m.noticeSet = m.frame
 			break
 		}
-		if strings.TrimSpace(m.cfg.WAVE) == "" {
+		if strings.TrimSpace(m.cfg.Wave) == "" {
 			m.notice = "Select at least one wavelength first."
 			m.noticeSet = m.frame
 			break
 		}
-		if strings.TrimSpace(m.cfg.COMPARATOR) == "" {
+		if strings.TrimSpace(m.cfg.Comparator) == "" {
 			m.notice = "Set a comparator first."
 			m.noticeSet = m.frame
 			break

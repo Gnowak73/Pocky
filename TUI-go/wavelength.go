@@ -23,18 +23,16 @@ func defaultWaveOptions() []waveOption {
 	}
 }
 
-func parseWaves(val string, opts []waveOption) map[string]bool {
+func parseWaves(val string) map[string]bool {
+	// The default options are static at runtime. We don't need validation,
+	// just a map which takes the values from a config (m.cfg.WAVE)
+	// and then make a map where we set those values to be true. Since in go,
+	// missing keys return false, we essentially have a map where slected = true
+	// and unselected=false.
 	selected := make(map[string]bool)
-	if strings.TrimSpace(val) == "" {
-		return selected
-	}
-	known := make(map[string]struct{})
-	for _, o := range opts {
-		known[o.code] = struct{}{}
-	}
 	for _, part := range strings.Split(val, ",") {
 		p := strings.TrimSpace(part)
-		if _, ok := known[p]; ok {
+		if p != "" {
 			selected[p] = true
 		}
 	}

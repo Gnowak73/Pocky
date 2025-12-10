@@ -269,12 +269,12 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 
 func loadFlaresCmd(cfg config) tea.Cmd {
 	return func() tea.Msg {
-		cmp := comparatorASCII(cfg.COMPARATOR)
-		if strings.TrimSpace(cfg.START) == "" || strings.TrimSpace(cfg.END) == "" || strings.TrimSpace(cfg.WAVE) == "" || cmp == "" {
+		cmp := comparatorASCII(cfg.Comparator)
+		if strings.TrimSpace(cfg.Start) == "" || strings.TrimSpace(cfg.End) == "" || strings.TrimSpace(cfg.Wave) == "" || cmp == "" {
 			return flaresLoadedMsg{err: fmt.Errorf("missing required fields")}
 		}
 
-		flareClass := cfg.FLARE_CLASS
+		flareClass := cfg.Flare_Class
 		if strings.TrimSpace(flareClass) == "" {
 			flareClass = "A0.0"
 		}
@@ -287,7 +287,7 @@ func loadFlaresCmd(cfg config) tea.Cmd {
 		tmpPath := tmp.Name()
 		defer os.Remove(tmpPath)
 
-		cmd := exec.Command("python", "query.py", cfg.START, cfg.END, cmp, flareClass, cfg.WAVE, tmpPath)
+		cmd := exec.Command("python", "query.py", cfg.Start, cfg.End, cmp, flareClass, cfg.Wave, tmpPath)
 		cmd.Dir = ".."
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return flaresLoadedMsg{err: fmt.Errorf("flare listing failed: %v (%s)", err, strings.TrimSpace(string(output)))}
