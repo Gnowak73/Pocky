@@ -189,7 +189,7 @@ func renderCacheTableString(rows []flareEntry, width int) string {
 		width = 80
 	}
 	rowCap, descCap := 4, 3
-	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 18
+	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 24
 	if width > 0 {
 		switch {
 		case width < 70:
@@ -219,7 +219,7 @@ func renderCacheTableString(rows []flareEntry, width int) string {
 		start := truncateCell(r.start, maxWidths[3])
 		end := truncateCell(r.end, maxWidths[4])
 		coord := truncateCell(r.coord, maxWidths[5])
-		wave := truncateCell(r.wave, maxWidths[6])
+		wave := truncateCell(waveDisplay(r.wave), maxWidths[6])
 		t = t.Row(rowNum, desc, class, start, end, coord, wave)
 	}
 
@@ -345,7 +345,7 @@ func renderCacheDelete(m model, width int) string {
 		return s[:max-3] + "..."
 	}
 
-	maxClass, maxStart, maxEnd, maxCoord, maxWave := 12, 26, 26, 22, 18
+	maxClass, maxStart, maxEnd, maxCoord, maxWave := 12, 26, 26, 22, 24
 	if width > 0 {
 		switch {
 		case width < 70:
@@ -373,7 +373,7 @@ func renderCacheDelete(m model, width int) string {
 			trunc(r.start, maxStart),
 			trunc(r.end, maxEnd),
 			trunc(r.coord, maxCoord),
-			trunc(r.wave, maxWave),
+			trunc(waveDisplay(r.wave), maxWave),
 		})
 	}
 
