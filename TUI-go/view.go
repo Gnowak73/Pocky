@@ -7,7 +7,7 @@ import (
 )
 
 func (m model) View() string {
-	if len(m.colored) == 0 {
+	if len(m.logo.colored) == 0 {
 		return "logo missing\n"
 	}
 
@@ -21,7 +21,7 @@ func (m model) View() string {
 		return body + "\n" + status
 	}
 
-	content := strings.Join(m.colored, "\n")
+	content := strings.Join(m.logo.colored, "\n")
 	boxContent := logoBoxStyle.Render(content)
 
 	w := m.width

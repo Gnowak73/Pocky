@@ -1,6 +1,12 @@
 package main
 
 // requires pre model initialization
+
+type comparator struct {
+	display string // what user sees (unicode)
+	value   string // what gets stores in config (ASCII)
+}
+
 type config struct {
 	wave       string
 	start      string
@@ -11,20 +17,21 @@ type config struct {
 	dlEmail    string
 }
 
-type comparator struct {
-	display string // what user sees (unicode)
-	value   string // what gets stores in config (ASCII)
-}
-
 type waveOption struct {
 	code string // the wavelength in Angstroms
 	desc string // the side description from the select menu
 }
 
-type WaveEditorState struct {
+type waveEditorState struct {
 	options  []waveOption
 	selected map[string]bool // map that gives true/false for options
 	focus    int             // which option is highlighted in UI
+}
+
+type logoState struct {
+	lines   []string // string lines for logo.txt
+	colored []string // colored lines
+	blockW  int      // column width for logo to occupy
 }
 
 // post model initialization

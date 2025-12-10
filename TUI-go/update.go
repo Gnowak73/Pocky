@@ -30,7 +30,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		m.frame++
-		m.colored = colorizeLogo(m.logoLines, m.blockW, m.frame)
+		m.logo.colored = colorizeLogo(m.logo.lines, m.logo.blockW, m.frame)
 		if m.notice != "" && m.noticeSet > 0 && m.frame-m.noticeSet > 19 {
 			m.notice = ""
 		}

@@ -190,7 +190,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 		return 0, false
 	}
 
-	content := strings.Join(m.colored, "\n")
+	content := strings.Join(m.logo.colored, "\n")
 	boxContent := logoBoxStyle.Render(content)
 
 	w := m.width
@@ -233,7 +233,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 		return 0, false
 	}
 
-	content := strings.Join(m.colored, "\n")
+	content := strings.Join(m.logo.colored, "\n")
 	boxContent := logoBoxStyle.Render(content)
 
 	w := m.width

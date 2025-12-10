@@ -7,13 +7,17 @@ import (
 )
 
 type model struct {
-	logoLines []string // string lines for logo.txt
-	colored   []string // colored lines
-	cfg       config
-	blockW    int // column width for logo to occupy
-	width     int
-	height    int
-	frame     int
+	// config
+	cfg config
+
+	// logo
+	logo logoState
+
+	// TUI window
+	width  int
+	height int
+	frame  int
+
 	menuItems []string // main menu items
 	selected  int
 	notice    string
@@ -23,7 +27,7 @@ type model struct {
 	mode viewMode
 
 	// Wavelength editor
-	wave WaveEditorState
+	wave waveEditorState
 
 	// Flare filter editor
 	flareComps        []comparator
@@ -74,22 +78,26 @@ type model struct {
 	dateFocus int
 }
 
-func newModel(logo []string, cfg config) model {
+func newModel(logoLines []string, cfg config) model {
+	// set defaults
+
 	// our aim is to take the lines from the logo, put them in an
 	// array, and pass them through our model to color and animate them.
-	// Then we will make a selectable menu and present config vars
-
 	// first we need the visual width of the logo as drawn on the TUI,
 	// measurement is in column number (terminals draw based on a grid)
 	blockW := 0
-	for _, l := range logo {
+	for _, l := range logoLines {
 		blockW = max(blockW, lipgloss.Width(l))
 	}
+	colored := colorizeLogo(logoLines, blockW, 0)
 
-	colored := colorizeLogo(logo, blockW, 0)
+	logoStateDefault := logoState{
+		lines:   logoLines,
+		colored: colored,
+		blockW:  blockW,
+	}
 
-	// we need to grab current defaults for runtime
-	waveStateDefault := WaveEditorState{
+	waveStateDefault := waveEditorState{
 		options:  defaultWaveOptions(),
 		selected: parseWaves(cfg.wave),
 	}
@@ -116,10 +124,8 @@ func newModel(logo []string, cfg config) model {
 	}
 
 	return model{
-		logoLines:         logo,
-		colored:           colored,
+		logo:              logoStateDefault,
 		cfg:               cfg,
-		blockW:            blockW,
 		wave:              waveStateDefault,
 		menuItems:         menu,
 		mode:              modeMain,

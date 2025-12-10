@@ -210,7 +210,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 		return 0, 0, false
 	}
 
-	content := strings.Join(m.colored, "\n")
+	content := strings.Join(m.logo.colored, "\n")
 	boxContent := logoBoxStyle.Render(content)
 	w := m.width
 	if w <= 0 {
