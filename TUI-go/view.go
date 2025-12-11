@@ -7,13 +7,14 @@ import (
 )
 
 func (m model) View() string {
-	if len(m.logo.colored) == 0 {
-		return "logo missing\n"
-	}
+	// post update, we go to the view to render
 
 	if m.mode == modeCacheView {
 		body := renderCacheView(m, m.width)
 		status := renderStatus(m)
+
+		// if we have height, we make a gap to push the status bar to the bottom
+		// by adding enough lines between body and status to prevent short window problems
 		if m.height > 0 {
 			gap := max(m.height-lipgloss.Height(body)-lipgloss.Height(status), 0)
 			return body + strings.Repeat("\n", gap) + status
