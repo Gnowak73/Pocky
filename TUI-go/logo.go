@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
+	"github.com/pocky/tui-go/styles"
 )
 
 func loadLogo() ([]string, error) {
@@ -85,9 +86,9 @@ func buildGradient(count int) []lipgloss.Style {
 	// This allows the lighter colors to appear on bottom and not appear muddy
 	// at the top where the hue is darker. We want to hold info in a slice of
 	// colors recorded with RGB (originally HEX) and then render them
-	stops := make([]colorful.Color, len(gradientStops))
-	for i := range gradientStops {
-		hex := gradientStops[len(gradientStops)-1-i]
+	stops := make([]colorful.Color, len(styles.GradientStops))
+	for i := range styles.GradientStops {
+		hex := styles.GradientStops[len(styles.GradientStops)-1-i]
 		c, err := colorful.Hex(hex)
 		if err != nil {
 			// if error, return zero value of rgb color by default

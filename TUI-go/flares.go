@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	lgtbl "github.com/charmbracelet/lipgloss/table"
+	"github.com/pocky/tui-go/styles"
 )
 
 func flareViewHeight(m model) int {
@@ -61,22 +62,22 @@ func (m *model) rebuildFlareTable() {
 	)
 	s := table.DefaultStyles()
 	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		Inherit(grayBorderStyle).
+		Border(lipgloss.NormalBorder()).
+		Inherit(styles.GrayBorder).
 		BorderBottom(true).
-		Inherit(veryLightGrayStyle).
+		Inherit(styles.VeryLightGray).
 		Bold(true).
 		PaddingLeft(1).
 		PaddingRight(1)
 	s.Selected = s.Selected.
-		Inherit(grayStyle).
+		Inherit(styles.Gray).
 		Background(lipgloss.Color("")).
 		Bold(false).
 		PaddingLeft(1).
 		PaddingRight(1)
 	s.Cell = s.Cell.
 		Align(lipgloss.Left).
-		Inherit(grayStyle).
+		Inherit(styles.Gray).
 		PaddingLeft(1).
 		PaddingRight(1)
 	t.SetStyles(s)
@@ -121,14 +122,14 @@ func flareTableWidths(m model) (int, int, int, int, int) {
 }
 
 func renderSelectFlares(m model, width int) string {
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Choose Flares to Catalogue (Scroll)")
+	title := styles.SummaryHeader.Copy().Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 
 	if m.flare.sel.loading {
 		spin := ""
 		if len(m.spinner.frames) > 0 {
 			spin = m.spinner.frames[m.spinner.index]
 		}
-		msg := lightGrayStyle.Render(fmt.Sprintf("Loading flares %s", spin))
+		msg := styles.LightGray.Render(fmt.Sprintf("Loading flares %s", spin))
 		block := lipgloss.JoinVertical(lipgloss.Center, "", msg)
 		if width <= 0 {
 			return "\n" + block
@@ -146,7 +147,7 @@ func renderSelectFlares(m model, width int) string {
 	}
 
 	if len(m.flare.sel.list) == 0 {
-		msg := lightGrayStyle.Render("No flares found.")
+		msg := styles.LightGray.Render("No flares found.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
 			return "\n\n" + block
@@ -159,7 +160,7 @@ func renderSelectFlares(m model, width int) string {
 		m.flare.sel.cursor = 0
 	}
 	if height == 0 {
-		msg := lightGrayStyle.Render("No flares found.")
+		msg := styles.LightGray.Render("No flares found.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		if width <= 0 {
 			return "\n\n" + block
@@ -174,7 +175,7 @@ func renderSelectFlares(m model, width int) string {
 		titleLine = lipgloss.Place(lipgloss.Width(tableStr), lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, titleLine, "", tableStr)
-	help := lightGrayStyle.Render("↑/↓ move • space toggle • enter save • esc cancel")
+	help := styles.LightGray.Render("↑/↓ move • space toggle • enter save • esc cancel")
 
 	if width <= 0 {
 		return "\n\n" + body + "\n\n" + help
@@ -193,17 +194,17 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 	end := min(len(m.flare.sel.list), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
+	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
 	selectColStyle := base.Foreground(lipgloss.Color("#C7CDD6"))
-	classEvenStyle := base.Inherit(grayStyle)
-	classOddStyle := base.Inherit(veryLightGrayStyle)
+	classEvenStyle := base.Inherit(styles.Gray)
+	classOddStyle := base.Inherit(styles.VeryLightGray)
 	coordEvenStyle := base.Foreground(lipgloss.Color("#B8C3D9"))
 	coordOddStyle := base.Foreground(lipgloss.Color("#A0A9BE"))
-	startendEvenStyle := base.Inherit(lightGrayStyle)
-	startendOddStyle := base.Inherit(grayStyle)
-	evenStyle := base.Inherit(grayStyle)
-	oddStyle := base.Inherit(veryLightGrayStyle)
+	startendEvenStyle := base.Inherit(styles.LightGray)
+	startendOddStyle := base.Inherit(styles.Gray)
+	evenStyle := base.Inherit(styles.Gray)
+	oddStyle := base.Inherit(styles.VeryLightGray)
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 
 	rows := make([][]string, 0, end-start)
@@ -224,7 +225,7 @@ func renderSelectFlaresTable(m model, width int, height int) string {
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(faintGrayStyle).
+		BorderStyle(styles.FaintGray).
 		Headers("SEL", "CLASS", "START", "END", "COORDINATES").
 		Rows(rows...).
 		StyleFunc(func(row, col int) lipgloss.Style {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
+	"github.com/pocky/tui-go/styles"
 )
 
 func renderStatus(m model) string {
@@ -41,12 +42,12 @@ func renderStatus(m model) string {
 		}
 	}()
 
-	statusKey := statusKeyStyle.Render("POCKY")
-	statusArrow := statusArrowStyle.
-		Foreground(statusBarStyle.GetBackground()).
-		Background(statusKeyStyle.GetBackground()).
+	statusKey := styles.StatusKey.Render("POCKY")
+	statusArrow := styles.StatusArrow.
+		Foreground(styles.StatusBar.GetBackground()).
+		Background(styles.StatusKey.GetBackground()).
 		Render("")
-	infoBox := statusTextStyle.Render(statusLabel)
+	infoBox := styles.StatusText.Render(statusLabel)
 	available := max(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
 	hints := renderStaticGradientHint("esc to quit", available)
 
@@ -59,9 +60,9 @@ func renderStatus(m model) string {
 	)
 
 	if w > 0 {
-		return statusBarStyle.Width(w).Render(bar)
+		return styles.StatusBar.Width(w).Render(bar)
 	}
-	return statusBarStyle.Render(bar)
+	return styles.StatusBar.Render(bar)
 }
 
 func renderStaticGradientHint(text string, available int) string {
@@ -83,7 +84,7 @@ func renderStaticGradientHint(text string, available int) string {
 		end = colorful.Color{}
 	}
 
-	charStyle := statusHintStyle.Copy().Padding(0)
+	charStyle := styles.StatusHint.Copy().Padding(0)
 	var parts []string
 	steps := len(runes)
 	for i, r := range runes {
@@ -96,7 +97,7 @@ func renderStaticGradientHint(text string, available int) string {
 	}
 
 	colored := strings.Join(parts, "")
-	return statusHintStyle.Copy().
+	return styles.StatusHint.Copy().
 		Width(available).
 		Align(lipgloss.Right).
 		Render(colored)
@@ -159,5 +160,5 @@ func renderProgress(current, total, width int) string {
 	} else {
 		bar += label
 	}
-	return lightGrayStyle.Render(bar)
+	return styles.LightGray.Render(bar)
 }

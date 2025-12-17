@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	lgtbl "github.com/charmbracelet/lipgloss/table"
+	"github.com/pocky/tui-go/styles"
 )
 
 func cacheFilePath() string {
@@ -167,7 +168,7 @@ func saveCachePruned(header string, rows []flareEntry, delete map[int]bool) erro
 
 func cacheHeaderView(m model, width int) string {
 	title := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1).
 		Render("flare_cache.tsv")
 	line := strings.Repeat("─", max(0, m.cache.viewport.Width-lipgloss.Width(title)))
@@ -176,7 +177,7 @@ func cacheHeaderView(m model, width int) string {
 
 func cacheFooterView(m model, width int) string {
 	info := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1).
 		Render(fmt.Sprintf("%3.0f%%", m.cache.viewport.ScrollPercent()*100))
 	line := strings.Repeat("─", max(0, m.cache.viewport.Width-lipgloss.Width(info)))
@@ -202,14 +203,14 @@ func renderCacheTableString(rows []flareEntry, width int) string {
 	}
 	maxWidths := []int{rowCap, descCap, classCap, startCap, endCap, coordCap, waveCap}
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
-	rowEven := base.Inherit(grayStyle)
-	rowOdd := base.Inherit(lightGrayStyle)
-	descStyle := lightGrayStyle
+	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
+	rowEven := base.Inherit(styles.Gray)
+	rowOdd := base.Inherit(styles.LightGray)
+	descStyle := styles.LightGray
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(faintGrayStyle).
+		BorderStyle(styles.FaintGray).
 		Headers("ROW", "DESC", "CLASS", "START", "END", "COORD", "WAVE")
 
 	for i, r := range rows {
@@ -268,7 +269,7 @@ func renderCacheView(m model, width int) string {
 
 	header := cacheHeaderView(m, width)
 	footer := cacheFooterView(m, width)
-	help := lightGrayStyle.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
+	help := styles.LightGray.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -302,14 +303,14 @@ func renderCacheView(m model, width int) string {
 }
 
 func renderCacheDelete(m model, width int) string {
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
+	title := styles.SummaryHeader.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
 	height := cacheViewHeight(m)
 	rows := m.cache.filtered
 	if rows == nil {
 		rows = m.cache.rows
 	}
 	if len(rows) == 0 {
-		msg := lightGrayStyle.Render("Cache empty.")
+		msg := styles.LightGray.Render("Cache empty.")
 		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
 		bw := lipgloss.Width(block)
 		effW := width
@@ -326,9 +327,9 @@ func renderCacheDelete(m model, width int) string {
 	end := min(len(rows), start+height)
 
 	base := lipgloss.NewStyle().Padding(0, 1)
-	headerStyle := base.Inherit(veryLightGrayStyle).Bold(true)
-	rowEven := base.Inherit(grayStyle)
-	rowOdd := base.Inherit(veryLightGrayStyle)
+	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
+	rowEven := base.Inherit(styles.Gray)
+	rowOdd := base.Inherit(styles.VeryLightGray)
 	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
 	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 
@@ -379,7 +380,7 @@ func renderCacheDelete(m model, width int) string {
 
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(faintGrayStyle).
+		BorderStyle(styles.FaintGray).
 		Headers("SEL", "DESC", "CLASS", "START", "END", "COORD", "WAVE").
 		Rows(tableRows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
@@ -401,8 +402,8 @@ func renderCacheDelete(m model, width int) string {
 	if m.cache.searching {
 		searchText = m.cache.searchInput + "▌"
 	}
-	searchLine := lightGrayStyle.Render(fmt.Sprintf("Search: %s", searchText))
-	help := lightGrayStyle.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
+	searchLine := styles.LightGray.Render(fmt.Sprintf("Search: %s", searchText))
+	help := styles.LightGray.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
 	innerW := lipgloss.Width(tableStr)
 	if w := lipgloss.Width(title); w > innerW {
 		innerW = w

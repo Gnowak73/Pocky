@@ -25,7 +25,7 @@ func renderSummary(cfg config, width int) string {
 	lightGray := lipgloss.Color("241")
 
 	borderStyle := lipgloss.NewStyle().Foreground(purple)
-	headerTextStyle := lipgloss.NewStyle().Foreground(purple).Bold(true)
+	headerText := lipgloss.NewStyle().Foreground(purple).Bold(true)
 	cellEven := lipgloss.NewStyle().Foreground(gray)
 	cellOdd := lipgloss.NewStyle().Foreground(lightGray)
 
@@ -43,7 +43,7 @@ func renderSummary(cfg config, width int) string {
 	cellWidth := maxContent + pad*2
 	cellWidth++
 
-	headerLine := headerTextStyle.
+	headerLine := headerText.
 		Width(cellWidth).
 		Align(lipgloss.Center).
 		Render("SUMMARY")

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/styles"
 )
 
 func defaultComparator() []comparator {
@@ -107,8 +108,8 @@ func prettyComparator(val string) string {
 }
 
 func renderFlareColumns(m model) []string {
-	headerStyle := lightGrayStyle.Copy()
-	itemStyle := pinkOptionStyle.Copy()
+	headerStyle := styles.LightGray
+	itemStyle := styles.PinkOption
 	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
 	focusBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -187,7 +188,7 @@ func renderFlareColumns(m model) []string {
 }
 
 func renderFlareEditor(m model, width int) string {
-	titleStyle := summaryHeaderStyle.Copy().Bold(false)
+	titleStyle := styles.SummaryHeader.Copy().Bold(false)
 	cols := renderFlareColumns(m)
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	title := titleStyle.Render("Set Flare Filters")
@@ -202,7 +203,7 @@ func renderFlareEditor(m model, width int) string {
 
 	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
 
-	help := lightGrayStyle.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
+	help := styles.LightGray.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
 
 	if width <= 0 {
 		return "\n\n" + block + "\n\n" + help
@@ -225,7 +226,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 	}
 
 	content := strings.Join(m.logo.colored, "\n")
-	boxContent := logoBoxStyle.Render(content)
+	boxContent := styles.LogoBox.Render(content)
 	w := m.width
 	if w <= 0 {
 		w = lipgloss.Width(boxContent)
@@ -233,7 +234,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
 	boxWidth := lipgloss.Width(boxContent)
-	versionText := versionStyle.Render("VERSION: 0.2")
+	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
@@ -243,7 +244,7 @@ func (m model) flareHit(x, y int) (col int, row int, ok bool) {
 	summary := renderSummary(m.cfg, w)
 
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Set Flare Filters")
+	title := styles.SummaryHeader.Copy().Bold(false).Render("Set Flare Filters")
 	colWidth := lipgloss.Width(columns)
 	if colWidth < lipgloss.Width(title) {
 		colWidth = lipgloss.Width(title)

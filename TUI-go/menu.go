@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/styles"
 )
 
 func renderMenu(m model, width int) string {
@@ -22,11 +23,11 @@ func renderMenu(m model, width int) string {
 		noticeLine = nl
 	}
 	for i, item := range m.menu.items {
-		style := menuItemStyle
+		style := styles.MenuItem
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
 		if i == m.menu.selected {
-			style = menuSelectedStyle
+			style = styles.MenuSelected
 			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
 			cursorW = lipgloss.Width(cursor)
 		}
@@ -40,7 +41,7 @@ func renderMenu(m model, width int) string {
 	helpText := "↑/k up • ↓/j down • enter submit"
 
 	if width <= 0 {
-		help := lightGrayStyle.Render(helpText)
+		help := styles.LightGray.Render(helpText)
 		if noticeLine != "" {
 			return "\n\n" + menuBlock + "\n\n" + "  " + noticeLine + "\n\n" + help
 		}
@@ -48,7 +49,7 @@ func renderMenu(m model, width int) string {
 	}
 
 	placed := lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
-	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, lightGrayStyle.Render(helpText))
+	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, styles.LightGray.Render(helpText))
 	var shifted []string
 	for _, line := range strings.Split(placed, "\n") {
 		if strings.HasPrefix(line, " ") {
@@ -78,11 +79,11 @@ func renderMenuWithCache(m model, width int) string {
 	}
 
 	for i, item := range m.menu.items {
-		style := menuItemStyle
+		style := styles.MenuItem
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
 		if i == m.menu.selected {
-			style = menuSelectedStyle
+			style = styles.MenuSelected
 			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
 			cursorW = lipgloss.Width(cursor)
 		}
@@ -123,10 +124,10 @@ func renderMenuWithCache(m model, width int) string {
 				top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
 				sub = append(sub, top)
 				for j, subItem := range m.cache.menuItems {
-					sStyle := veryLightGrayStyle
+					sStyle := styles.VeryLightGray
 					sCursor := "  "
 					if j == m.cache.selected {
-						sStyle = menuSelectedStyle
+						sStyle = styles.MenuSelected
 						sCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("» ")
 					}
 					sLine := sCursor + sStyle.Render(subItem)
@@ -161,7 +162,7 @@ func renderMenuWithCache(m model, width int) string {
 	mainBlock := strings.Join(lines, "\n")
 
 	helpText := "↑/k up • ↓/j down • enter submit • esc close cache"
-	help := lightGrayStyle.Render(helpText)
+	help := styles.LightGray.Render(helpText)
 	joined := mainBlock
 
 	if width <= 0 {
@@ -191,7 +192,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 	}
 
 	content := strings.Join(m.logo.colored, "\n")
-	boxContent := logoBoxStyle.Render(content)
+	boxContent := styles.LogoBox.Render(content)
 
 	w := m.width
 	if w <= 0 {
@@ -200,7 +201,7 @@ func (m model) menuIndexAt(x, y int) (int, bool) {
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
 	boxWidth := lipgloss.Width(boxContent)
-	versionText := versionStyle.Render("VERSION: 0.2")
+	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
@@ -234,7 +235,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 	}
 
 	content := strings.Join(m.logo.colored, "\n")
-	boxContent := logoBoxStyle.Render(content)
+	boxContent := styles.LogoBox.Render(content)
 
 	w := m.width
 	if w <= 0 {
@@ -243,7 +244,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
 	boxWidth := lipgloss.Width(boxContent)
-	versionText := versionStyle.Render("VERSION: 0.2")
+	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
@@ -266,7 +267,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 	for _, item := range m.menu.items {
 		cursor := "  "
 		cursorW := lipgloss.Width(cursor)
-		lineContent := cursor + menuItemStyle.Render(item)
+		lineContent := cursor + styles.MenuItem.Render(item)
 		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
 		lines = append(lines, line)
 		if item == "Cache Options" {
@@ -280,7 +281,7 @@ func (m model) cacheMenuIndexAt(x, y int) (int, bool) {
 			innerWidth := maxCache + 4
 			lines = append(lines, "   ╭"+strings.Repeat("─", innerWidth)+"╮")
 			for _, subItem := range m.cache.menuItems {
-				sLine := "  " + menuItemStyle.Render(subItem)
+				sLine := "  " + styles.MenuItem.Render(subItem)
 				if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
 					sLine += strings.Repeat(" ", pad)
 				}

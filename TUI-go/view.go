@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/styles"
 )
 
 func (m model) View() string {
@@ -23,7 +24,7 @@ func (m model) View() string {
 	}
 
 	content := strings.Join(m.logo.colored, "\n")
-	boxContent := logoBoxStyle.Render(content)
+	boxContent := styles.LogoBox.Render(content)
 
 	w := m.width
 	if w <= 0 {
@@ -32,7 +33,7 @@ func (m model) View() string {
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
 	boxWidth := lipgloss.Width(boxContent)
-	versionText := versionStyle.Render("VERSION: 0.2")
+	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2

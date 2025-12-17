@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/styles"
 )
 
 func defaultWaveOptions() []waveOption {
@@ -117,7 +118,7 @@ func (m model) waveIndexAt(x, y int) (int, bool) {
 	}
 
 	content := strings.Join(m.logo.colored, "\n")
-	boxContent := logoBoxStyle.Render(content)
+	boxContent := styles.LogoBox.Render(content)
 
 	w := m.width
 	if w <= 0 {
@@ -126,7 +127,7 @@ func (m model) waveIndexAt(x, y int) (int, bool) {
 	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
 	boxWidth := lipgloss.Width(boxContent)
-	versionText := versionStyle.Render("VERSION: 0.2")
+	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
@@ -168,7 +169,7 @@ func (m model) waveIndexAt(x, y int) (int, bool) {
 }
 
 func renderWavelengthEditor(m model, width int) string {
-	title := summaryHeaderStyle.Copy().Bold(false).Render("Select AIA Wavelength Channels")
+	title := styles.SummaryHeader.Copy().Bold(false).Render("Select AIA Wavelength Channels")
 	divWidth := max(lipgloss.Width(title)+6, 32)
 	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
 	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
@@ -190,7 +191,7 @@ func renderWavelengthEditor(m model, width int) string {
 			check,
 			" ",
 			codeStyle.Render(opt.code+"Å"),
-			lightGrayStyle.Render("  │  "),
+			styles.LightGray.Render("  │  "),
 			descStyle.Render(opt.desc),
 		)
 		if i == m.wave.focus {
@@ -201,7 +202,7 @@ func renderWavelengthEditor(m model, width int) string {
 
 	list := strings.Join(rows, "\n")
 	list = " " + strings.ReplaceAll(list, "\n", "\n ")
-	help := lightGrayStyle.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
+	help := styles.LightGray.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
 
 	block := lipgloss.JoinVertical(lipgloss.Left,
 		titleBlock,

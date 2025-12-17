@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/styles"
 )
 
 func renderDateEditor(m model, width int) string {
@@ -11,11 +12,11 @@ func renderDateEditor(m model, width int) string {
 	// inside one of the inputs
 
 	// lipgloss styles return by value
-	valueStyle := pinkOptionStyle
+	valueStyle := styles.PinkOption
 	focusStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2A262A"))
-	headerStyle := lightGrayStyle
-	promptStyle := lightGrayStyle.Bold(true)
-	ghostStyle := lightGrayStyle.Faint(true)
+	headerStyle := styles.LightGray
+	promptStyle := styles.LightGray.Bold(true)
+	ghostStyle := styles.LightGray.Faint(true)
 
 	renderField := func(val, placeholder string, focused bool) string {
 		line := lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), valueStyle.Render(val))
@@ -53,7 +54,7 @@ func renderDateEditor(m model, width int) string {
 		endField,
 	)
 
-	help := lightGrayStyle.Render("tab switch • enter save • esc cancel")
+	help := styles.LightGray.Render("tab switch • enter save • esc cancel")
 
 	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
