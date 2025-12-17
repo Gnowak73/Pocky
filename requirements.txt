@@ -10,3 +10,18 @@ astropy>=6.0      # fetch_fido.py (units)
 # CLI tools used by pocky.sh (install separately, not via pip):
 #   gum (https://github.com/charmbracelet/gum)
 #   tte (optional, for logo rendering)
+#
+#   tte requires either yay on arch or possible pipx, etc,
+#   see the github for ways to install
+#   date -d is a GNu extension required for the bash file
+#   
+#   We need the date, awk, GNU packages.
+#
+#   get gnu-sed, and grep
+#
+#   make sure bash is updated past 4.0
+#
+#
+#   in case python does not work, make sure OS 
+#   recognized python command. If not, make a shim, for example:
+#   ln -s python3 "$(dirname "$(which python3)")/python"
