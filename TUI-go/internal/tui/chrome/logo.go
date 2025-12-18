@@ -14,18 +14,27 @@ import (
 )
 
 type LogoState struct {
-	Lines   []string
-	Colored []string
-	BlockW  int
+	Lines   []string // string linees for logo.txt
+	Colored []string // colored lines
+	BlockW  int      // column width to occupy
 }
 
 func LoadLogo() ([]string, error) {
+	// we need to find the directory of the parent file and test if
+	// the logo exists in /exeDir..
+
 	path := config.ParentDirFile("logo.txt")
+
+	// you cannot use go run . because this runs the exe from a temp
+	// directory and not from the disk path
+
+	// we read as bytes, but want the output as a string
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.New("could not find logo.txt in parent /Pocky directory")
 	}
 
+	// remove new line trailing characters
 	content := strings.TrimRight(string(data), "\r\n")
 	if content == "" {
 		return nil, errors.New("logo.txt is empty")
@@ -34,11 +43,18 @@ func LoadLogo() ([]string, error) {
 }
 
 func NewLogoState(logoLines []string, frame int) LogoState {
+	// we want the max visual line with of the logo to draw a border
+	// and center it appropriately later on. This will be called in the
+	// model initialization before we render the TUI
 	blockW := 0
 	for _, l := range logoLines {
+		// the visual width of the logo as drawn by the TUI, measured
+		// as column number (terminal draws based on grid)
 		blockW = max(blockW, lipgloss.Width(l))
 	}
+
 	colored := ColorizeLogo(logoLines, blockW, frame)
+
 	return LogoState{
 		Lines:   logoLines,
 		Colored: colored,
@@ -47,6 +63,8 @@ func NewLogoState(logoLines []string, frame int) LogoState {
 }
 
 func ColorizeLogo(lines []string, blockW int, frame int) []string {
+	// color the logo with vertical gradient and add a gentle wave animation
+	// using basic trig for glamour
 	if len(lines) == 0 {
 		return nil
 	}
@@ -61,35 +79,54 @@ func ColorizeLogo(lines []string, blockW int, frame int) []string {
 		offset = 0.0
 	)
 
+	// we use sine wave to model movement and pad to the left to move the logo lines.
+	// We must also add/remove padding on the right to keep the overall space the same rectangle.
 	for i, line := range lines {
 		lineStyled := gradient[i].Render(line)
 		lineW := lipgloss.Width(lineStyled)
+
+		// while blockW >= lineW regularly, styled lines can change length,
+		// so we put in max defensively. Use max and clamp in these cases.
 		extra := max(blockW-lineW, 0)
 		basePad := extra / 2
+
 		shift := int(math.Round(math.Sin(float64(frame)*speed+float64(i)*phase+offset) * amp))
 		left := theme.Clamp(basePad+shift, 0, extra)
 		right := extra - left
+
 		colored[i] = strings.Repeat(" ", left) + lineStyled + strings.Repeat(" ", right)
 	}
 	return colored
 }
 
 func buildGradient(count int) []lipgloss.Style {
+	// we want to ensure at least one style exists so the linear
+	// interpolation doesn't return an error (say we have empty string logo)
 	if count < 1 {
 		count = 1
 	}
 
+	// Reverse stops so gradient runs bottom-to-top relative to the input list
+	// This allows the lighter colors to appear on bottom and not appear muddy
+	// at the top where the hue is darker. We want to hold info in a slice of
+	// colors recorded with RGB (originally HEX) and then render them
 	stops := make([]colorful.Color, len(styles.GradientStops))
 	for i := range styles.GradientStops {
 		hex := styles.GradientStops[len(styles.GradientStops)-1-i]
 		c, err := colorful.Hex(hex)
 		if err != nil {
+			// upon error, return zero value of rgb by default
 			c = colorful.Color{}
 		}
 		stops[i] = c
 	}
 
 	stylesOut := make([]lipgloss.Style, count)
+
+	// When interpolating, the gradient is a function over [0,1], t=0 is
+	// the first color and t=1 then next. To interpolate with "count" gradient
+	// steps, we want an equal distribution so we split up [0,1] into equal parts
+	// and sample those parts as t
 	for i := range count {
 		t := 0.0
 		if count > 1 {
