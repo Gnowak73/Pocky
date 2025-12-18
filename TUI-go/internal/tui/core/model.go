@@ -1,3 +1,7 @@
+// Package core contains the framework or "bones" of the bubbletea TUI model. This includes the
+// Init -> Update -> View -> Update loop, mainly dealing with drawing the features or "limbs" together
+// and passing messages
+
 package core
 
 import (
