@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pocky/tui-go/internal/ui"
+	ui "github.com/pocky/tui-go/internal/tui"
 )
 
 func main() {
