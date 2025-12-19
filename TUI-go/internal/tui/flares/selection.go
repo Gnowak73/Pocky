@@ -166,6 +166,7 @@ func flareTableWidths(s SelectorState) (int, int, int, int, int) {
 }
 
 func (s SelectorState) Render(width int) string {
+	// this function is called every time we render the table in the View()
 	if s.Loading {
 		// spinner frames is only checked for the animation. However, if there is an empty string
 		// we may still move foreward and get this function called where the index is just zero (since
@@ -218,15 +219,28 @@ func (s SelectorState) Render(width int) string {
 
 // renderSelectFlaresTable builds the flare selection table with distinct columns and a selectable SEL column.
 func renderSelectFlaresTable(state SelectorState, width int, height int) string {
+	// The offset tells us the first index in the table which should be visible. As we haven't moved
+	// our cursor yet, we want this to start at zero. This function will be called whenever we are Rendering the table.
+	// The height and width to be used will come from the SelectorState, or how many columns we space and
+	// how many lines fit in the table window at one time (between 7 and 12)
+
+	// Hence, we first "start" at the max of the offset and 0 (choosing between 0 or where the cursor is). However
+	// start must also be <= length(state.List) - height, or else at the bottom of the table we will go past the
+	// last row in terms of rendered space. We want the last possible start to be the height above the bottom to
+	// end scrolling on the last few.
 	start := max(state.Offset, 0)
 	if max := max(len(state.List)-height, 0); start > max {
 		start = max
 	}
+	// we bound the bottom by either the entire length of the table or "height" number of rows after the start,
+	// esentially making the window "height" rows tall which we view at all times. We need a min for the case we have
+	// less than "height" number of rows to supply, then we end is the bottom of the whole list.
 	end := min(len(state.List), start+height)
 
+	// glamour
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
-	cursorStyle := base.Foreground(lipgloss.Color("#F785D1")).Background(lipgloss.Color("#2A262A"))
+	cursorStyle := base.Inherit(styles.MenuSelected).Background(lipgloss.Color("#2A262A"))
 	selectColStyle := base.Foreground(lipgloss.Color("#C7CDD6"))
 	classEvenStyle := base.Inherit(styles.Gray)
 	classOddStyle := base.Inherit(styles.VeryLightGray)
@@ -236,7 +250,7 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 	startendOddStyle := base.Inherit(styles.Gray)
 	evenStyle := base.Inherit(styles.Gray)
 	oddStyle := base.Inherit(styles.VeryLightGray)
-	selMark := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+	selMark := styles.MenuSelected
 
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
