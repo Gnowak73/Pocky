@@ -34,7 +34,6 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 	}
 	m.Selector.Cursor = 0
 	m.Selector.Offset = 0
-	m.Selector.RebuildTable() // make the table!
 	return m, nil
 
 	// move to the View() render

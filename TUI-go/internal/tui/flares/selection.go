@@ -5,7 +5,6 @@ package flares
 import (
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/pocky/tui-go/internal/tui/styles"
@@ -33,7 +32,6 @@ type SelectorState struct {
 	Cursor   int // just an int representing which row we are on
 	Offset   int // index of first visible item in flare list
 	Loading  bool
-	Table    table.Model
 	Spinner  SpinnerState
 }
 
@@ -53,116 +51,6 @@ func (s SelectorState) viewHeight() int {
 	}
 	// clamp between 7 and 12 rows so viewport doesnt grow or shrink windly while scrolling
 	return max(7, min(12, len(s.List)))
-}
-
-func (s SelectorState) styledRows() []table.Row {
-	// we arent modifying the state, all we do is return a table with selected column
-
-	// defensive code
-	if len(s.List) == 0 {
-		return nil
-	}
-
-	// take a list of flare entries and convert them into bubbletea table row,
-	// which is read as just a slice of strings
-	rows := make([]table.Row, 0, len(s.List))
-	for i, entry := range s.List {
-		check := "[ ]"
-		if s.Selected[i] {
-			check = "[x]"
-		}
-		rows = append(rows, table.Row{check, entry.Class, entry.Start, entry.End, entry.Coord})
-	}
-	return rows
-}
-
-func (s *SelectorState) RebuildTable() {
-	// we are fully reconstructing the table.Model from the current selector state. The selector
-	// keeps a table.Model so it can display the catalogue of flares without reinventing layout/scrolling
-	// constructs. RebuildTable creates that model whenever the SelectorState.List, Cursor, or the selected
-	// rows change. Hence why we call it a "rebuild."
-	// pass the selector state into the function, then we modify
-
-	wSel, wClass, wstart, wend, wCoord := flareTableWidths(*s)
-	columns := []table.Column{
-		{Title: "SEL", Width: wSel},
-		{Title: "CLASS", Width: wClass},
-		{Title: "START", Width: wstart},
-		{Title: "END", Width: wend},
-		{Title: "COORDINATES", Width: wCoord},
-	}
-
-	rows := s.styledRows()
-	height := s.viewHeight()
-
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithHeight(height),
-		table.WithFocused(true),
-	)
-	stylesTbl := table.DefaultStyles()
-
-	stylesTbl.Header = stylesTbl.Header.
-		Border(lipgloss.NormalBorder()).
-		Inherit(styles.GrayBorder).
-		BorderBottom(true).
-		Inherit(styles.VeryLightGray).
-		Bold(true).
-		PaddingLeft(1).
-		PaddingRight(1)
-
-	stylesTbl.Selected = stylesTbl.Selected.
-		Inherit(styles.Gray).
-		Background(lipgloss.Color("")).
-		Bold(false).
-		PaddingLeft(1).
-		PaddingRight(1)
-
-	stylesTbl.Cell = stylesTbl.Cell.
-		Align(lipgloss.Left).
-		Inherit(styles.Gray).
-		PaddingLeft(1).
-		PaddingRight(1)
-
-	t.SetStyles(stylesTbl)
-	t.SetCursor(s.Cursor)
-	s.Table = t
-}
-
-func (s *SelectorState) UpdateTableRows() {
-	if len(s.List) == 0 || s.Table.Columns() == nil {
-		return
-	}
-
-	// to update the rows, call back through to see which are selected and draw that
-	// onto the TUI, then set that to the current rows of the table. Same with cursor
-	rows := s.styledRows()
-	s.Table.SetRows(rows)
-	s.Table.SetCursor(s.Cursor)
-}
-
-func flareTableWidths(s SelectorState) (int, int, int, int, int) {
-	// get widths by the size of the content in the tables
-	wSel := max(
-		lipgloss.Width("SEL"),
-		lipgloss.Width("[x]"),
-	)
-
-	wClass := lipgloss.Width("Class")
-	wStart := lipgloss.Width("start")
-	wEnd := lipgloss.Width("end")
-	wCoord := lipgloss.Width("Coordinates")
-
-	for _, e := range s.List {
-		wClass = max(wClass, lipgloss.Width(e.Class))
-		wStart = max(wStart, lipgloss.Width(e.Start))
-		wEnd = max(wEnd, lipgloss.Width(e.End))
-		wCoord = max(wCoord, lipgloss.Width(e.Coord))
-	}
-	// we want a small padding to make the table not look cramped between columns
-	pad := 2
-	return wSel + pad, wClass + pad, wStart + pad, wEnd + pad, wCoord + pad
 }
 
 func (s SelectorState) Render(width int) string {
@@ -268,6 +156,7 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 		})
 	}
 
+	// we now crate the glorious lipgloss table
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(styles.FaintGray).
