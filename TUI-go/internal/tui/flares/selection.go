@@ -1,3 +1,5 @@
+// Package flares encapsulated all flare-related things that do not mutate the state of the TUI model. This includes
+// python querying, choosing filtering comparators, managing the cache state, etc.
 package flares
 
 import (
@@ -195,17 +197,16 @@ func (s SelectorState) Render(width int) string {
 	height := s.viewHeight()
 
 	tableStr := renderSelectFlaresTable(s, width, height)
-	var titleLine string
 
 	if width > 0 {
-		titleLine = lipgloss.Place(width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+		title = lipgloss.Place(width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 	} else {
-		titleLine = lipgloss.Place(lipgloss.Width(tableStr), lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
+		title = lipgloss.Place(lipgloss.Width(tableStr), lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 	}
-	body := lipgloss.JoinVertical(lipgloss.Left, titleLine, "", tableStr)
+	body := lipgloss.JoinVertical(lipgloss.Left, title, "", tableStr)
 	help := styles.LightGray.Render("↑/↓ move • space toggle • enter save • esc cancel")
 
-	// defensive code
+	// defensive code so lipgloss.Placed doesnt divide up a space of zero width
 	if width <= 0 {
 		return "\n\n" + body + "\n\n" + help
 	}
