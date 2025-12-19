@@ -141,7 +141,7 @@ func (s *SelectorState) UpdateTableRows() {
 }
 
 func flareTableWidths(s SelectorState) (int, int, int, int, int) {
-	// variable table widths depending on the size of terminal window
+	// get widths by the size of the content in the tables
 	wSel := max(
 		lipgloss.Width("SEL"),
 		lipgloss.Width("[x]"),
@@ -158,34 +158,31 @@ func flareTableWidths(s SelectorState) (int, int, int, int, int) {
 		wEnd = max(wEnd, lipgloss.Width(e.End))
 		wCoord = max(wCoord, lipgloss.Width(e.Coord))
 	}
-
+	// we want a small padding to make the table not look cramped between columns
 	pad := 2
 	return wSel + pad, wClass + pad, wStart + pad, wEnd + pad, wCoord + pad
 }
 
 func (s SelectorState) Render(width int) string {
-	title := styles.SummaryHeader.Copy().Bold(false).Render("Choose Flares to Catalogue (Scroll)")
+	// render the top title header with lipgloss Render which returns useful strings to print
+	// after wrapping in ASCII escapte codes etc.
+	title := styles.SummaryHeader.Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 
 	if s.Loading {
-		spin := ""
-		if len(s.Spinner.Frames) > 0 {
-			spin = s.Spinner.Frames[s.Spinner.Index]
-		}
+		spin := s.Spinner.Frames[s.Spinner.Index]
 		msg := styles.LightGray.Render(fmt.Sprintf("Loading flares %s", spin))
+
+		// we now must join our rendered strings together and join them to be outputted later to the TUI
+
+		// defensive code
 		block := lipgloss.JoinVertical(lipgloss.Center, "", msg)
 		if width <= 0 {
 			return "\n" + block
 		}
-		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	}
 
-	if len(s.List) == 0 {
-		msg := styles.LightGray.Render("No flares found.")
-		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		if width <= 0 {
-			return "\n\n" + block
-		}
-		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+		// lipgloss.Place creates a rectangular view and pads the inside strings, we want a centered output
+		// with height equal to the block we are rendering
+		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
 	height := s.viewHeight()
