@@ -11,6 +11,9 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 	// run, return a new tea.Msg, and we go back into the cycle of update() -> mutate -> render.
 	// Here, we mutate.
 
+	// The incoming message of FLaresLoaded holds the information on the header and entries
+	// for variables to be presented in a table
+
 	m.Selector.Loading = false
 	if msg.Err != nil {
 		m.Menu.Notice = msg.Err.Error()

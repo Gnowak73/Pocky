@@ -9,17 +9,27 @@ import (
 	"github.com/pocky/tui-go/internal/tui/styles"
 )
 
+type Entry struct {
+	Desc  string
+	Class string
+	Start string
+	End   string
+	Coord string
+	Full  string
+	Wave  string
+}
+
 type SpinnerState struct {
 	Frames []string
 	Index  int
 }
 
 type SelectorState struct {
-	List     []Entry
+	List     []Entry // slice of entries
 	Header   string
 	Selected map[int]bool
-	Cursor   int
-	Offset   int
+	Cursor   int // just an int representing which row we are on
+	Offset   int // index of first visible item in flare list
 	Loading  bool
 	Table    table.Model
 	Spinner  SpinnerState
@@ -35,16 +45,24 @@ func NewSelectorState() SelectorState {
 }
 
 func (s SelectorState) viewHeight() int {
+	// defensive code
 	if len(s.List) == 0 {
 		return 0
 	}
+	// clamp between 7 and 12 rows so viewport doesnt grow or shrink windly while scrolling
 	return max(7, min(12, len(s.List)))
 }
 
 func (s SelectorState) styledRows() []table.Row {
+	// we arent modifying the state, all we do is return a table with selected column
+
+	// defensive code
 	if len(s.List) == 0 {
 		return nil
 	}
+
+	// take a list of flare entries and convert them into bubbletea table row,
+	// which is read as just a slice of strings
 	rows := make([]table.Row, 0, len(s.List))
 	for i, entry := range s.List {
 		check := "[ ]"
@@ -57,10 +75,11 @@ func (s SelectorState) styledRows() []table.Row {
 }
 
 func (s *SelectorState) RebuildTable() {
-	if len(s.List) == 0 {
-		s.Table = table.Model{}
-		return
-	}
+	// we are fully reconstructing the table.Model from the current selector state. The selector
+	// keeps a table.Model so it can display the catalogue of flares without reinventing layout/scrolling
+	// constructs. RebuildTable creates that model whenever the SelectorState.List, Cursor, or the selected
+	// rows change. Hence why we call it a "rebuild."
+	// pass the selector state into the function, then we modify
 
 	wSel, wClass, wstart, wend, wCoord := flareTableWidths(*s)
 	columns := []table.Column{
@@ -73,6 +92,7 @@ func (s *SelectorState) RebuildTable() {
 
 	rows := s.styledRows()
 	height := s.viewHeight()
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
@@ -80,6 +100,7 @@ func (s *SelectorState) RebuildTable() {
 		table.WithFocused(true),
 	)
 	stylesTbl := table.DefaultStyles()
+
 	stylesTbl.Header = stylesTbl.Header.
 		Border(lipgloss.NormalBorder()).
 		Inherit(styles.GrayBorder).
@@ -88,17 +109,20 @@ func (s *SelectorState) RebuildTable() {
 		Bold(true).
 		PaddingLeft(1).
 		PaddingRight(1)
+
 	stylesTbl.Selected = stylesTbl.Selected.
 		Inherit(styles.Gray).
 		Background(lipgloss.Color("")).
 		Bold(false).
 		PaddingLeft(1).
 		PaddingRight(1)
+
 	stylesTbl.Cell = stylesTbl.Cell.
 		Align(lipgloss.Left).
 		Inherit(styles.Gray).
 		PaddingLeft(1).
 		PaddingRight(1)
+
 	t.SetStyles(stylesTbl)
 	t.SetCursor(s.Cursor)
 	s.Table = t
@@ -108,6 +132,9 @@ func (s *SelectorState) UpdateTableRows() {
 	if len(s.List) == 0 || s.Table.Columns() == nil {
 		return
 	}
+
+	// to update the rows, call back through to see which are selected and draw that
+	// onto the TUI, then set that to the current rows of the table. Same with cursor
 	rows := s.styledRows()
 	s.Table.SetRows(rows)
 	s.Table.SetCursor(s.Cursor)
