@@ -164,12 +164,16 @@ func flareTableWidths(s SelectorState) (int, int, int, int, int) {
 }
 
 func (s SelectorState) Render(width int) string {
-	// render the top title header with lipgloss Render which returns useful strings to print
-	// after wrapping in ASCII escapte codes etc.
-	title := styles.SummaryHeader.Bold(false).Render("Choose Flares to Catalogue (Scroll)")
-
 	if s.Loading {
-		spin := s.Spinner.Frames[s.Spinner.Index]
+		// spinner frames is only checked for the animation. However, if there is an empty string
+		// we may still move foreward and get this function called where the index is just zero (since
+		// empty spinner frames skip moving the index forward and it's initialized at 0). Since
+		// indexing an empty string returns a panic error, we add this fallback
+		spin := ""
+		if len(s.Spinner.Frames) > 0 {
+			spin = s.Spinner.Frames[s.Spinner.Index%len(s.Spinner.Frames)]
+		}
+
 		msg := styles.LightGray.Render(fmt.Sprintf("Loading flares %s", spin))
 
 		// we now must join our rendered strings together and join them to be outputted later to the TUI
@@ -185,10 +189,14 @@ func (s SelectorState) Render(width int) string {
 		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
+	// render the top title header with lipgloss Render which returns useful strings to print
+	// after wrapping in ASCII escapte codes etc.
+	title := styles.SummaryHeader.Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 	height := s.viewHeight()
 
 	tableStr := renderSelectFlaresTable(s, width, height)
-	titleLine := title
+	var titleLine string
+
 	if width > 0 {
 		titleLine = lipgloss.Place(width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 	} else {
@@ -197,6 +205,7 @@ func (s SelectorState) Render(width int) string {
 	body := lipgloss.JoinVertical(lipgloss.Left, titleLine, "", tableStr)
 	help := styles.LightGray.Render("↑/↓ move • space toggle • enter save • esc cancel")
 
+	// defensive code
 	if width <= 0 {
 		return "\n\n" + body + "\n\n" + help
 	}
