@@ -1,5 +1,10 @@
 package chrome
 
+// chrome/menu.go lives in chrome because it only renders menu blocks from the
+// MenuState passed in—no mode routing or key handling happens here. Keeping the
+// presentation primitives in chrome keeps the Bubble Tea routing in core where it
+// belongs.
+
 import (
 	"strings"
 

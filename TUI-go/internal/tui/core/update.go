@@ -10,10 +10,12 @@ import (
 
 // The cycle of the TUI is Init() -> return tea.Cmd function -> eval tea.Cmd
 // Then we go into the loop of Update() -> return model + tea.Cmd -> View()
-// -> eval tea.Cmd from Update -> Update()
+// -> eval tea.Cmd from Update -> Update(). Update takes in the model to mutate it
+// along with a tea.Cmd which will be ran to get a new tea.Msg.
 
 // Tea will automatically take messages and pass them etc.
 // tea.Cmd is a function type that returns a tea.Msg to tell the TUI to update.
+// Since tea.Msg is empty interface, a tickMsg is a tea.Msg.
 // We will start with a tick function that will start the initial animations for menus.
 
 // tickMsg is an interface, so we are passing the type and data pointer (16 bytes total).
@@ -77,3 +79,5 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// next, we go to View() in view.go

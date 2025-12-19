@@ -6,10 +6,14 @@ import (
 )
 
 func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cmd) {
+	// we need to take in the mesage for flares loaded, then return a model that is ready
+	// to select flares from the loaded table along with giving back a tea.Cmd which will
+	// run, return a new tea.Msg, and we go back into the cycle of update() -> mutate -> render.
+	// Here, we mutate.
+
 	m.Selector.Loading = false
 	if msg.Err != nil {
-		m.Selector.LoadError = msg.Err.Error()
-		m.Menu.Notice = m.Selector.LoadError
+		m.Menu.Notice = msg.Err.Error()
 		m.Menu.NoticeFrame = m.Frame
 		m.Mode = ModeMain
 		return m, nil

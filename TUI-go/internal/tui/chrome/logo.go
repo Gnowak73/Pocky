@@ -1,3 +1,5 @@
+// Package chrome is for pure presentation of primitives and the logo. Rendering the menu, cache, etc.
+// It also holds the logo state. No routing, jst taking in data and returning strings.
 package chrome
 
 import (

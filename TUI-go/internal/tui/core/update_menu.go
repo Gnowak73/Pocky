@@ -56,7 +56,6 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.Cache.MenuOpen = false
 		m.Mode = ModeSelectFlares
 		m.Selector.Loading = true
-		m.Selector.LoadError = ""
 		m.Selector.Selected = make(map[int]bool)
 		m.Selector.Cursor = 0
 		m.Selector.Offset = 0

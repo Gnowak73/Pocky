@@ -1,3 +1,5 @@
+// Package config is just to load and save the current settings of the user in the TUI,
+// we also supply the ParentDirFile
 package config
 
 import (
@@ -31,6 +33,9 @@ func ParentDirFile(filename string) string {
 }
 
 func Load() Config {
+	// we need to see if the config file is
+	// in the parent directory for the ui model
+	// no global var for path used since its infrequent
 	path := ParentDirFile(".vars.env")
 	data, _ := os.ReadFile(path)
 	var cfg Config

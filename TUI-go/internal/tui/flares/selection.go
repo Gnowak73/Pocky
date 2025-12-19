@@ -21,7 +21,6 @@ type SelectorState struct {
 	Cursor   int
 	Offset   int
 	Loading  bool
-	LoadError string
 	Table    table.Model
 	Spinner  SpinnerState
 }
@@ -155,15 +154,6 @@ func (s SelectorState) Render(width int) string {
 			return "\n" + block
 		}
 		return "\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	}
-
-	if s.LoadError != "" {
-		msg := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B81")).Render(s.LoadError)
-		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		if width <= 0 {
-			return "\n\n" + block
-		}
-		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
 	}
 
 	if len(s.List) == 0 {

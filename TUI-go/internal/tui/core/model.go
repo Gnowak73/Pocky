@@ -10,10 +10,15 @@ import (
 )
 
 type Model struct {
-	Cfg      config.Config
-	Logo     chrome.LogoState
-	Menu     chrome.MenuState
-	Mode     ViewMode
+	Cfg  config.Config
+	Logo chrome.LogoState
+	Menu chrome.MenuState
+
+	// mode is the 'screen selector', every update/view path switches or branches on the mode,
+	// so it determined which key hander runs and what view is rendered. Liek a finite-state machine
+	// that keeps all menus mutually exclusive.
+	Mode ViewMode
+
 	Waves    flares.WaveEditorState
 	Filters  flares.FilterState
 	Selector flares.SelectorState
