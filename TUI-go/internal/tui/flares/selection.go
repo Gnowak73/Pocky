@@ -141,30 +141,26 @@ func (s *SelectorState) UpdateTableRows() {
 }
 
 func flareTableWidths(s SelectorState) (int, int, int, int, int) {
-	wSel := lipgloss.Width("SEL")
-	if wSel < lipgloss.Width("[x]") {
-		wSel = lipgloss.Width("[x]")
-	}
+	// variable table widths depending on the size of terminal window
+	wSel := max(
+		lipgloss.Width("SEL"),
+		lipgloss.Width("[x]"),
+	)
+
 	wClass := lipgloss.Width("Class")
-	wstart := lipgloss.Width("start")
-	wend := lipgloss.Width("end")
+	wStart := lipgloss.Width("start")
+	wEnd := lipgloss.Width("end")
 	wCoord := lipgloss.Width("Coordinates")
+
 	for _, e := range s.List {
-		if w := lipgloss.Width(e.Class); w > wClass {
-			wClass = w
-		}
-		if w := lipgloss.Width(e.Start); w > wstart {
-			wstart = w
-		}
-		if w := lipgloss.Width(e.End); w > wend {
-			wend = w
-		}
-		if w := lipgloss.Width(e.Coord); w > wCoord {
-			wCoord = w
-		}
+		wClass = max(wClass, lipgloss.Width(e.Class))
+		wStart = max(wStart, lipgloss.Width(e.Start))
+		wEnd = max(wEnd, lipgloss.Width(e.End))
+		wCoord = max(wCoord, lipgloss.Width(e.Coord))
 	}
+
 	pad := 2
-	return wSel + pad, wClass + pad, wstart + pad, wend + pad, wCoord + pad
+	return wSel + pad, wClass + pad, wStart + pad, wEnd + pad, wCoord + pad
 }
 
 func (s SelectorState) Render(width int) string {
