@@ -186,17 +186,7 @@ func (s SelectorState) Render(width int) string {
 	}
 
 	height := s.viewHeight()
-	if s.Cursor < 0 {
-		s.Cursor = 0
-	}
-	if height == 0 {
-		msg := styles.LightGray.Render("No flares found.")
-		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		if width <= 0 {
-			return "\n\n" + block
-		}
-		return "\n\n" + lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	}
+
 	tableStr := renderSelectFlaresTable(s, width, height)
 	titleLine := title
 	if width > 0 {
