@@ -1,5 +1,9 @@
 package core
 
+// view_dates.go sits in core because it renders the ModeDateRange screen using
+// Model.Date/Mode and shares the same focus/notice state that the update loop
+// mutates; splitting it elsewhere would force more plumbing around Model fields.
+
 import (
 	"strings"
 

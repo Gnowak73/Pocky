@@ -1,7 +1,6 @@
 // Package core contains the framework or "bones" of the bubbletea TUI model. This includes the
 // Init -> Update -> View -> Update loop, mainly dealing with drawing the features or "limbs" together
 // and passing messages
-
 package core
 
 import (
@@ -20,9 +19,11 @@ type Model struct {
 	Selector flares.SelectorState
 	Cache    flares.CacheState
 	Date     dateEditorState
-	Frame    int
-	Width    int
-	Height   int
+
+	// TUI window
+	Frame  int
+	Width  int
+	Height int
 }
 
 type dateEditorState struct {

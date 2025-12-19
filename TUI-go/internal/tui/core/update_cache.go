@@ -1,5 +1,10 @@
 package core
 
+// update_cache.go stays in core because cache deletion/viewing is yet another
+// Bubble Tea mode; the handlers directly mutate Model.Cache, Mode, and notices,
+// so it makes sense to keep them next to the routing logic instead of extracting
+// them to a helper package.
+
 import (
 	"fmt"
 

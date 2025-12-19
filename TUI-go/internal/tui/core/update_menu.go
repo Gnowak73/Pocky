@@ -1,5 +1,9 @@
 package core
 
+// update_menu.go is responsible for wiring the Bubble Tea menu selection logic,
+// so it lives in core alongside the Model and mode routing rather than in chrome.
+// That keeps the state transitions, notices, and Mode switches in one place.
+
 import (
 	"fmt"
 	"strings"

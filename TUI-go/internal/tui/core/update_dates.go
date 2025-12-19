@@ -1,5 +1,11 @@
 package core
 
+// update_dates.go belongs in core because it drives the Bubble Tea ModeDateRange
+// flow: it mutates Model.Date, notices, and the active Mode, and it persists
+// Start/End back into the shared Config. That tight coupling to the model cycle
+// makes it awkward to host this handler outside core without exposing internal
+// state to other packages.
+
 import (
 	"strings"
 
