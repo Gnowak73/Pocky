@@ -15,11 +15,13 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 	if msg.Err != nil {
 		m.Menu.Notice = msg.Err.Error()
 		m.Menu.NoticeFrame = m.Frame
-		m.Mode = ModeMain
+		m.Mode = ModeMain // go to main menu on failue, so no need for selector specific errors
 		return m, nil
 	}
 	m.Selector.List = msg.Entries
 	m.Selector.Header = msg.Header
+
+	// we need to know which flares are selected, use a map with bool value for chosen or not
 	m.Selector.Selected = make(map[int]bool)
 	if len(m.Selector.List) == 0 {
 		m.Menu.Notice = "No flares found."
@@ -29,6 +31,8 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 	}
 	m.Selector.Cursor = 0
 	m.Selector.Offset = 0
-	m.Selector.RebuildTable()
+	m.Selector.RebuildTable() // make the table!
 	return m, nil
+
+	// move to the View() render
 }
