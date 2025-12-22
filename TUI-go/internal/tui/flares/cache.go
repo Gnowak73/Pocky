@@ -13,21 +13,21 @@ import (
 )
 
 type CacheState struct {
-	MenuOpen   bool
-	MenuItems  []string
-	Selected   int
-	OpenFrame  int
-	Rows       []Entry
-	Header     string
-	Pick       map[int]bool
-	Cursor     int
-	Offset     int
-	Viewport   viewport.Model
-	Content    string
-	Filter     string
-	Filtered   []Entry
-	FilterIdx  []int
-	Searching  bool
+	MenuOpen    bool
+	MenuItems   []string
+	Selected    int
+	OpenFrame   int
+	Rows        []Entry
+	Header      string
+	Pick        map[int]bool
+	Cursor      int
+	Offset      int
+	Viewport    viewport.Model
+	Content     string
+	Filter      string
+	Filtered    []Entry
+	FilterIdx   []int
+	Searching   bool
 	SearchInput string
 }
 
