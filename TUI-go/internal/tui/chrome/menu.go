@@ -3,7 +3,8 @@ package chrome
 // chrome/menu.go lives in chrome because it only renders menu blocks from the
 // MenuState passed in—no mode routing or key handling happens here. Keeping the
 // presentation primitives in chrome keeps the Bubble Tea routing in core where it
-// belongs.
+// belongs. Menu.go is the renderer for the main meny, returning the strings to be
+// printed to the TUI
 
 import (
 	"strings"
@@ -17,42 +18,60 @@ import (
 type MenuState struct {
 	Items       []string
 	Selected    int
-	Notice      string
-	NoticeFrame int
+	Notice      string // the message that will appear on the bottom
+	NoticeFrame int    // the frame of the message to keep track of its fading animation
 }
 
 type CacheMenuView struct {
-	Open      bool
+	Open      bool // the status of whether the little submenu is open or not
 	Items     []string
-	Selected  int
-	OpenFrame int
+	Selected  int // the index of the selection option
+	OpenFrame int // the frame counter captures when the submenu is opened for wire box expansion
 }
 
 func RenderMenu(width int, menu MenuState, noticeLine string) string {
+	// the goal is to return a string to print to the TUI, reflecting the state of the
+	// main menu. We will need a separate function for the cache submenu since it has
+	// its own different animation going on and a change in the layout of the window.
+
+	// since lines may be of different width, we must create a buffer slice to hold the
+	// styled lines, which are separated centered and positioned, before putting them together
+	// into one big block.
 	var lines []string
 	maxText := 0
+
+	// we need to know the max width between all lines since centering the block will mean
+	// we center the list of menu items as a whole but we also want each line to be centered too.
+	// Thus, we use the maxText to
 	for _, item := range menu.Items {
-		if w := lipgloss.Width(item); w > maxText {
-			maxText = w
-		}
+		maxText = max(lipgloss.Width(item), maxText)
 	}
+
 	for i, item := range menu.Items {
 		style := styles.MenuItem
+
+		// an extra space is to reserve the same space as the arrow "> " to keep padding
+		// uniform so non selected items arent shifted to the left of the seelected one
 		cursor := "  "
-		cursorW := lipgloss.Width(cursor)
 		if i == menu.Selected {
 			style = styles.MenuSelected
-			cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1")).Render("> ")
-			cursorW = lipgloss.Width(cursor)
+			cursor = style.Render("> ") // Render is for standalone strings
 		}
 		lineContent := cursor + style.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
+
+		// the width of the coursor is irrelevant since we only care about the centering of the
+		// options themselves, not the empty space from the cursor
+		line := lipgloss.PlaceHorizontal(maxText, lipgloss.Center, lineContent)
 		lines = append(lines, line)
 	}
 
+	// now we construct the block and center the entire block of individual lines (which have their
+	// own little window grid they are in)
 	menuBlock := strings.Join(lines, "\n")
 	helpText := "↑/k up • ↓/j down • enter submit"
 
+	// menu is rendered first, so we keep a safeguard in case at launch the window size hasn't been reported yet
+	// where we dont use lipgloss.Place. Rather, we just stack everything on the left-hand side.
 	if width <= 0 {
 		help := styles.LightGray.Render(helpText)
 		if noticeLine != "" {
@@ -61,24 +80,27 @@ func RenderMenu(width int, menu MenuState, noticeLine string) string {
 		return "\n\n" + menuBlock + "\n\n" + help
 	}
 
-	placed := lipgloss.Place(width, lipgloss.Height(menuBlock), lipgloss.Center, lipgloss.Top, menuBlock)
-	help := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, styles.LightGray.Render(helpText))
-	var shifted []string
-	for _, line := range strings.Split(placed, "\n") {
-		if strings.HasPrefix(line, " ") {
-			line = line[1:]
-		}
-		shifted = append(shifted, line)
-	}
-	block := "\n\n" + strings.Join(shifted, "\n")
+	placed := lipgloss.Place(width-2, // descrease by cursor width for centered options
+		lipgloss.Height(menuBlock),
+		lipgloss.Center, lipgloss.Top,
+		menuBlock,
+	)
+
+	help := lipgloss.Place(width,
+		1, lipgloss.Center,
+		lipgloss.Top,
+		styles.LightGray.Render(helpText),
+	)
+
+	block := "\n\n" + placed
 	if noticeLine != "" {
 		block += "\n\n" + noticeLine
 	}
 	return block + "\n\n" + help
 }
 
-// RenderMenuWithCache shows the main menu with an inline submenu under Cache Options.
 func RenderMenuWithCache(width int, menu MenuState, cache CacheMenuView, frame int, noticeLine string) string {
+	// we need to follow the same process, just add the additional cache options
 	var lines []string
 	maxText := 0
 	for _, item := range menu.Items {
