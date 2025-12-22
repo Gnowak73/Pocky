@@ -16,7 +16,7 @@ type Comparator struct {
 }
 
 type FilterState struct {
-	Comparators []Comparator
+	Comparators  []Comparator
 	CompDisplays []string
 	ClassLetters []string
 	Magnitudes   []string
@@ -33,7 +33,7 @@ func NewFilterState(cfg config.Config) FilterState {
 	mags := DefaultMagnitudes()
 	compIdx, letterIdx, magIdx := ParseFlareSelection(cfg, comps, letters)
 	return FilterState{
-		Comparators: comps,
+		Comparators:  comps,
 		CompDisplays: comparatorDisplayList(comps),
 		ClassLetters: letters,
 		Magnitudes:   mags,

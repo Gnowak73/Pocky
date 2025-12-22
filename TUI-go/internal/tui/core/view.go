@@ -56,9 +56,10 @@ func (m Model) View() string {
 	default:
 		noticeLine := chrome.NoticeLine(m.Menu.Notice, m.Menu.NoticeFrame, m.Frame, w)
 		if m.Cache.MenuOpen {
-			body = summary + chrome.RenderMenuWithCache(w, m.Menu, cacheMenuView(m), m.Frame, noticeLine)
+			cache := cacheMenuView(m)
+			body = summary + chrome.RenderMenu(w, m.Menu, noticeLine, &cache, m.Frame)
 		} else {
-			body = summary + chrome.RenderMenu(w, m.Menu, noticeLine)
+			body = summary + chrome.RenderMenu(w, m.Menu, noticeLine, nil, 0)
 		}
 	}
 
