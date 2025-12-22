@@ -56,7 +56,8 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.Cache.MenuOpen = false
 		m.Mode = ModeSelectFlares
 		m.Selector.Loading = true
-		m.Selector.Selected = make(map[int]bool)
+		// we will make a new selector map after the python has ran and we get the new entries.
+		// m.Selector.Selected = make(map[int]bool) will thus be done in the update_flares_load
 		m.Selector.Cursor = 0
 		m.Selector.Offset = 0
 		m.Selector.List = nil

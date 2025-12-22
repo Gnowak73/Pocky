@@ -7,6 +7,9 @@ import (
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
+// After we go through selector.go, we have a string for the table. All we need to do now is
+// take the inputs from the mouse or keyboard and adjust the outcomes.
+
 func (m Model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
@@ -17,10 +20,14 @@ func (m Model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Menu.NoticeFrame = m.Frame
 	case " ":
 		if m.Selector.Cursor >= 0 && m.Selector.Cursor < len(m.Selector.List) {
+			// we flip the current selected map at the cursor to select/de-select.
+			// We know this map is not nil since we zero it update_menu and update_flares_load
 			m.Selector.Selected[m.Selector.Cursor] = !m.Selector.Selected[m.Selector.Cursor]
 		}
 	case "enter":
 		if len(m.Selector.Selected) == 0 {
+			// we brake if none are selected so we
+			// dont try to save no flares in the following lines
 			m.Menu.Notice = "No flares selected."
 			m.Menu.NoticeFrame = m.Frame
 			m.Mode = ModeMain

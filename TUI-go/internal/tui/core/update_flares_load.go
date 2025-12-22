@@ -24,7 +24,7 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 	m.Selector.List = msg.Entries
 	m.Selector.Header = msg.Header
 
-	// we need to know which flares are selected, use a map with bool value for chosen or not
+	// we make a new selector list to ensure the previous entires are wiped out
 	m.Selector.Selected = make(map[int]bool)
 	if len(m.Selector.List) == 0 {
 		m.Menu.Notice = "No flares found."

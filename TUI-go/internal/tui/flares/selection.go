@@ -54,7 +54,7 @@ func (s SelectorState) viewHeight() int {
 }
 
 func (s SelectorState) Render(width int) string {
-	// this function is called every time we render the table in the View()
+	// this function is called every time we render the table in the View() for everything except the table
 	if s.Loading {
 		// spinner frames is only checked for the animation. However, if there is an empty string
 		// we may still move foreward and get this function called where the index is just zero (since
@@ -85,6 +85,7 @@ func (s SelectorState) Render(width int) string {
 	title := styles.SummaryHeader.Bold(false).Render("Choose Flares to Catalogue (Scroll)")
 	height := s.viewHeight()
 
+	// when done loading, we put the flare table into the body
 	tableStr := renderSelectFlaresTable(s, width, height)
 
 	if width > 0 {
@@ -140,6 +141,8 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 	oddStyle := base.Inherit(styles.VeryLightGray)
 	selMark := styles.MenuSelected
 
+	// the goal is to now make an array to represent table inputs but only withi
+	// the visible view between start and end
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		entry := state.List[i]
@@ -156,13 +159,17 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 		})
 	}
 
-	// we now crate the glorious lipgloss table
 	t := lgtbl.New().
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(styles.FaintGray).
 		Headers("SEL", "CLASS", "START", "END", "COORDINATES").
-		Rows(rows...).
+		Rows(rows...). // the "..." expands the slice into individual arguments and passes them separately
 		StyleFunc(func(row, col int) lipgloss.Style {
+			// we need a function to return what style we want based
+			// on whether we are in and even row, odd row, or have the
+			// cursor on a row. We need to do this per call with a function
+			// instead of only at initialization because the view of the table
+			// changes over time with the cursor movement.
 			if row == lgtbl.HeaderRow {
 				return headerStyle
 			}
@@ -191,12 +198,17 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 				}
 				return coordOddStyle
 			}
+
+			// fallback code outside of regular start, end, class, coords columns
 			if abs%2 == 0 {
 				return evenStyle
 			}
 			return oddStyle
 		})
 
+	// lipgloss.Place is only safe when the terminal width is > 0.
+	// Lipgloss tables are just objects which we take and turn into an ASCII
+	// human reasable string to actually print in the terminal
 	tableStr := t.String()
 	if width > 0 {
 		tableStr = lipgloss.Place(width, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
@@ -206,6 +218,9 @@ func renderSelectFlaresTable(state SelectorState, width int, height int) string 
 
 // EnsureVisible adjusts the offset so the cursor row remains within the viewport.
 func (s *SelectorState) EnsureVisible() {
+	// we get the viewheight then place the cursor inside the viewport
+	// on the absolute edges or move the offset (the first visible index)
+	// to match the current cursor position
 	h := s.viewHeight()
 	if h <= 0 {
 		s.Offset = 0

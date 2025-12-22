@@ -21,16 +21,16 @@ func (m Model) View() string {
 		return body + "\n" + status
 	}
 
-	content := strings.Join(m.Logo.Colored, "\n")
-	boxContent := styles.LogoBox.Render(content)
+	logo := strings.Join(m.Logo.Colored, "\n")
+	boxLogo := styles.LogoBox.Render(logo)
 
 	w := m.Width
 	if w <= 0 {
-		w = lipgloss.Width(boxContent)
+		w = lipgloss.Width(boxLogo)
 	}
-	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
+	box := lipgloss.Place(w, lipgloss.Height(boxLogo), lipgloss.Center, lipgloss.Top, boxLogo)
 
-	boxWidth := lipgloss.Width(boxContent)
+	boxWidth := lipgloss.Width(boxLogo)
 	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
@@ -70,8 +70,8 @@ func (m Model) View() string {
 
 	status := chrome.RenderStatus(statusLabel(m), "esc to quit", m.Width)
 	if m.Height > 0 {
-		contentHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
-		gap := max(m.Height-contentHeight-lipgloss.Height(status), 0)
+		logoHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
+		gap := max(m.Height-logoHeight-lipgloss.Height(status), 0)
 		return box + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
 	}
 
