@@ -30,23 +30,16 @@ type CacheMenuView struct {
 }
 
 func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuView, frame int) string {
-	lines, cacheIndex := buildMenuLines(menu)
-	if cache != nil && cache.Open && cacheIndex >= 0 {
-		lines = insertAfter(lines, cacheIndex, renderCacheSubmenu(*cache, frame))
-	}
-	menuBlock := strings.Join(lines, "\n")
-	helpText := "↑/k up • ↓/j down • enter submit"
-	if cache != nil && cache.Open {
-		helpText += " • esc close cache"
-	}
-	return renderMenuBlock(width, menuBlock, noticeLine, helpText)
-}
+	// the goal is to return a string to print to the TUI, reflecting the state of the
+	// main menu. We will need a separate function for the cache submenu since it has
+	// its own different animation going on and a change in the layout of the window.
 
-func buildMenuLines(menu MenuState) ([]string, int) {
-	// maintain a sliding buffer of styled rows so we can return the centered block later
-	var lines []string
+	// since lines may be of different width, we must create a buffer slice to hold the
+	// styled lines, which are separated centered and positioned, before putting them together
+
 	maxText := 0
-	cacheIndex := -1
+	cacheIndex := -1 // -1 is a sentinel value, tracks where "Cache Options" row sits in the  "lines" slice
+	var lines []string
 
 	for _, item := range menu.Items {
 		maxText = max(maxText, lipgloss.Width(item))
@@ -55,24 +48,39 @@ func buildMenuLines(menu MenuState) ([]string, int) {
 	for i, item := range menu.Items {
 		style := styles.MenuItem
 		cursor := "  "
-		cursorW := lipgloss.Width(cursor)
 		if i == menu.Selected {
 			style = styles.MenuSelected
 			cursor = style.Render("> ")
-			cursorW = lipgloss.Width(cursor)
 		}
 		lineContent := cursor + style.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
+		line := lipgloss.PlaceHorizontal(maxText, lipgloss.Center, lineContent)
 		lines = append(lines, line)
+
+		// set cache index to real value if we are entering submenu
 		if item == "Cache Options" {
 			cacheIndex = len(lines) - 1
 		}
 	}
-	return lines, cacheIndex
-}
 
-func renderMenuBlock(width int, menuBlock, noticeLine, helpText string) string {
-	// center the constructed block and append notice/help text just like the original helper
+	if cache != nil && cache.Open && cacheIndex >= 0 {
+		// upon opening, we need to append the new submenu lines to the body.
+		// To prevent mutating the original original lines, we will copy the
+		// results to a new empty slice literal []string{}
+
+		copy := append([]string{}, lines[:cacheIndex+1]...) // slices are half-open ranges, hence the +1
+		copy = append(copy, renderCacheSubmenu(*cache, frame))
+		copy = append(copy, lines[cacheIndex+1:]...)
+		lines = copy
+	}
+
+	menuBlock := strings.Join(lines, "\n")
+	helpText := "↑/k up • ↓/j down • enter submit"
+	if cache != nil && cache.Open {
+		helpText += " • esc close cache"
+	}
+
+	// menu is rendered first, so we keep a safeguard in case at launch the window size hasn't been reported yet
+	// where we dont use lipgloss.Place. Rather, we just stack everything on the left-hand side.
 	if width <= 0 {
 		help := styles.LightGray.Render(helpText)
 		if noticeLine != "" {
@@ -102,79 +110,65 @@ func renderMenuBlock(width int, menuBlock, noticeLine, helpText string) string {
 	return block + "\n\n" + help
 }
 
+func padLine(s string, width int) string {
+	// we want to enforce a minimum width by appending spaces
+	if pad := width - lipgloss.Width(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+	return s
+}
+
 func renderCacheSubmenu(cache CacheMenuView, frame int) string {
-	// animate and build the cache submenu block the same way as the previous implementation.
-	maxCache := 0
+	maxCache := 0 // max width for the submenu
 	for _, item := range cache.Items {
-		if w := lipgloss.Width(item); w > maxCache {
-			maxCache = w
-		}
-	}
-	innerWidth := maxCache + 4
-	targetHeight := len(cache.Items) + 2
-	delta := frame - cache.OpenFrame
-	if delta < 0 {
-		delta = 0
-	}
-	heightAnim := min(targetHeight, (delta+1)*3)
-	if heightAnim < 1 {
-		heightAnim = 1
+		maxCache = max(maxCache, lipgloss.Width(item))
 	}
 
-	progress := float64(delta) / float64(targetHeight)
-	if progress > 1 {
-		progress = 1
-	}
-	col := theme.BlendHex("#7D5FFF", "#F785D1", progress)
+	innerWidth := maxCache + 4 // extra width for breathing room, same with height
+	targetHeight := len(cache.Items) + 2
+
+	// we need a var for the frame and how many rows of submenu are currently visibile during expand animation,
+	// along with fraction of how far we are through animation to drive color fade
+	delta := max(frame-cache.OpenFrame, 0)
+	heightAnim := max(min(targetHeight, (delta+1)*3), 1) // grow by 3 row per tick, at least 1 row
+	progress := min(float64(delta)/float64(targetHeight), 1)
+
+	col := theme.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
 	if heightAnim >= targetHeight {
-		col = "#8B5EDB"
+		col = styles.SubcacheFinal
 	}
 	boxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(col))
 
 	var rows []string
+	top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
+	bottom := boxStyle.Render("   ╰" + strings.Repeat("─", innerWidth) + "╯")
+	leftBar := boxStyle.Render("   │")
+	rightBar := boxStyle.Render("│")
+
+	rows = append(rows, top)
+
 	if heightAnim >= targetHeight {
-		rows = append(rows, boxStyle.Render("   ╭"+strings.Repeat("─", innerWidth)+"╮"))
 		for j, subItem := range cache.Items {
-			sStyle := styles.VeryLightGray
-			sCursor := "  "
+			style := styles.VeryLightGray
+			cursor := "  "
 			if j == cache.Selected {
-				sStyle = styles.MenuSelected
-				sCursor = styles.MenuSelected.Render("» ")
+				style = styles.MenuSelected
+				cursor = styles.MenuSelected.Render("» ")
 			}
-			sLine := sCursor + sStyle.Render(subItem)
-			padded := sLine
-			if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
-				padded += strings.Repeat(" ", pad)
-			}
-			leftBar := boxStyle.Render("   │")
-			rightBar := boxStyle.Render("│")
-			rows = append(rows, leftBar+padded+rightBar)
+
+			// we use padLine so every cache option occupies same horizontal space before wrapping
+			line := padLine(cursor+style.Render(subItem), innerWidth)
+			rows = append(rows, leftBar+line+rightBar)
 		}
-		rows = append(rows, boxStyle.Render("   ╰"+strings.Repeat("─", innerWidth)+"╯"))
+		rows = append(rows, bottom)
 	} else {
-		rows = append(rows, boxStyle.Render("   ╭"+strings.Repeat("─", innerWidth)+"╮"))
-		mid := heightAnim - 1
-		if mid < 0 {
-			mid = 0
-		}
-		for k := 0; k < mid; k++ {
-			leftBar := boxStyle.Render("   │")
-			rightBar := boxStyle.Render("│")
+		mid := max(heightAnim-1, 0) // we need to append "mid" empty rows to rows
+
+		for range mid {
 			rows = append(rows, leftBar+strings.Repeat(" ", innerWidth)+rightBar)
 		}
 	}
-
 	return strings.Join(rows, "\n")
-}
-
-func insertAfter(lines []string, idx int, block string) []string {
-	if idx < 0 || idx >= len(lines) {
-		return append(lines, block)
-	}
-	result := append([]string{}, lines[:idx+1]...)
-	result = append(result, block)
-	result = append(result, lines[idx+1:]...)
-	return result
 }
 
 func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {

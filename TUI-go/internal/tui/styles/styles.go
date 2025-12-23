@@ -50,6 +50,12 @@ var (
 		Foreground(lipgloss.Color("#8B5EDB")).
 		Bold(true)
 
+	SubcacheStart = "#7D5FFF"
+
+	SubcacheEnd = "#F785D1"
+
+	SubcacheFinal = "#885EDB"
+
 	MenuItem = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#EAEAFF"))
 
