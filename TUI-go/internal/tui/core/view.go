@@ -6,7 +6,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/chrome"
 	"github.com/pocky/tui-go/internal/tui/flares"
-	"github.com/pocky/tui-go/internal/tui/styles"
 )
 
 func (m Model) View() string {
@@ -21,23 +20,7 @@ func (m Model) View() string {
 		return body + "\n" + status
 	}
 
-	logo := strings.Join(m.Logo.Colored, "\n")
-	boxLogo := styles.LogoBox.Render(logo)
-
-	w := m.Width
-	if w <= 0 {
-		w = lipgloss.Width(boxLogo)
-	}
-	box := lipgloss.Place(w, lipgloss.Height(boxLogo), lipgloss.Center, lipgloss.Top, boxLogo)
-
-	boxWidth := lipgloss.Width(boxLogo)
-	versionText := styles.Version.Render("VERSION: 0.2")
-	leftPad := 0
-	if w > boxWidth {
-		leftPad = (w - boxWidth) / 2
-	}
-	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
-
+	box, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
 	summary := chrome.RenderSummary(m.Cfg, w)
 	var body string
 	var extraNotice string
@@ -54,13 +37,32 @@ func (m Model) View() string {
 	case ModeCacheDelete:
 		body = summary + m.Cache.RenderCacheDelete(w)
 	default:
-		noticeLine := chrome.NoticeLine(m.Menu.Notice, m.Menu.NoticeFrame, m.Frame, w)
+		noticeLine := chrome.NoticeLine(
+			m.Menu.Notice,
+			m.Menu.NoticeFrame,
+			m.Frame,
+			w,
+		)
+
+		var cache *chrome.CacheMenuView
 		if m.Cache.MenuOpen {
-			cache := cacheMenuView(m)
-			body = summary + chrome.RenderMenu(w, m.Menu, noticeLine, &cache, m.Frame)
-		} else {
-			body = summary + chrome.RenderMenu(w, m.Menu, noticeLine, nil, 0)
+			c := cacheMenuView(m)
+			cache = &c
 		}
+		// the frame is only used if the cache is non-nil anyways,
+		// so we can pass m.Frame for the frame of the animation
+		// without having to explicitly set it to 0 on the else case
+		// for the if above.
+		render := chrome.RenderMenu(
+			w,
+			m.Menu,
+			noticeLine,
+			cache,
+			m.Frame,
+		)
+
+		body = summary + render
+
 	}
 
 	if m.Mode != ModeMain && m.Mode != ModeCacheView {

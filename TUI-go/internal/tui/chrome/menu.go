@@ -162,8 +162,11 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 		}
 		rows = append(rows, bottom)
 	} else {
-		mid := max(heightAnim-1, 0) // we need to append "mid" empty rows to rows
+		// how many "middle rows" to draw while expanding submenu. We subtract 1
+		// since the top border takes up one row
+		mid := max(heightAnim-1, 0)
 
+		// we need to append these rows to our main slice
 		for range mid {
 			rows = append(rows, leftBar+strings.Repeat(" ", innerWidth)+rightBar)
 		}
@@ -171,34 +174,52 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	return strings.Join(rows, "\n")
 }
 
-func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {
-	if y < 0 || x < 0 || len(menu.Items) == 0 {
-		return 0, false
-	}
-
+func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
+	// we need a centralized code to return the shared logo box, version line, in rendering + view.go
 	content := strings.Join(logo.Colored, "\n")
-	boxContent := styles.LogoBox.Render(content)
+	boxLogo := styles.LogoBox.Render(content)
 
 	w := width
 	if w <= 0 {
-		w = lipgloss.Width(boxContent)
+		w = lipgloss.Width(boxLogo)
 	}
-	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
 
-	boxWidth := lipgloss.Width(boxContent)
+	box := lipgloss.Place(
+		w,
+		lipgloss.Height(boxLogo),
+		lipgloss.Center, lipgloss.Top,
+		boxLogo,
+	)
+
+	boxWidth := lipgloss.Width(boxLogo)
 	versionText := styles.Version.Render("VERSION: 0.2")
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
 	}
-	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
 
+	versionLine := strings.Repeat(" ", leftPad) +
+		lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
+
+	return box, versionLine, w
+}
+
+func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {
+	// early rejection for sanity
+	if y < 0 || x < 0 || len(menu.Items) == 0 {
+		return 0, false
+	}
+
+	// we will create the entire renderered menu block and use the dimensions to check
+	// for the mouse being on the application
+	box, versionLine, w := RenderLogoHeader(width, logo)
 	summary := RenderSummary(cfg, w)
 	menuView := RenderMenu(w, menu, "", nil, 0)
 
 	header := box + "\n" + versionLine + summary
 	menuTop := lipgloss.Height(header)
 	menuHeight := lipgloss.Height(menuView)
+
 	if y < menuTop || y >= menuTop+menuHeight {
 		return 0, false
 	}
@@ -219,23 +240,7 @@ func CacheMenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, me
 		return 0, false
 	}
 
-	content := strings.Join(logo.Colored, "\n")
-	boxContent := styles.LogoBox.Render(content)
-
-	w := width
-	if w <= 0 {
-		w = lipgloss.Width(boxContent)
-	}
-	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
-
-	boxWidth := lipgloss.Width(boxContent)
-	versionText := styles.Version.Render("VERSION: 0.2")
-	leftPad := 0
-	if w > boxWidth {
-		leftPad = (w - boxWidth) / 2
-	}
-	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
-
+	box, versionLine, w := RenderLogoHeader(width, logo)
 	summary := RenderSummary(cfg, w)
 	header := box + "\n" + versionLine + summary
 	menuTop := max(lipgloss.Height(header)+1, 0)

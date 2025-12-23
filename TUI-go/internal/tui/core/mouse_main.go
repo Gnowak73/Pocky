@@ -17,7 +17,16 @@ func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.Cache.Selected++
 			}
 		case tea.MouseButtonNone:
-			if idx, ok := chrome.CacheMenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu, cacheMenuView(m)); ok {
+			idx, ok := chrome.CacheMenuIndexAt(
+				msg.X,
+				msg.Y,
+				m.Width,
+				m.Logo,
+				m.Cfg,
+				m.Menu,
+				cacheMenuView(m),
+			)
+			if ok {
 				m.Cache.Selected = idx
 			}
 		case tea.MouseButtonLeft:
