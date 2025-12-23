@@ -102,9 +102,9 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	boxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(col))
 
 	var rows []string
-	top := boxStyle.Render("   ╭" + strings.Repeat("─", innerWidth) + "╮")
-	bottom := boxStyle.Render("   ╰" + strings.Repeat("─", innerWidth) + "╯")
-	leftBar := boxStyle.Render("   │")
+	top := boxStyle.Render("  ╭" + strings.Repeat("─", innerWidth) + "╮")
+	bottom := boxStyle.Render("  ╰" + strings.Repeat("─", innerWidth) + "╯")
+	leftBar := boxStyle.Render("  │")
 	rightBar := boxStyle.Render("│")
 
 	rows = append(rows, top)
