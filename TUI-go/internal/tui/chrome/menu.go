@@ -37,40 +37,10 @@ func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuVi
 	// since lines may be of different width, we must create a buffer slice to hold the
 	// styled lines, which are separated centered and positioned, before putting them together
 
-	maxText := 0
-	cacheIndex := -1 // -1 is a sentinel value, tracks where "Cache Options" row sits in the  "lines" slice
-	var lines []string
-
-	for _, item := range menu.Items {
-		maxText = max(maxText, lipgloss.Width(item))
-	}
-
-	for i, item := range menu.Items {
-		style := styles.MenuItem
-		cursor := "  "
-		if i == menu.Selected {
-			style = styles.MenuSelected
-			cursor = style.Render("> ")
-		}
-		lineContent := cursor + style.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText, lipgloss.Center, lineContent)
-		lines = append(lines, line)
-
-		// set cache index to real value if we are entering submenu
-		if item == "Cache Options" {
-			cacheIndex = len(lines) - 1
-		}
-	}
+	lines, cacheIndex := buildMenuRows(menu)
 
 	if cache != nil && cache.Open && cacheIndex >= 0 {
-		// upon opening, we need to append the new submenu lines to the body.
-		// To prevent mutating the original original lines, we will copy the
-		// results to a new empty slice literal []string{}
-
-		copy := append([]string{}, lines[:cacheIndex+1]...) // slices are half-open ranges, hence the +1
-		copy = append(copy, renderCacheSubmenu(*cache, frame))
-		copy = append(copy, lines[cacheIndex+1:]...)
-		lines = copy
+		lines = insertCacheSubmenu(lines, cacheIndex, *cache, frame)
 	}
 
 	menuBlock := strings.Join(lines, "\n")
@@ -108,14 +78,6 @@ func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuVi
 		block += "\n\n" + noticeLine
 	}
 	return block + "\n\n" + help
-}
-
-func padLine(s string, width int) string {
-	// we want to enforce a minimum width by appending spaces
-	if pad := width - lipgloss.Width(s); pad > 0 {
-		return s + strings.Repeat(" ", pad)
-	}
-	return s
 }
 
 func renderCacheSubmenu(cache CacheMenuView, frame int) string {
@@ -174,6 +136,76 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	return strings.Join(rows, "\n")
 }
 
+func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {
+	// we need a way to map the mouse location to the cursor on the main menu
+	// We need our cursor position with respect to the top of the menu, or
+	// how far down from the start of the rendered menu block
+
+	// early rejection for sanity
+	if y < 0 || x < 0 || len(menu.Items) == 0 {
+		return 0, false
+	}
+
+	// we will create the entire renderered menu block and use the dimensions to check
+	// for the mouse being on the application
+	box, versionLine, w := RenderLogoHeader(width, logo)
+	summary := RenderSummary(cfg, w)
+	menuView := RenderMenu(w, menu, "", nil, 0)
+
+	header := box + "\n" + versionLine + summary
+	menuTop := lipgloss.Height(header)
+	menuHeight := lipgloss.Height(menuView)
+
+	if y < menuTop || y >= menuTop+menuHeight {
+		return 0, false
+	}
+
+	relativeY := y - menuTop
+	start := 1
+	itemY := relativeY - start
+	if itemY < 0 || itemY >= len(menu.Items) {
+		return 0, false
+	}
+
+	return itemY, true
+}
+
+func CacheMenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState, cache CacheMenuView, frame int) (int, bool) {
+	if !cache.Open {
+		return 0, false
+	}
+
+	box, versionLine, w := RenderLogoHeader(width, logo)
+	summary := RenderSummary(cfg, w)
+	header := box + "\n" + versionLine + summary
+	menuTop := max(lipgloss.Height(header)+1, 0)
+
+	lines, cacheOptLine := buildMenuRows(menu)
+
+	if cacheOptLine == -1 {
+		return 0, false
+	}
+
+	lines = insertCacheSubmenu(lines, cacheOptLine, cache, frame)
+
+	menuHeight := len(lines)
+	if y < menuTop || y >= menuTop+menuHeight {
+		return 0, false
+	}
+
+	relativeY := y - menuTop
+	subStart := cacheOptLine + 1
+	itemStart := subStart + 1
+	if relativeY < itemStart || relativeY >= itemStart+len(cache.Items) {
+		return 0, false
+	}
+	idx := relativeY - itemStart
+	if idx < 0 || idx >= len(cache.Items) {
+		return 0, false
+	}
+	return idx, true
+}
+
 func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
 	// we need a centralized code to return the shared logo box, version line, in rendering + view.go
 	content := strings.Join(logo.Colored, "\n")
@@ -204,101 +236,52 @@ func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
 	return box, versionLine, w
 }
 
-func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {
-	// early rejection for sanity
-	if y < 0 || x < 0 || len(menu.Items) == 0 {
-		return 0, false
+func padLine(s string, width int) string {
+	// we want to enforce a minimum width by appending spaces
+	if pad := width - lipgloss.Width(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
 	}
-
-	// we will create the entire renderered menu block and use the dimensions to check
-	// for the mouse being on the application
-	box, versionLine, w := RenderLogoHeader(width, logo)
-	summary := RenderSummary(cfg, w)
-	menuView := RenderMenu(w, menu, "", nil, 0)
-
-	header := box + "\n" + versionLine + summary
-	menuTop := lipgloss.Height(header)
-	menuHeight := lipgloss.Height(menuView)
-
-	if y < menuTop || y >= menuTop+menuHeight {
-		return 0, false
-	}
-
-	relativeY := y - menuTop
-	start := 1
-	itemY := relativeY - start
-	if itemY < 0 || itemY >= len(menu.Items) {
-		return 0, false
-	}
-
-	return itemY, true
+	return s
 }
 
-// CacheMenuIndexAt maps mouse coords to a cache submenu item when open.
-func CacheMenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState, cache CacheMenuView) (int, bool) {
-	if !cache.Open {
-		return 0, false
-	}
-
-	box, versionLine, w := RenderLogoHeader(width, logo)
-	summary := RenderSummary(cfg, w)
-	header := box + "\n" + versionLine + summary
-	menuTop := max(lipgloss.Height(header)+1, 0)
-
-	var lines []string
+func buildMenuRows(menu MenuState) ([]string, int) {
+	// calculate the width of the widest item so every line can be placed consistently
 	maxText := 0
 	for _, item := range menu.Items {
-		if val := lipgloss.Width(item); val > maxText {
-			maxText = val
-		}
+		maxText = max(maxText, lipgloss.Width(item))
 	}
 
-	cacheOptLine := -1
-	for _, item := range menu.Items {
+	var lines []string
+	cacheIndex := -1
+
+	for i, item := range menu.Items {
+		style := styles.MenuItem
 		cursor := "  "
-		cursorW := lipgloss.Width(cursor)
-		lineContent := cursor + styles.MenuItem.Render(item)
-		line := lipgloss.PlaceHorizontal(maxText+cursorW, lipgloss.Center, lineContent)
+		if i == menu.Selected {
+			style = styles.MenuSelected
+			cursor = style.Render("> ")
+		}
+		lineContent := cursor + style.Render(item)
+		line := lipgloss.PlaceHorizontal(maxText, lipgloss.Center, lineContent)
 		lines = append(lines, line)
+
+		// set cache index to real value if we are entering submenu
 		if item == "Cache Options" {
-			cacheOptLine = len(lines) - 1
-			maxCache := 0
-			for _, it := range cache.Items {
-				if w := lipgloss.Width(it); w > maxCache {
-					maxCache = w
-				}
-			}
-			innerWidth := maxCache + 4
-			lines = append(lines, "   ╭"+strings.Repeat("─", innerWidth)+"╮")
-			for _, subItem := range cache.Items {
-				sLine := "  " + styles.MenuItem.Render(subItem)
-				if pad := innerWidth - lipgloss.Width(sLine); pad > 0 {
-					sLine += strings.Repeat(" ", pad)
-				}
-				lines = append(lines, "   │"+sLine+"│")
-			}
-			lines = append(lines, "   ╰"+strings.Repeat("─", innerWidth)+"╯")
+			cacheIndex = len(lines) - 1
 		}
 	}
 
-	if cacheOptLine == -1 {
-		return 0, false
-	}
+	return lines, cacheIndex
+}
 
-	menuHeight := len(lines)
-	if y < menuTop || y >= menuTop+menuHeight {
-		return 0, false
-	}
+func insertCacheSubmenu(lines []string, cacheIndex int, cache CacheMenuView, frame int) []string {
+	// upon opening, we need to append the new submenu lines to the body.
+	// To prevent mutating the original original lines, we will copy the
+	// results to a new empty slice literal []string{}
 
-	relativeY := y - menuTop
-	subStart := cacheOptLine + 1
-	itemStart := subStart + 1
-	if relativeY < itemStart || relativeY >= itemStart+len(cache.Items) {
-		return 0, false
-	}
-	idx := relativeY - itemStart
-	if idx < 0 || idx >= len(cache.Items) {
-		return 0, false
-	}
-	return idx, true
+	subBlock := renderCacheSubmenu(cache, frame)
+	subLines := strings.Split(subBlock, "\n")
+	prefix := append([]string{}, lines[:cacheIndex+1]...)
+	prefix = append(prefix, subLines...)
+	return append(prefix, lines[cacheIndex+1:]...)
 }
