@@ -11,19 +11,21 @@ import (
 )
 
 func RenderStatus(label string, hint string, width int) string {
-	w := width
-	if w <= 0 {
-		w = 0
-	}
-
+	// we now aim to render the ltitle marker line on the bottom telling
+	// us which menu we are in etc.
 	statusKey := styles.StatusKey.Render("POCKY")
 	statusArrow := styles.StatusArrow.
 		Foreground(styles.StatusBar.GetBackground()).
 		Background(styles.StatusKey.GetBackground()).
 		Render("")
+
 	infoBox := styles.StatusText.Render(" " + label)
-	available := max(w-lipgloss.Width(statusKey)-lipgloss.Width(statusArrow)-lipgloss.Width(infoBox), 0)
-	hints := renderStaticGradientHint(hint, available)
+
+	// the effective available width will be the entire size of the terminal minus
+	// the left-hand side text for the program nad the menu we are in
+	lhs := lipgloss.Width(statusKey) - lipgloss.Width(statusArrow) - lipgloss.Width(infoBox)
+	available := max(width-lhs, 0)
+	hints := renderStaticGradient(hint, available)
 
 	bar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -33,18 +35,18 @@ func RenderStatus(label string, hint string, width int) string {
 		hints,
 	)
 
-	if w > 0 {
-		return styles.StatusBar.Width(w).Render(bar)
+	if width > 0 {
+		return styles.StatusBar.Width(width).Render(bar)
 	}
 	return styles.StatusBar.Render(bar)
 }
 
-func renderStaticGradientHint(text string, available int) string {
+func renderStaticGradient(text string, available int) string {
 	if available <= 0 {
 		return ""
 	}
 
-	runes := []rune(text)
+	runes := []rune(text) // use runes in case of misaligned byte array
 	if len(runes) == 0 {
 		return ""
 	}
@@ -58,7 +60,7 @@ func renderStaticGradientHint(text string, available int) string {
 		end = colorful.Color{}
 	}
 
-	charStyle := styles.StatusHint.Copy().Padding(0)
+	charStyle := styles.StatusHint.Padding(0) // ensure no margins or padding
 	var parts []string
 	steps := len(runes)
 	for i, r := range runes {
@@ -71,14 +73,38 @@ func renderStaticGradientHint(text string, available int) string {
 	}
 
 	colored := strings.Join(parts, "")
-	return styles.StatusHint.Copy().
+	return styles.StatusHint.
 		Width(available).
 		Align(lipgloss.Right).
-		Render(colored)
+		Render(colored) // because styles are immutable this is a copy
 }
 
-// RenderProgress draws a simple horizontal progress bar.
-func RenderProgress(current, total, width int) string {
+func NoticeLine(notice string, noticeFrame, frame, width int) string {
+	if notice == "" || noticeFrame <= 0 {
+		return ""
+	}
+	elapsed := frame - noticeFrame
+	const hold = 10
+	const life = 19
+	if elapsed >= life {
+		return ""
+	}
+	// after 10 frames we begin fading animation
+	t := 0.0
+	if elapsed > hold {
+		t = theme.Clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
+	}
+	col := theme.BlendHex("#FF6B81", "#353533", t)
+	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(notice)
+
+	widthTarget := width
+	if widthTarget <= 0 {
+		widthTarget = lipgloss.Width(text)
+	}
+	return lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
+}
+
+func RenderProgress(current, total, width int) string { // NOTE: currently not used
 	if width < 10 {
 		width = 10
 	}
@@ -93,9 +119,7 @@ func RenderProgress(current, total, width int) string {
 	}
 	percent := float64(current) / float64(total)
 	fillCount := int(percent * float64(width))
-	if fillCount > width {
-		fillCount = width
-	}
+	fillCount = max(fillCount, width)
 	filled := strings.Repeat("█", fillCount)
 	empty := strings.Repeat("─", max(width-fillCount, 0))
 	label := fmt.Sprintf(" %3.0f%%", percent*100)
@@ -106,27 +130,4 @@ func RenderProgress(current, total, width int) string {
 		bar += label
 	}
 	return styles.LightGray.Render(bar)
-}
-
-func NoticeLine(notice string, noticeFrame, frame, width int) string {
-	if notice == "" || noticeFrame <= 0 {
-		return ""
-	}
-	elapsed := frame - noticeFrame
-	const hold = 10
-	const life = 19
-	if elapsed >= life {
-		return ""
-	}
-	t := 0.0
-	if elapsed > hold {
-		t = theme.Clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
-	}
-	col := theme.BlendHex("#FF6B81", "#353533", t)
-	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(notice)
-	widthTarget := width
-	if widthTarget <= 0 {
-		widthTarget = lipgloss.Width(text)
-	}
-	return lipgloss.Place(widthTarget, 1, lipgloss.Center, lipgloss.Top, text)
 }
