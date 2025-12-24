@@ -15,6 +15,8 @@ import (
 )
 
 func (m Model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// track whether the key was consumed by main switch statement. If not,
+	// then the code needs to fall to rune inputs. Separating keys from typing
 	handled := true
 	switch msg.String() {
 	case "ctrl+c":
@@ -23,9 +25,11 @@ func (m Model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Mode = ModeMain
 		m.Menu.Notice = "Canceled date edit"
 		m.Menu.NoticeFrame = m.Frame
-	case "tab", "down":
+	case "tab":
+		m.Date.Focus = 1 - m.Date.Focus // switch between 1 and 0
+	case "down":
 		m.Date.Focus = 1
-	case "shift+tab", "up":
+	case "up":
 		m.Date.Focus = 0
 	case "enter":
 		start := strings.TrimSpace(m.Date.Start)
@@ -69,14 +73,16 @@ func (m Model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		handled = false
 	}
-	if !handled {
+	if !handled { // use runes since strings risk splitting bytes, good practice
 		if len(msg.Runes) > 0 {
-			var runes []rune
+			var runes []rune // use slice for general case of multi-rune inputs like pasting
+			// first we check for correct inputs
 			for _, r := range msg.Runes {
 				if (r >= '0' && r <= '9') || r == '-' {
 					runes = append(runes, r)
 				}
 			}
+			// then we only append if matches length format
 			if len(runes) > 0 {
 				target := &m.Date.Start
 				if m.Date.Focus == 1 {

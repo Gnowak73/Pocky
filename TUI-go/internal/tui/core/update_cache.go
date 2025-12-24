@@ -92,7 +92,7 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		rows := m.Cache.Filtered
 		if rows == nil {
-			rows = m.Cache.Rows
+			rows = m.Cache.Rows // when no filter is applied we default to all rows
 		}
 		if m.Cache.Cursor >= 0 && m.Cache.Cursor < len(rows) {
 			// need to map row index from filtered list back to original index for consistent deletion

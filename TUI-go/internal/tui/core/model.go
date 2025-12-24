@@ -34,7 +34,7 @@ type Model struct {
 type dateEditorState struct {
 	Start string
 	End   string
-	Focus int
+	Focus int // which item we are on in the date editor
 }
 
 type tickMsg struct{}
