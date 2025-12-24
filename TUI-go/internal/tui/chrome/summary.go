@@ -58,5 +58,11 @@ func RenderSummary(cfg config.Config, width int) string {
 	if w <= 0 {
 		w = tableWidth
 	}
-	return "\n" + lipgloss.Place(w, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
+	return "\n" + lipgloss.Place(
+		w,
+		lipgloss.Height(tableStr),
+		lipgloss.Center,
+		lipgloss.Top,
+		tableStr,
+	)
 }

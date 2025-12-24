@@ -25,6 +25,7 @@ func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.Cfg,
 				m.Menu,
 				cacheMenuView(m),
+				m.Frame,
 			)
 			if ok {
 				m.Cache.Selected = idx
@@ -38,7 +39,7 @@ func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
-		if idx, ok := chrome.CacheMenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu, cacheMenuView(m)); ok {
+		if idx, ok := chrome.CacheMenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu, cacheMenuView(m), m.Frame); ok {
 			m.Cache.Selected = idx
 			return m, nil
 		}

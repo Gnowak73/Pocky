@@ -35,7 +35,12 @@ func ParentDirFile(filename string) string {
 func Load() Config {
 	// we need to see if the config file is
 	// in the parent directory for the ui model
-	// no global var for path used since its infrequent
+	// no global var for path used since its infrequent.
+
+	// Instead of looking at read errors, we try to read, but return nil string ""
+	// if nothing happens. Then, later on we will save a new empty config file if the
+	// original doesn't exist or can't be parsed. We do not enforce the read since
+	// this approach is self-healing and config is optional.
 	path := ParentDirFile(".vars.env")
 	data, _ := os.ReadFile(path)
 	var cfg Config
@@ -85,6 +90,7 @@ func Save(cfg Config) error {
 	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.DLEmail)
 
 	tmp := target + ".tmp"
+	// we must add owner read/write for file
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
 		return err
 	}
