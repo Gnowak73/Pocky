@@ -7,6 +7,7 @@ import (
 	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/flares"
+	"github.com/pocky/tui-go/internal/tui/styles"
 )
 
 func unsetValue(val string) string {
@@ -27,21 +28,17 @@ func RenderSummary(cfg config.Config, width int) string {
 		{"Last Email: " + unsetValue(cfg.DLEmail)},
 	}
 
-	purple := lipgloss.Color("99")
-	gray := lipgloss.Color("245")
-	lightGray := lipgloss.Color("241")
-
-	headerStyle := lipgloss.NewStyle().Foreground(purple).Bold(true).Padding(0, 1)
+	headerStyle := styles.Purple.Bold(true).Padding(0, 1)
 	rowPadLeft := 1
 	rowPadRight := 2
-	cellEven := lipgloss.NewStyle().Foreground(gray)
-	cellOdd := lipgloss.NewStyle().Foreground(lightGray)
+	cellEven := styles.Gray
+	cellOdd := styles.LightGray
 
 	t := lgtbl.New()
 	t = t.Headers("SUMMARY")
 	t = t.Rows(rows...)
 	t = t.Border(lipgloss.NormalBorder())
-	t = t.BorderStyle(lipgloss.NewStyle().Foreground(purple))
+	t = t.BorderStyle(styles.Purple)
 	t = t.StyleFunc(func(row, col int) lipgloss.Style {
 		if row == lgtbl.HeaderRow {
 			return headerStyle.
