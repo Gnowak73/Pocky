@@ -81,69 +81,12 @@ func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuVi
 	return block + "\n\n" + help
 }
 
-func renderCacheSubmenu2(cache CacheMenuView, frame int) string {
-	maxCache := 0 // max width for the submenu
-	for _, item := range cache.Items {
-		maxCache = max(maxCache, lipgloss.Width(item))
-	}
-
-	innerWidth := maxCache + 4 // extra width for breathing room, same with height
-	targetHeight := len(cache.Items) + 2
-
+func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	// we need a var for the frame and how many rows of submenu are currently visibile during expand animation,
 	// along with fraction of how far we are through animation to drive color fade
 	delta := max(frame-cache.OpenFrame, 0)
-	heightAnim := max(min(targetHeight, (delta+1)*3), 1) // grow by 3 row per tick, at least 1 row
-	progress := min(float64(delta)/float64(targetHeight), 1)
-
-	col := theme.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
-	if heightAnim >= targetHeight {
-		col = styles.SubcacheFinal
-	}
-	boxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(col))
-
-	var rows []string
-	top := boxStyle.Render("  ╭" + strings.Repeat("─", innerWidth) + "╮")
-	bottom := boxStyle.Render("  ╰" + strings.Repeat("─", innerWidth) + "╯")
-	leftBar := boxStyle.Render("  │")
-	rightBar := boxStyle.Render("│")
-
-	rows = append(rows, top)
-
-	if heightAnim >= targetHeight {
-		for j, subItem := range cache.Items {
-			style := styles.VeryLightGray
-			cursor := "  "
-			if j == cache.Selected {
-				style = styles.MenuSelected
-				cursor = styles.MenuSelected.Render("» ")
-			}
-
-			// we use padLine so every cache option occupies same horizontal space before wrapping
-			line := padLine(cursor+style.Render(subItem), innerWidth)
-			rows = append(rows, leftBar+line+rightBar)
-		}
-		rows = append(rows, bottom)
-	} else {
-		// how many "middle rows" to draw while expanding submenu. We subtract 1
-		// since the top border takes up one row
-		mid := max(heightAnim-1, 0)
-
-		// we need to append these rows to our main slice
-		for range mid {
-			rows = append(rows, leftBar+strings.Repeat(" ", innerWidth)+rightBar)
-		}
-	}
-	return strings.Join(rows, "\n")
-}
-
-// renderCacheSubmenu2 renders the cache submenu using lipgloss/table while keeping the same animation semantics.
-// It is not wired in, but kept for reference/testing against renderCacheSubmenu.
-// renderCacheSubmenu renders the cache submenu using lipgloss/table while keeping the same animation semantics.
-func renderCacheSubmenu(cache CacheMenuView, frame int) string {
-	delta := max(frame-cache.OpenFrame, 0)
-	targetHeight := len(cache.Items) + 2 // borders + rows
-	heightAnim := max(min(targetHeight, (delta+1)*3), 1)
+	targetHeight := len(cache.Items) + 2                 // borders + rows
+	heightAnim := max(min(targetHeight, (delta+1)*2), 1) // dictates speed, 2 rows per tick currently
 	progress := min(float64(delta)/float64(targetHeight), 1)
 
 	col := theme.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
@@ -151,16 +94,26 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 		col = styles.SubcacheFinal
 	}
 
-	rowPadLeft := 1
-	rowPadRight := 1
+	rowPadLeft := 0
+	rowPadRight := 2
 	style := styles.VeryLightGray.Padding(0, rowPadRight, 0, rowPadLeft)
 	cursorStyle := styles.MenuSelected.Padding(0, rowPadRight, 0, rowPadLeft)
+
+	//  we want to compute a stable width so the table doesn't resize when selection changes
+	maxLabel := 0
+	for _, item := range cache.Items {
+		maxLabel = max(maxLabel, lipgloss.Width("  "+item))
+		maxLabel = max(maxLabel, lipgloss.Width("» "+item))
+	}
 
 	rows := make([][]string, 0, len(cache.Items))
 	for i, item := range cache.Items {
 		label := "  " + item
 		if i == cache.Selected {
-			label = cursorStyle.Render("» " + item)
+			label = "» " + item
+		}
+		if pad := maxLabel - lipgloss.Width(label); pad > 0 {
+			label += strings.Repeat(" ", pad)
 		}
 		rows = append(rows, []string{label})
 	}
@@ -288,14 +241,6 @@ func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
 		lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
 
 	return box, versionLine, w
-}
-
-func padLine(s string, width int) string {
-	// we want to enforce a minimum width by appending spaces
-	if pad := width - lipgloss.Width(s); pad > 0 {
-		return s + strings.Repeat(" ", pad)
-	}
-	return s
 }
 
 func buildMenuRows(menu MenuState) ([]string, int) {
