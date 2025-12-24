@@ -37,6 +37,20 @@ type dateEditorState struct {
 	Focus int
 }
 
+type tickMsg struct{}
+
+type ViewMode int
+
+const ( // we use iota, a predeclared identifier to enumerate
+	ModeMain ViewMode = iota
+	ModeWavelength
+	ModeDateRange
+	ModeFlare
+	ModeSelectFlares
+	ModeCacheView
+	ModeCacheDelete
+)
+
 func NewModel(logoLines []string, cfg config.Config) Model {
 	logoState := chrome.NewLogoState(logoLines, 0)
 
