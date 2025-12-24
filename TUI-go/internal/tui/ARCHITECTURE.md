@@ -14,7 +14,7 @@ Packages
 - `theme`: shared math/styling helpers (clamp, gradients) used by multiple packages. No state.
 - `chrome`: pure presentation primitives and the logo. Renders menu, cache submenu, summary box, status bar, and holds `LogoState` (lines/colored/block width) plus logo colorizing. No Bubble Tea routing; it takes data and returns strings.
 - `flares`: flare domain + domain UI. Holds state structs for wavelength editor, flare filters, flare selector (table + spinner), and cache (rows, filters, viewport). Includes flare loader command, cache IO/filtering, date validation, and render helpers for those views. Domain-first: these types make sense even without the Bubble Tea loop.
-- `core`: the orchestrator. `Model` embeds the domain/chrome states, owns the current mode, frame counters, and dimensions. Per-mode update files handle keys/mouse and delegate to `flares`/`chrome` to do work or render. `view.go` stitches the chrome + domain views together.
+- `core`: the orchestrator. `Model` embeds the domain/chrome states, owns the current mode, frame counters, and dimensions. Per-mode update files handle keys/mouse and delegate to `flares`/`chrome` to do work or render. `view.go` stitches the chrome + domain views together. Here, we do message routing, model mutations, tick schedule, and work with the top-level view. Feature-specific rendering/data helpers that don't mutate the core model live in their own packages.
 
 File sizing
 -----------

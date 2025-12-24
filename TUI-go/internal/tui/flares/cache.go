@@ -22,7 +22,7 @@ type CacheState struct {
 	Pick        map[int]bool
 	Cursor      int
 	Offset      int
-	Viewport    viewport.Model
+	Viewport    viewport.Model // bubbles viewport, built-in mouse and scroll
 	Content     string
 	Filter      string
 	Filtered    []Entry
@@ -98,7 +98,7 @@ func (c CacheState) viewHeight(modeCacheDelete bool) int {
 	if n == 0 {
 		return 0
 	}
-	return max(7, min(25, n))
+	return clampHeight(n, 7, 25)
 }
 
 // FilterCacheRows returns rows matching the query (case-insensitive) plus their original indices.
@@ -143,6 +143,7 @@ func (c CacheState) CacheOriginalIndex(filteredIdx int) int {
 }
 
 // ApplyCacheFilter updates filtered rows, cursor bounds, and rendered content.
+// most importantly it populates the content
 func (c *CacheState) ApplyCacheFilter(query string, width int) {
 	c.Filter = strings.TrimSpace(query)
 	c.Filtered, c.FilterIdx = FilterCacheRows(c.Rows, c.Filter)
@@ -153,7 +154,7 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 		c.Cursor = len(c.Filtered) - 1
 	}
 	c.Content = renderCacheTableString(c.Filtered, width)
-	c.EnsureCacheVisible(false)
+	// c.EnsureCacheVisible(false)
 }
 
 func ClearCacheFile() (string, error) {
@@ -496,23 +497,5 @@ func (c *CacheState) EnsureCacheVisible(modeDelete bool) {
 	if rows == nil || !modeDelete {
 		rows = c.Rows
 	}
-	if c.Cursor < 0 {
-		c.Cursor = 0
-	}
-	if c.Cursor >= len(rows) {
-		c.Cursor = len(rows) - 1
-	}
-	if c.Cursor < c.Offset {
-		c.Offset = c.Cursor
-	}
-	if c.Cursor >= c.Offset+h {
-		c.Offset = c.Cursor - h + 1
-	}
-	maxOffset := max(len(rows)-h, 0)
-	if c.Offset > maxOffset {
-		c.Offset = maxOffset
-	}
-	if c.Offset < 0 {
-		c.Offset = 0
-	}
+	c.Cursor, c.Offset = clampViewport(c.Cursor, c.Offset, len(rows), h)
 }

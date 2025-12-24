@@ -50,7 +50,7 @@ func (s SelectorState) viewHeight() int {
 		return 0
 	}
 	// clamp between 7 and 12 rows so viewport doesnt grow or shrink windly while scrolling
-	return max(7, min(12, len(s.List)))
+	return clampHeight(len(s.List), 7, 12)
 }
 
 func (s SelectorState) Render(width int) string {
@@ -222,27 +222,42 @@ func (s *SelectorState) EnsureVisible() {
 	// on the absolute edges or move the offset (the first visible index)
 	// to match the current cursor position
 	h := s.viewHeight()
-	if h <= 0 {
-		s.Offset = 0
-		return
+	s.Cursor, s.Offset = clampViewport(s.Cursor, s.Offset, len(s.List), h)
+}
+
+// clampViewport keeps cursor/offset within bounds for a viewport of given length and height.
+func clampViewport(cursor, offset, length, height int) (int, int) {
+	if height <= 0 || length <= 0 {
+		return 0, 0
 	}
-	if s.Cursor < 0 {
-		s.Cursor = 0
+	if cursor < 0 {
+		cursor = 0
 	}
-	if s.Cursor >= len(s.List) {
-		s.Cursor = len(s.List) - 1
+	if cursor >= length {
+		cursor = length - 1
 	}
-	if s.Cursor < s.Offset {
-		s.Offset = s.Cursor
+	if cursor < offset {
+		offset = cursor
 	}
-	if s.Cursor >= s.Offset+h {
-		s.Offset = s.Cursor - h + 1
+	if cursor >= offset+height {
+		offset = cursor - height + 1
 	}
-	maxOffset := max(len(s.List)-h, 0)
-	if s.Offset > maxOffset {
-		s.Offset = maxOffset
+	maxOffset := max(length-height, 0)
+	if offset > maxOffset {
+		offset = maxOffset
 	}
-	if s.Offset < 0 {
-		s.Offset = 0
+	if offset < 0 {
+		offset = 0
 	}
+	return cursor, offset
+}
+
+func clampHeight(length, minH, maxH int) int {
+	if length < minH {
+		return max(minH, length)
+	}
+	if length > maxH {
+		return maxH
+	}
+	return length
 }

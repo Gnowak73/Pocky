@@ -23,7 +23,8 @@ func (m Model) handleCacheViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	var vpCmd tea.Cmd
-	m.Cache.Viewport, vpCmd = m.Cache.Viewport.Update(msg)
+	m.Cache.Viewport, vpCmd = m.Cache.Viewport.Update(msg) // returns new viewport model + update
+	// the cache.Viewport only updates when we call it; we forward messages to it explicitly
 	return m, vpCmd
 }
 
@@ -94,8 +95,13 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rows = m.Cache.Rows
 		}
 		if m.Cache.Cursor >= 0 && m.Cache.Cursor < len(rows) {
+			// need to map row index from filtered list back to original index for consistent deletion
 			if idx := m.Cache.CacheOriginalIndex(m.Cache.Cursor); idx >= 0 {
+				// must delete false maps (selected then unselected)
 				m.Cache.Pick[idx] = !m.Cache.Pick[idx]
+				if !m.Cache.Pick[idx] {
+					delete(m.Cache.Pick, idx)
+				}
 			}
 		}
 	case "enter":
@@ -105,7 +111,12 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Menu.NoticeFrame = m.Frame
 			break
 		}
-		if err := flares.SaveCachePruned(m.Cache.Header, m.Cache.Rows, m.Cache.Pick); err != nil {
+		err := flares.SaveCachePruned(
+			m.Cache.Header,
+			m.Cache.Rows,
+			m.Cache.Pick,
+		)
+		if err != nil {
 			m.Menu.Notice = fmt.Sprintf("Delete failed: %v", err)
 		} else {
 			m.Menu.Notice = fmt.Sprintf("Deleted %d rows", len(m.Cache.Pick))
@@ -156,6 +167,9 @@ func (m Model) handleCacheDeleteMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if m.Cache.Cursor >= 0 && m.Cache.Cursor < len(rows) {
 				if idx := m.Cache.CacheOriginalIndex(m.Cache.Cursor); idx >= 0 {
 					m.Cache.Pick[idx] = !m.Cache.Pick[idx]
+					if !m.Cache.Pick[idx] {
+						delete(m.Cache.Pick, idx)
+					}
 				}
 			}
 		}
