@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
 	"github.com/pocky/tui-go/internal/tui/theme"
@@ -80,7 +81,7 @@ func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuVi
 	return block + "\n\n" + help
 }
 
-func renderCacheSubmenu(cache CacheMenuView, frame int) string {
+func renderCacheSubmenu2(cache CacheMenuView, frame int) string {
 	maxCache := 0 // max width for the submenu
 	for _, item := range cache.Items {
 		maxCache = max(maxCache, lipgloss.Width(item))
@@ -134,6 +135,59 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 		}
 	}
 	return strings.Join(rows, "\n")
+}
+
+// renderCacheSubmenu2 renders the cache submenu using lipgloss/table while keeping the same animation semantics.
+// It is not wired in, but kept for reference/testing against renderCacheSubmenu.
+// renderCacheSubmenu renders the cache submenu using lipgloss/table while keeping the same animation semantics.
+func renderCacheSubmenu(cache CacheMenuView, frame int) string {
+	delta := max(frame-cache.OpenFrame, 0)
+	targetHeight := len(cache.Items) + 2 // borders + rows
+	heightAnim := max(min(targetHeight, (delta+1)*3), 1)
+	progress := min(float64(delta)/float64(targetHeight), 1)
+
+	col := theme.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
+	if heightAnim >= targetHeight {
+		col = styles.SubcacheFinal
+	}
+
+	rowPadLeft := 1
+	rowPadRight := 1
+	style := styles.VeryLightGray.Padding(0, rowPadRight, 0, rowPadLeft)
+	cursorStyle := styles.MenuSelected.Padding(0, rowPadRight, 0, rowPadLeft)
+
+	rows := make([][]string, 0, len(cache.Items))
+	for i, item := range cache.Items {
+		label := "  " + item
+		if i == cache.Selected {
+			label = cursorStyle.Render("» " + item)
+		}
+		rows = append(rows, []string{label})
+	}
+
+	t := lgtbl.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(col))).
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == cache.Selected {
+				return cursorStyle
+			}
+			return style
+		})
+
+	tableStr := t.String()
+	tableStr = lipgloss.NewStyle().MarginLeft(2).Render(tableStr)
+
+	if heightAnim < lipgloss.Height(tableStr) {
+		lines := strings.Split(tableStr, "\n")
+		if heightAnim > len(lines) {
+			heightAnim = len(lines)
+		}
+		tableStr = strings.Join(lines[:heightAnim], "\n")
+	}
+
+	return tableStr
 }
 
 func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {

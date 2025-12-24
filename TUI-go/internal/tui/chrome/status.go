@@ -23,7 +23,7 @@ func RenderStatus(label string, hint string, width int) string {
 
 	// the effective available width will be the entire size of the terminal minus
 	// the left-hand side text for the program nad the menu we are in
-	lhs := lipgloss.Width(statusKey) - lipgloss.Width(statusArrow) - lipgloss.Width(infoBox)
+	lhs := lipgloss.Width(statusKey) + lipgloss.Width(statusArrow) + lipgloss.Width(infoBox)
 	available := max(width-lhs, 0)
 	hints := renderStaticGradient(hint, available)
 
