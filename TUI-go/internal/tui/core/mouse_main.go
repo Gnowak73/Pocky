@@ -5,7 +5,13 @@ import (
 	"github.com/pocky/tui-go/internal/tui/chrome"
 )
 
+// we will get the input as a message and output a mutated model and tea.Cmd for the
+// subsequent uptake
+
 func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// we will use type assertion with switch statements. Note
+	// that tea.MouseMsg will return ints for x and y position of mouse
+	// corresponding to TUI grid columns x rows
 	if m.Cache.MenuOpen {
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
@@ -38,12 +44,18 @@ func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// NOTE: maybe in future we combine the commmon code of scroll and left mouse button
+
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion {
-		if idx, ok := chrome.CacheMenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu, cacheMenuView(m), m.Frame); ok {
-			m.Cache.Selected = idx
-			return m, nil
-		}
-		if idx, ok := chrome.MenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu); ok {
+		idx, ok := chrome.MenuIndexAt(
+			msg.X,
+			msg.Y,
+			m.Width,
+			m.Logo,
+			m.Cfg,
+			m.Menu,
+		)
+		if ok {
 			m.Menu.Selected = idx
 		}
 	}
@@ -57,12 +69,10 @@ func (m Model) handleMainMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.Menu.Selected++
 		}
 	case tea.MouseButtonLeft:
-		if idx, ok := chrome.MenuIndexAt(msg.X, msg.Y, m.Width, m.Logo, m.Cfg, m.Menu); ok {
-			m.Menu.Selected = idx
-			if msg.Action == tea.MouseActionRelease {
-				return m.handleMenuSelection(m.Menu.Items[m.Menu.Selected])
-			}
+		if msg.Action == tea.MouseActionRelease {
+			return m.handleMenuSelection(m.Menu.Items[m.Menu.Selected])
 		}
+
 	}
 	return m, nil
 }

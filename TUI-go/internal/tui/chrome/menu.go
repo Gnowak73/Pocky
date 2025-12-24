@@ -177,6 +177,8 @@ func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu Me
 	return itemY, true
 }
 
+// NOTE: in future maybe we shall combine both indexAt codes to avoid redundancy
+
 func CacheMenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState, cache CacheMenuView, frame int) (int, bool) {
 	if !cache.Open {
 		return 0, false
