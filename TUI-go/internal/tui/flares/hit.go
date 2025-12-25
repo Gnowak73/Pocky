@@ -7,7 +7,6 @@ import (
 // HitFilterColumns maps mouse coordinates to a filter column/row based on the rendered filter block.
 func HitFilterColumns(state FilterState, frame int, width int, x, y int) (colIdx int, rowIdx int, ok bool) {
 	_, blockHeight, blockWidth, titleHeight := RenderFilterBlock(state, frame)
-	titleHeight -= 0
 
 	if y < 0 || x < 0 || y > blockHeight {
 		return 0, 0, false
@@ -27,9 +26,7 @@ func HitFilterColumns(state FilterState, frame int, width int, x, y int) (colIdx
 		return 0, 0, false
 	}
 
-	if relY < titleHeight {
-		return 0, 0, false
-	}
+	headerHit := relY < titleHeight+2 && relY > titleHeight-2
 	optY := relY - titleHeight
 
 	cols := RenderFilterColumns(state, frame)
@@ -54,6 +51,9 @@ func HitFilterColumns(state FilterState, frame int, width int, x, y int) (colIdx
 		return 0, 0, false
 	}
 
+	if headerHit {
+		return colIdx, 0, true
+	}
 	if optY < 2 {
 		return 0, 0, false
 	}
