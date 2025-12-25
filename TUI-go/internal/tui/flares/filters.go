@@ -215,7 +215,22 @@ func RenderFilterColumns(state FilterState, frame int) []string {
 }
 
 func RenderFilterEditor(state FilterState, frame int, width int) string {
-	titleStyle := styles.SummaryHeader.Copy().Bold(false)
+	block, blockHeight, _, _ := RenderFilterBlock(state, frame)
+	help := styles.LightGray.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
+
+	if width <= 0 {
+		return "\n\n" + block + "\n\n" + help
+	}
+
+	placed := lipgloss.Place(width, blockHeight, lipgloss.Center, lipgloss.Top, block)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	return "\n\n" + placed + "\n\n" + helpLine
+}
+
+// RenderFilterBlock builds the title+columns layout and returns the block string plus its dimensions.
+// It also returns the height of the title block (including the blank line before columns) to align hit testing.
+func RenderFilterBlock(state FilterState, frame int) (string, int, int, int) {
+	titleStyle := styles.SummaryHeader.Bold(false)
 	cols := RenderFilterColumns(state, frame)
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	title := titleStyle.Render("Set Flare Filters")
@@ -229,15 +244,8 @@ func RenderFilterEditor(state FilterState, frame int, width int) string {
 	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
 
 	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
-	help := styles.LightGray.Render("←/→/tab switch • ↑/↓ select • enter save • esc cancel")
-
-	if width <= 0 {
-		return "\n\n" + block + "\n\n" + help
-	}
-
-	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
-	return "\n\n" + placed + "\n\n" + helpLine
+	titleHeight := lipgloss.Height(titleBlock) + 1 // plus the blank line before columns
+	return block, lipgloss.Height(block), lipgloss.Width(block), titleHeight
 }
 
 func comparatorDisplayList(comp []Comparator) []string {
