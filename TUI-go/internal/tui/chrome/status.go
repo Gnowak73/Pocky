@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/pocky/tui-go/internal/tui/styles"
-	"github.com/pocky/tui-go/internal/tui/theme"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 func RenderStatus(label string, hint string, width int) string {
@@ -92,9 +92,9 @@ func NoticeLine(notice string, noticeFrame, frame, width int) string {
 	// after 10 frames we begin fading animation
 	t := 0.0
 	if elapsed > hold {
-		t = theme.Clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
+		t = utils.Clamp(float64(elapsed-hold)/float64(life-hold), 0, 1)
 	}
-	col := theme.BlendHex("#FF6B81", "#353533", t)
+	col := utils.BlendHex("#FF6B81", "#353533", t)
 	text := lipgloss.NewStyle().Foreground(lipgloss.Color(col)).Render(notice)
 
 	widthTarget := width

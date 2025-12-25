@@ -10,10 +10,11 @@ import (
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/flares"
 	"github.com/pocky/tui-go/internal/tui/styles"
-	"github.com/pocky/tui-go/internal/tui/theme"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 func (m Model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// we will use type assertion with a switch statement for the flare filter option
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -24,7 +25,7 @@ func (m Model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab", "right", "l":
 		m.Filters.Focus = (m.Filters.Focus + 1) % 3
 		m.Filters.FocusFrame = m.Frame
-	case "shift+tab", "left":
+	case "left", "h":
 		m.Filters.Focus--
 		if m.Filters.Focus < 0 {
 			m.Filters.Focus = 2
@@ -83,8 +84,8 @@ func (m Model) handleFlareFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	col, row, ok := m.flareHit(msg.X, msg.Y)
+func (m Model) handleFlareFilterMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	col, row, ok := m.optionHit(msg.X, msg.Y) // column is box, row is vertical selection
 	if msg.Button == tea.MouseButtonNone && msg.Action == tea.MouseActionMotion && ok {
 		m.Filters.Focus = col
 	}
@@ -124,43 +125,29 @@ func (m Model) handleFlareMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.Filters.Focus = col
 			switch col {
 			case 0:
-				m.Filters.CompIdx = theme.Clamp(row, 0, len(m.Filters.CompDisplays)-1)
+				m.Filters.CompIdx = utils.Clamp(row, 0, len(m.Filters.CompDisplays)-1)
 			case 1:
-				m.Filters.LetterIdx = theme.Clamp(row, 0, len(m.Filters.ClassLetters)-1)
+				m.Filters.LetterIdx = utils.Clamp(row, 0, len(m.Filters.ClassLetters)-1)
 			case 2:
-				m.Filters.MagIdx = theme.Clamp(row, 0, len(m.Filters.Magnitudes)-1)
+				m.Filters.MagIdx = utils.Clamp(row, 0, len(m.Filters.Magnitudes)-1)
 			}
 		}
 	}
 	return m, nil
 }
 
-func (m Model) flareHit(x, y int) (col int, row int, ok bool) {
-	if m.Mode != ModeFlare || x < 0 || y < 0 {
+func (m Model) optionHit(x, y int) (col int, row int, ok bool) {
+	// must be in mode and in certain area to use mouse
+	if m.Mode != ModeFlareFilter || x < 0 || y < 0 {
 		return 0, 0, false
 	}
 
-	cols := flares.RenderFlareColumns(m.Filters, m.Frame)
-	if len(cols) != 3 {
+	cols := flares.RenderFilterColumns(m.Filters, m.Frame)
+	if len(cols) != 3 { // we need magnitude, class, and comparator
 		return 0, 0, false
 	}
 
-	content := strings.Join(m.Logo.Colored, "\n")
-	boxContent := styles.LogoBox.Render(content)
-	w := m.Width
-	if w <= 0 {
-		w = lipgloss.Width(boxContent)
-	}
-	box := lipgloss.Place(w, lipgloss.Height(boxContent), lipgloss.Center, lipgloss.Top, boxContent)
-
-	boxWidth := lipgloss.Width(boxContent)
-	versionText := styles.Version.Render("VERSION: 0.2")
-	leftPad := 0
-	if w > boxWidth {
-		leftPad = (w - boxWidth) / 2
-	}
-	versionLine := strings.Repeat(" ", leftPad) + lipgloss.Place(boxWidth, 1, lipgloss.Right, lipgloss.Top, versionText)
-
+	boxLogo, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
 	summary := chrome.RenderSummary(m.Cfg, w)
 
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
@@ -179,7 +166,7 @@ func (m Model) flareHit(x, y int) (col int, row int, ok bool) {
 	blockWidth := lipgloss.Width(block)
 	blockHeight := lipgloss.Height(block)
 
-	header := box + "\n" + versionLine + summary
+	header := boxLogo + "\n" + versionLine + summary
 	topY := lipgloss.Height(header) + 2
 
 	if y < topY || y > topY+blockHeight {

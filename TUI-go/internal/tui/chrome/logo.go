@@ -12,7 +12,7 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
-	"github.com/pocky/tui-go/internal/tui/theme"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type LogoState struct {
@@ -93,7 +93,7 @@ func ColorizeLogo(lines []string, blockW int, frame int) []string {
 		basePad := extra / 2
 
 		shift := int(math.Round(math.Sin(float64(frame)*speed+float64(i)*phase+offset) * amp))
-		left := theme.Clamp(basePad+shift, 0, extra)
+		left := utils.Clamp(basePad+shift, 0, extra)
 		right := extra - left
 
 		colored[i] = strings.Repeat(" ", left) + lineStyled + strings.Repeat(" ", right)
@@ -134,7 +134,7 @@ func buildGradient(count int) []lipgloss.Style {
 		if count > 1 {
 			t = float64(i) / float64(count-1)
 		}
-		color := theme.BlendStops(stops, t)
+		color := utils.BlendStops(stops, t)
 		stylesOut[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(color.Hex()))
 	}
 	return stylesOut

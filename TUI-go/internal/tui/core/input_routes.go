@@ -16,7 +16,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleWavelengthKeys(msg)
 	case ModeDateRange:
 		return m.handleDateKeys(msg)
-	case ModeFlare:
+	case ModeFlareFilter:
 		return m.handleFlareFilterKeys(msg)
 	case ModeSelectFlares:
 		return m.handleSelectFlaresKeys(msg)
@@ -37,8 +37,8 @@ func (m Model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleCacheDeleteMouse(msg)
 	case ModeWavelength:
 		return m.handleWavelengthMouse(msg)
-	case ModeFlare:
-		return m.handleFlareMouse(msg)
+	case ModeFlareFilter:
+		return m.handleFlareFilterMouse(msg)
 	case ModeSelectFlares:
 		return m.handleSelectFlaresMouse(msg)
 	default:

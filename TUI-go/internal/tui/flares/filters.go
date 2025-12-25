@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
-	"github.com/pocky/tui-go/internal/tui/theme"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type Comparator struct {
@@ -31,7 +31,7 @@ func NewFilterState(cfg config.Config) FilterState {
 	comps := DefaultComparator()
 	letters := DefaultClassLetters()
 	mags := DefaultMagnitudes()
-	compIdx, letterIdx, magIdx := ParseFlareSelection(cfg, comps, letters)
+	compIdx, letterIdx, magIdx := ParseFilterSelection(cfg, comps, letters)
 	return FilterState{
 		Comparators:  comps,
 		CompDisplays: comparatorDisplayList(comps),
@@ -47,7 +47,7 @@ func DefaultComparator() []Comparator {
 	return []Comparator{
 		{">", ">"},
 		{"≥", ">="},
-		{"==", "=="},
+		{"≡", "=="},
 		{"≤", "<="},
 		{"<", "<"},
 		{"All", "All"},
@@ -68,7 +68,7 @@ func DefaultMagnitudes() []string {
 	return mags
 }
 
-func ParseFlareSelection(cfg config.Config, comps []Comparator, letters []string) (int, int, int) {
+func ParseFilterSelection(cfg config.Config, comps []Comparator, letters []string) (int, int, int) {
 	compIdx := 0
 	letterIdx := 0
 	magIdx := 0
@@ -109,6 +109,8 @@ func ComparatorASCII(val string) string {
 		return "<="
 	case "All", "ALL":
 		return "All"
+	case "≡":
+		return "=="
 	default:
 		return val
 	}
@@ -124,12 +126,14 @@ func PrettyComparator(val string) string {
 		return "≥"
 	case "<=":
 		return "≤"
+	case "==":
+		return "≡"
 	default:
 		return val
 	}
 }
 
-func RenderFlareColumns(state FilterState, frame int) []string {
+func RenderFilterColumns(state FilterState, frame int) []string {
 	headerStyle := styles.LightGray
 	itemStyle := styles.PinkOption
 	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
@@ -160,11 +164,11 @@ func RenderFlareColumns(state FilterState, frame int) []string {
 
 		headerText := headerStyle.Copy().Foreground(lipgloss.Color("#3A3A3A")).Render(title)
 		if focused {
-			headerAnimT := theme.Clamp(float64(max(frame-state.FocusFrame, 0))/8.0, 0.0, 1.0)
-			headerText = theme.RenderGradientText(
+			headerAnimT := utils.Clamp(float64(max(frame-state.FocusFrame, 0))/8.0, 0.0, 1.0)
+			headerText = utils.RenderGradientText(
 				title,
-				theme.BlendHex("#7D5FFF", "#FFB7D5", headerAnimT),
-				theme.BlendHex("#8B5EDB", "#F785D1", headerAnimT),
+				utils.BlendHex("#7D5FFF", "#FFB7D5", headerAnimT),
+				utils.BlendHex("#8B5EDB", "#F785D1", headerAnimT),
 				headerStyle.Copy().Bold(true),
 			)
 		}
@@ -210,9 +214,9 @@ func RenderFlareColumns(state FilterState, frame int) []string {
 	}
 }
 
-func RenderFlareEditor(state FilterState, frame int, width int) string {
+func RenderFilterEditor(state FilterState, frame int, width int) string {
 	titleStyle := styles.SummaryHeader.Copy().Bold(false)
-	cols := RenderFlareColumns(state, frame)
+	cols := RenderFilterColumns(state, frame)
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	title := titleStyle.Render("Set Flare Filters")
 	colWidth := lipgloss.Width(columns)

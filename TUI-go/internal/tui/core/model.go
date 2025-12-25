@@ -45,7 +45,7 @@ const ( // we use iota, a predeclared identifier to enumerate
 	ModeMain ViewMode = iota
 	ModeWavelength
 	ModeDateRange
-	ModeFlare
+	ModeFlareFilter
 	ModeSelectFlares
 	ModeCacheView
 	ModeCacheDelete

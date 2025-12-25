@@ -32,8 +32,8 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.Menu.NoticeFrame = m.Frame
 	case "Edit Flare Class Filter":
 		m.Cache.MenuOpen = false
-		m.Mode = ModeFlare
-		m.Filters.CompIdx, m.Filters.LetterIdx, m.Filters.MagIdx = flares.ParseFlareSelection(m.Cfg, m.Filters.Comparators, m.Filters.ClassLetters)
+		m.Mode = ModeFlareFilter
+		m.Filters.CompIdx, m.Filters.LetterIdx, m.Filters.MagIdx = flares.ParseFilterSelection(m.Cfg, m.Filters.Comparators, m.Filters.ClassLetters)
 		m.Filters.Focus = 0
 		m.Filters.FocusFrame = m.Frame
 		m.Menu.Notice = ""

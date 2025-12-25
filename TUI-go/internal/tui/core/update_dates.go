@@ -88,10 +88,10 @@ func (m Model) handleDateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.Date.Focus == 1 {
 					target = &m.Date.End
 				}
-				if len(*target) < len("2006-01-02") {
+				if len(*target) < len("2005-06-06") {
 					*target += string(runes)
-					if len(*target) > len("2006-01-02") {
-						*target = (*target)[:len("2006-01-02")]
+					if len(*target) > len("2005-06-06") {
+						*target = (*target)[:len("2005-06-06")]
 					}
 				}
 			}

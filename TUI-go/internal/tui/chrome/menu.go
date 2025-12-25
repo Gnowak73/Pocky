@@ -13,7 +13,7 @@ import (
 	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
-	"github.com/pocky/tui-go/internal/tui/theme"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type MenuState struct {
@@ -45,7 +45,7 @@ func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuVi
 	}
 
 	menuBlock := strings.Join(lines, "\n")
-	helpText := "↑/k up • ↓/j down • enter submit"
+	helpText := "↑/↓ select • h/j/k/l Vim • enter submit"
 	if cache != nil && cache.Open {
 		helpText += " • esc close cache"
 	}
@@ -89,7 +89,7 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	heightAnim := max(min(targetHeight, (delta+1)*2), 1) // dictates speed, 2 rows per tick currently
 	progress := min(float64(delta)/float64(targetHeight), 1)
 
-	col := theme.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
+	col := utils.BlendHex(styles.SubcacheStart, styles.SubcacheEnd, progress)
 	if heightAnim >= targetHeight {
 		col = styles.SubcacheFinal
 	}

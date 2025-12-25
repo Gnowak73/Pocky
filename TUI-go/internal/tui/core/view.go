@@ -30,8 +30,8 @@ func (m Model) View() string {
 		body = summary + flares.RenderWavelengthEditor(m.Waves, w)
 	case ModeDateRange:
 		body = summary + renderDateEditor(m, w)
-	case ModeFlare:
-		body = summary + flares.RenderFlareEditor(m.Filters, m.Frame, w)
+	case ModeFlareFilter:
+		body = summary + flares.RenderFilterEditor(m.Filters, m.Frame, w)
 	case ModeSelectFlares:
 		body = summary + m.Selector.Render(w)
 	case ModeCacheDelete:
@@ -92,7 +92,7 @@ func statusLabel(m Model) string {
 		return "Edit Wavelength"
 	case ModeDateRange:
 		return "Edit Date Range"
-	case ModeFlare:
+	case ModeFlareFilter:
 		return "Edit Flare Class Filter"
 	case ModeSelectFlares:
 		if m.Selector.Loading {
