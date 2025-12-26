@@ -140,6 +140,7 @@ func (m Model) optionHit(x, y int) (col int, row int, ok bool) {
 		return 0, 0, false
 	}
 
+	// build the layour to get the height for items above the filter selection layout
 	boxLogo, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
 	summary := chrome.RenderSummary(m.Cfg, w)
 	header := boxLogo + "\n" + versionLine + summary

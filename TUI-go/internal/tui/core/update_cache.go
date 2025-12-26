@@ -35,29 +35,29 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Cache.Searching = false
 			m.Cache.SearchInput = ""
 			m.Cache.ApplyCacheFilter("", m.Width)
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 			return m, nil
 		case tea.KeyEnter:
 			m.Cache.Searching = false
 			m.Cache.ApplyCacheFilter(m.Cache.SearchInput, m.Width)
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 			return m, nil
 		case tea.KeyBackspace:
 			if len(m.Cache.SearchInput) > 0 {
 				m.Cache.SearchInput = m.Cache.SearchInput[:len(m.Cache.SearchInput)-1]
 				m.Cache.ApplyCacheFilter(m.Cache.SearchInput, m.Width)
-				m.Cache.EnsureCacheVisible(true)
+				m.Cache.EnsureCacheVisible()
 			}
 			return m, nil
 		case tea.KeyRunes:
 			m.Cache.SearchInput += msg.String()
 			m.Cache.ApplyCacheFilter(m.Cache.SearchInput, m.Width)
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 			return m, nil
 		case tea.KeySpace:
 			m.Cache.SearchInput += " "
 			m.Cache.ApplyCacheFilter(m.Cache.SearchInput, m.Width)
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 			return m, nil
 		}
 	}
@@ -78,7 +78,7 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.Cache.Cursor > 0 {
 			m.Cache.Cursor--
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 		}
 	case "down", "j":
 		rows := m.Cache.Filtered
@@ -87,7 +87,7 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.Cache.Cursor < len(rows)-1 {
 			m.Cache.Cursor++
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 		}
 	case "tab":
 		rows := m.Cache.Filtered
@@ -126,11 +126,6 @@ func (m Model) handleCacheDeleteKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.Cache.Rows = rows
 				m.Cache.Pick = make(map[int]bool)
 				m.Cache.ApplyCacheFilter("", m.Width)
-				if m.Width > 0 && m.Height > 0 {
-					m.Cache.Viewport.Width = max(m.Width-6, 20)
-					m.Cache.Viewport.Height = max(m.Height-10, 8)
-				}
-				m.Cache.Viewport.SetContent(m.Cache.Content)
 			} else {
 				m.Cache.Rows = nil
 				m.Cache.Pick = make(map[int]bool)
@@ -147,7 +142,7 @@ func (m Model) handleCacheDeleteMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelUp:
 		if m.Cache.Cursor > 0 {
 			m.Cache.Cursor--
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 		}
 	case tea.MouseButtonWheelDown:
 		rows := m.Cache.Filtered
@@ -156,7 +151,7 @@ func (m Model) handleCacheDeleteMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.Cache.Cursor < len(rows)-1 {
 			m.Cache.Cursor++
-			m.Cache.EnsureCacheVisible(true)
+			m.Cache.EnsureCacheVisible()
 		}
 	case tea.MouseButtonLeft:
 		if msg.Action == tea.MouseActionRelease {

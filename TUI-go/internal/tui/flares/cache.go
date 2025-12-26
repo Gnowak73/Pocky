@@ -90,10 +90,10 @@ func LoadCache() (string, []Entry, error) {
 	return header, rows, nil
 }
 
-func (c CacheState) viewHeight(modeCacheDelete bool) int {
-	n := len(c.Rows)
-	if modeCacheDelete && (len(c.Filtered) > 0 || c.Filter != "") {
-		n = len(c.Filtered)
+func (c CacheState) viewHeight() int {
+	n := len(c.Filtered)
+	if n == 0 && c.Filter == "" {
+		n = len(c.Rows)
 	}
 	if n == 0 {
 		return 0
@@ -154,7 +154,6 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 		c.Cursor = len(c.Filtered) - 1
 	}
 	c.Content = renderCacheTableString(c.Filtered, width)
-	// c.EnsureCacheVisible(false)
 }
 
 func ClearCacheFile() (string, error) {
@@ -353,8 +352,8 @@ func (c *CacheState) RenderCacheView(width int, height int) string {
 }
 
 func (c *CacheState) RenderCacheDelete(width int) string {
-	title := styles.SummaryHeader.Copy().Bold(false).Render("Delete Cache Rows (Scroll)")
-	height := c.viewHeight(true)
+	title := styles.SummaryHeader.Bold(false).Render("Delete Cache Rows (Scroll)")
+	height := c.viewHeight()
 	rows := c.Filtered
 	if rows == nil {
 		rows = c.Rows
@@ -487,14 +486,14 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 }
 
 // EnsureCacheVisible keeps the cache cursor within the viewport.
-func (c *CacheState) EnsureCacheVisible(modeDelete bool) {
-	h := c.viewHeight(modeDelete)
+func (c *CacheState) EnsureCacheVisible() {
+	h := c.viewHeight()
 	if h <= 0 {
 		c.Offset = 0
 		return
 	}
 	rows := c.Filtered
-	if rows == nil || !modeDelete {
+	if rows == nil {
 		rows = c.Rows
 	}
 	c.Cursor, c.Offset = clampViewport(c.Cursor, c.Offset, len(rows), h)

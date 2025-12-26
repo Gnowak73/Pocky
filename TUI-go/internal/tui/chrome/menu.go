@@ -18,7 +18,7 @@ import (
 
 type MenuState struct {
 	Items       []string
-	Selected    int
+	Selected    int    // and index representing the chosen option (corresponds to mode #)
 	Notice      string // the message that will appear on the bottom
 	NoticeFrame int    // the frame of the message to keep track of its fading animation
 }
