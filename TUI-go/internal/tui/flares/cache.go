@@ -485,8 +485,8 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 	return "\n\n" + lipgloss.Place(effW, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
 }
 
-// EnsureCacheVisible keeps the cache cursor within the viewport.
-func (c *CacheState) EnsureCacheVisible() {
+// EnsureVisible keeps the cache cursor within the viewport.
+func (c *CacheState) EnsureVisible() {
 	h := c.viewHeight()
 	if h <= 0 {
 		c.Offset = 0

@@ -19,12 +19,21 @@ func renderDateEditor(m Model, width int) string {
 	ghostStyle := styles.LightGray.Faint(true)
 
 	renderField := func(val, placeholder string, focused bool) string {
-		line := lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), valueStyle.Render(val))
+		line := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			promptStyle.Render("> "),
+			valueStyle.Render(val),
+		)
+
 		if strings.TrimSpace(val) == "" {
 			if placeholder == "" {
 				placeholder = "YYYY-MM-DD"
 			}
-			line = lipgloss.JoinHorizontal(lipgloss.Top, promptStyle.Render("> "), ghostStyle.Render(placeholder))
+			line = lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				promptStyle.Render("> "),
+				ghostStyle.Render(placeholder),
+			)
 		}
 		if focused {
 			return focusStyle.Render(line)
@@ -54,7 +63,11 @@ func renderDateEditor(m Model, width int) string {
 
 	help := styles.LightGray.Render("tab switch • enter save • esc cancel")
 
-	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	placed := lipgloss.Place(
+		width, lipgloss.Height(block),
+		lipgloss.Center, lipgloss.Top,
+		block,
+	)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	combined := lipgloss.JoinVertical(lipgloss.Left, placed, "", "", helpLine)
 	return "\n\n" + combined

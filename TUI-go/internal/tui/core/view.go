@@ -65,20 +65,30 @@ func (m Model) View() string {
 
 	}
 
+	// handle notices inside of each menu
 	if m.Mode != ModeMain && m.Mode != ModeCacheView {
-		if nl := chrome.NoticeLine(m.Menu.Notice, m.Menu.NoticeFrame, m.Frame, w); nl != "" {
-			extraNotice = "\n" + "  " + nl
+		nl := chrome.NoticeLine(
+			m.Menu.Notice,
+			m.Menu.NoticeFrame,
+			m.Frame,
+			w,
+		)
+		if nl != "" {
+			extraNotice = "\n\n" + "  " + nl
 		}
 	}
 
 	status := chrome.RenderStatus(statusLabel(m), "esc to quit", m.Width)
 	if m.Height > 0 {
+		// the +1 accounts for the Versionline height
 		logoHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
+		// we will fill a number of newlien characters between main content and status bar to
+		// vertically fill the terminal
 		gap := max(m.Height-logoHeight-lipgloss.Height(status), 0)
 		return box + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
 	}
 
-	return box + "\n" + versionLine + body + extraNotice + "\n" + status
+	return box + "\n" + versionLine + body + extraNotice + "\n" + status // without gap
 }
 
 func statusLabel(m Model) string {
