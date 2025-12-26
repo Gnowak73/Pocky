@@ -72,6 +72,64 @@ func (w *WaveEditorState) Toggle(idx int) {
 	w.Selected[code] = !w.Selected[code]
 }
 
+// HitWavelengthRow maps mouse coordinates (relative to the wavelength editor block)
+// to a row index in the options list, matching the layout used in RenderWavelengthEditor.
+func HitWavelengthRow(state WaveEditorState, width int, x, y int) (int, bool) {
+	if x < 0 || y < 0 {
+		return 0, false
+	}
+
+	title := styles.SummaryHeader.Bold(false).Render("Select AIA Wavelength Channels")
+	divWidth := max(lipgloss.Width(title)+6, 32)
+	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
+	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
+
+	// Rows are rendered with a leading space (indent) and centered as a block.
+	codeStyle := lipgloss.NewStyle().Width(6)
+	descStyle := lipgloss.NewStyle()
+	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
+
+	maxRowWidth := 0
+	for _, opt := range state.Options {
+		check := "[ ]"
+		if state.Selected[opt.Code] {
+			check = checkStyle.Render("[x]")
+		}
+		row := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			check,
+			" ",
+			codeStyle.Render(opt.Code+"Å"),
+			styles.LightGray.Render("  │  "),
+			descStyle.Render(opt.Desc),
+		)
+		if w := lipgloss.Width(row); w > maxRowWidth {
+			maxRowWidth = w
+		}
+	}
+
+	blockWidth := max(lipgloss.Width(titleBlock), maxRowWidth)
+	offsetX := 0
+	if width > blockWidth {
+		offsetX = (width - blockWidth) / 2
+	}
+	offsetX++ // leading space indent
+
+	// Y positioning: RenderWavelengthEditor adds two newlines, then the title block,
+	// a blank line, then the list rows.
+	titleHeight := lipgloss.Height(titleBlock)
+	rowStart := 1 + titleHeight + 1
+	if y < rowStart || y >= rowStart+len(state.Options) {
+		return 0, false
+	}
+
+	if x < offsetX || x >= offsetX+blockWidth+1 {
+		return 0, false
+	}
+
+	return y - rowStart, true
+}
+
 func WaveDisplay(val string) string {
 	val = strings.TrimSpace(val)
 	if val == "" {

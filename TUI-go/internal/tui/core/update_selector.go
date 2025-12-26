@@ -33,7 +33,13 @@ func (m Model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Mode = ModeMain
 			break
 		}
-		if err := flares.SaveFlareSelection(m.Selector.Header, m.Selector.List, m.Selector.Selected); err != nil {
+		err := flares.SaveFlareSelection(
+			m.Selector.Header,
+			m.Selector.List,
+			m.Selector.Selected,
+		)
+
+		if err != nil {
 			m.Menu.Notice = fmt.Sprintf("Save failed: %v", err)
 			m.Menu.NoticeFrame = m.Frame
 		} else {
