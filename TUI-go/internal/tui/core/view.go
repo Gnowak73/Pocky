@@ -29,7 +29,7 @@ func (m Model) View() string {
 	case ModeWavelength:
 		body = summary + flares.RenderWavelengthEditor(m.Waves, w)
 	case ModeDateRange:
-		body = summary + renderDateEditor(m, w)
+		body = summary + flares.RenderDateEditor(m.Cfg, m.Date, w)
 	case ModeFlareFilter:
 		body = summary + flares.RenderFilterEditor(m.Filters, m.Frame, w)
 	case ModeSelectFlares:

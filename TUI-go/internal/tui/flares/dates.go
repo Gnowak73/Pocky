@@ -1,23 +1,27 @@
-package core
-
-// view_dates.go sits in core because it renders the ModeDateRange screen using
-// Model.Date/Mode and shares the same focus/notice state that the update loop
-// mutates; splitting it elsewhere would force more plumbing around Model fields.
+package flares
 
 import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
 )
 
-func renderDateEditor(m Model, width int) string {
+type DateEditorState struct {
+	Start string
+	End   string
+	Focus int // which item we are on in the date editor
+}
+
+func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string {
 	valueStyle := styles.PinkOption
 	focusStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2A262A"))
 	headerStyle := styles.LightGray
 	promptStyle := styles.LightGray.Bold(true)
 	ghostStyle := styles.LightGray.Faint(true)
 
+	// val is the string of the input into the dates, palceholder is the fallback text
 	renderField := func(val, placeholder string, focused bool) string {
 		line := lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -42,14 +46,15 @@ func renderDateEditor(m Model, width int) string {
 	}
 
 	startField := renderField(
-		strings.TrimSpace(m.Date.Start),
-		strings.TrimSpace(m.Cfg.Start),
-		m.Date.Focus == 0,
+		strings.TrimSpace(date.Start),
+		strings.TrimSpace(cfg.Start),
+		date.Focus == 1,
 	)
+
 	endField := renderField(
-		strings.TrimSpace(m.Date.End),
-		strings.TrimSpace(m.Cfg.End),
-		m.Date.Focus == 1,
+		strings.TrimSpace(date.End),
+		strings.TrimSpace(cfg.End),
+		date.Focus == 1,
 	)
 
 	block := lipgloss.JoinVertical(lipgloss.Left,

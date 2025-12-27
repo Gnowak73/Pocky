@@ -62,11 +62,6 @@ var (
 	MenuSelected = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#F785D1"))
 
-	// c stands for color
-	Cpurple    = lipgloss.Color("99")
-	Cgray      = lipgloss.Color("245")
-	ClightGray = lipgloss.Color("241")
-
 	Purple = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("99"))
 

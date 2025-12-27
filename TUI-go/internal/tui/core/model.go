@@ -23,18 +23,12 @@ type Model struct {
 	Filters  flares.FilterState
 	Selector flares.SelectorState
 	Cache    flares.CacheState
-	Date     dateEditorState
+	Date     flares.DateEditorState
 
 	// TUI window
 	Frame  int
 	Width  int
 	Height int
-}
-
-type dateEditorState struct {
-	Start string
-	End   string
-	Focus int // which item we are on in the date editor
 }
 
 type tickMsg struct{}
