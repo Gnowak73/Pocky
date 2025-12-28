@@ -1,36 +1,64 @@
 package utils
 
-// CenterOffset returns the left padding needed to center a block within width.
-// nudge is an extra adjustment applied after centering.
-func CenterOffset(width int, blockWidth int, nudge int) int {
-	offset := 0
-	if width > blockWidth {
-		offset = (width - blockWidth) / 2
-	}
-	offset += nudge
-	if offset < 0 {
-		return 0
-	}
-	return offset
+import "github.com/charmbracelet/lipgloss"
+
+// MouseMapFunc maps relative coordinates inside a block to a result.
+type MouseMapFunc func(relX, relY int) (int, int, bool)
+
+// MouseHitSpec describes the layout needed for a generic mouse hit test.
+type MouseHitSpec struct {
+	X        int
+	Y        int
+	Width    int
+	Header   string
+	Block    string
+	TopPad   int
+	NudgeX   int
+	CheckX   bool
+	RowStart int
+	RowCount int
+	Mapper   MouseMapFunc
 }
 
-// HitList returns the row index for a vertical list given a top offset and row start.
-// top is the absolute top of the block; start is the first row within the block.
-func HitList(y int, top int, start int, count int) (int, bool) {
-	first := top + start
-	last := first + count
-	if y < first || y >= last {
-		return 0, false
+// MouseHit performs a centered block hit test and optional row mapping.
+func MouseHit(spec MouseHitSpec) (int, int, bool) {
+	if spec.X < 0 || spec.Y < 0 || spec.Block == "" {
+		return 0, 0, false
 	}
-	return y - first, true
-}
 
-// HitBlockX returns the relative X within a centered block.
-func HitBlockX(x int, width int, blockWidth int, nudge int) (int, bool) {
-	offset := CenterOffset(width, blockWidth, nudge)
-	relX := x - offset
-	if relX < 0 || relX >= blockWidth {
-		return 0, false
+	headerHeight := lipgloss.Height(spec.Header) + spec.TopPad
+	blockHeight := lipgloss.Height(spec.Block)
+	if spec.Y < headerHeight || spec.Y >= headerHeight+blockHeight {
+		return 0, 0, false
 	}
-	return relX, true
+
+	relY := spec.Y - headerHeight
+	relX := spec.X
+	if spec.CheckX {
+		blockWidth := lipgloss.Width(spec.Block)
+		offset := 0
+		if spec.Width > blockWidth {
+			offset = (spec.Width - blockWidth) / 2
+		}
+		offset += spec.NudgeX
+		if offset < 0 {
+			offset = 0
+		}
+		relX = spec.X - offset
+		if relX < 0 || relX >= blockWidth {
+			return 0, 0, false
+		}
+	}
+
+	if spec.Mapper != nil {
+		return spec.Mapper(relX, relY)
+	}
+
+	if spec.RowCount <= 0 {
+		return 0, 0, false
+	}
+	if relY < spec.RowStart || relY >= spec.RowStart+spec.RowCount {
+		return 0, 0, false
+	}
+	return 0, relY - spec.RowStart, true
 }

@@ -143,13 +143,12 @@ func renderCacheSubmenu(cache CacheMenuView, frame int) string {
 	return tableStr
 }
 
-func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState) (int, bool) {
+func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState, cache *CacheMenuView, frame int) (int, bool) {
 	// we need a way to map the mouse location to the cursor on the main menu
 	// We need our cursor position with respect to the top of the menu, or
 	// how far down from the start of the rendered menu block
 
-	// early rejection for sanity
-	if y < 0 || x < 0 || len(menu.Items) == 0 {
+	if x < 0 || y < 0 {
 		return 0, false
 	}
 
@@ -157,62 +156,43 @@ func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu Me
 	// for the mouse being on the application
 	box, versionLine, w := RenderLogoHeader(width, logo)
 	summary := RenderSummary(cfg, w)
+	header := box + "\n" + versionLine + summary
+
+	if cache != nil && cache.Open {
+		lines, cacheOptLine := buildMenuRows(menu)
+		if cacheOptLine == -1 {
+			return 0, false
+		}
+		lines = insertCacheSubmenu(lines, cacheOptLine, *cache, frame)
+		subStart := cacheOptLine + 1
+		itemStart := subStart + 1
+		_, row, ok := utils.MouseHit(utils.MouseHitSpec{
+			X:        x,
+			Y:        y,
+			Width:    w,
+			Header:   header,
+			Block:    strings.Join(lines, "\n"),
+			TopPad:   1,
+			CheckX:   false,
+			RowStart: itemStart,
+			RowCount: len(cache.Items),
+		})
+		return row, ok
+	}
+
 	menuView := RenderMenu(w, menu, "", nil, 0)
-
-	header := box + "\n" + versionLine + summary
-	menuTop := lipgloss.Height(header)
-	menuHeight := lipgloss.Height(menuView)
-
-	if y < menuTop || y >= menuTop+menuHeight {
-		return 0, false
-	}
-
-	relativeY := y - menuTop
-	start := 1
-	itemY := relativeY - start
-	if itemY < 0 || itemY >= len(menu.Items) {
-		return 0, false
-	}
-
-	return itemY, true
-}
-
-// NOTE: in future maybe we shall combine both indexAt codes to avoid redundancy
-
-func CacheMenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu MenuState, cache CacheMenuView, frame int) (int, bool) {
-	if !cache.Open {
-		return 0, false
-	}
-
-	box, versionLine, w := RenderLogoHeader(width, logo)
-	summary := RenderSummary(cfg, w)
-	header := box + "\n" + versionLine + summary
-	menuTop := max(lipgloss.Height(header)+1, 0)
-
-	lines, cacheOptLine := buildMenuRows(menu)
-
-	if cacheOptLine == -1 {
-		return 0, false
-	}
-
-	lines = insertCacheSubmenu(lines, cacheOptLine, cache, frame)
-
-	menuHeight := len(lines)
-	if y < menuTop || y >= menuTop+menuHeight {
-		return 0, false
-	}
-
-	relativeY := y - menuTop
-	subStart := cacheOptLine + 1
-	itemStart := subStart + 1
-	if relativeY < itemStart || relativeY >= itemStart+len(cache.Items) {
-		return 0, false
-	}
-	idx := relativeY - itemStart
-	if idx < 0 || idx >= len(cache.Items) {
-		return 0, false
-	}
-	return idx, true
+	_, row, ok := utils.MouseHit(utils.MouseHitSpec{
+		X:        x,
+		Y:        y,
+		Width:    w,
+		Header:   header,
+		Block:    menuView,
+		TopPad:   0,
+		CheckX:   false,
+		RowStart: 1,
+		RowCount: len(menu.Items),
+	})
+	return row, ok
 }
 
 func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
