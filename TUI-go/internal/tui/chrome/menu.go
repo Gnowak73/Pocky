@@ -30,6 +30,8 @@ type CacheMenuView struct {
 	OpenFrame int // the frame counter captures when the submenu was opened for the animation
 }
 
+const versionLine = "VERSION: 0.2"
+
 func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuView, frame int) string {
 	// the goal is to return a string to print to the TUI, reflecting the state of the
 	// main menu. We will need a separate function for the cache submenu since it has
@@ -158,24 +160,26 @@ func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu Me
 	summary := RenderSummary(cfg, w)
 	header := box + "\n" + versionLine + summary
 
-	block := ""
-	topPad := 0
-	rowStart := 0
+	block := ""   // the rendered text block of the entire menu
+	topPad := 0   // vertical padding after the block
+	rowStart := 0 // row index inside the block where selectable items start
 	rowCount := 0
+
+	// in either case of cache or no cache submenu, we need to build the menu rows
 	if cache != nil && cache.Open {
 		lines, cacheOptLine := buildMenuRows(menu)
-		if cacheOptLine != -1 {
+		if cacheOptLine != -1 { // check sentinal value
 			lines = insertCacheSubmenu(lines, cacheOptLine, *cache, frame)
-			subStart := cacheOptLine + 1
-			itemStart := subStart + 1
+			subStart := cacheOptLine + 1 // the line index where submenu block begins
+			rowStart = subStart + 1      // the line where the first sub-option appears
 			block = strings.Join(lines, "\n")
-			topPad = 1
-			rowStart = itemStart
+			topPad = 1 // pad between header and menu block for hit-testing
 			rowCount = len(cache.Items)
 		}
 	} else {
+		// we pass frame: 0 just because we aren't using the animation, so any frame will do
 		block = RenderMenu(w, menu, "", nil, 0)
-		rowStart = 1
+		rowStart = 1 // one \n break before we start rows
 		rowCount = len(menu.Items)
 	}
 	if block == "" {
@@ -187,9 +191,9 @@ func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu Me
 		Width:    w,
 		Header:   header,
 		Block:    block,
-		TopPad:   topPad,
+		TopPad:   topPad, // shifts all lines same amount downward
 		CheckX:   false,
-		RowStart: rowStart,
+		RowStart: rowStart, // chanes where region starts, shortening or elongating it
 		RowCount: rowCount,
 	})
 	return row, ok
@@ -213,7 +217,7 @@ func RenderLogoHeader(width int, logo LogoState) (string, string, int) {
 	)
 
 	boxWidth := lipgloss.Width(boxLogo)
-	versionText := styles.Version.Render("VERSION: 0.2")
+	versionText := styles.Version.Render(versionLine)
 	leftPad := 0
 	if w > boxWidth {
 		leftPad = (w - boxWidth) / 2
@@ -233,7 +237,7 @@ func buildMenuRows(menu MenuState) ([]string, int) {
 	}
 
 	var lines []string
-	cacheIndex := -1
+	cacheIndex := -1 // sentinal value for existing submenu
 
 	for i, item := range menu.Items {
 		style := styles.MenuItem
@@ -246,7 +250,7 @@ func buildMenuRows(menu MenuState) ([]string, int) {
 		line := lipgloss.PlaceHorizontal(maxText, lipgloss.Center, lineContent)
 		lines = append(lines, line)
 
-		// set cache index to real value if we are entering submenu
+		// set cache index to real value if we have submenu
 		if item == "Cache Options" {
 			cacheIndex = len(lines) - 1
 		}

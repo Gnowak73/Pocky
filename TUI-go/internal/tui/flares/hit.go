@@ -2,39 +2,7 @@ package flares
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/pocky/tui-go/internal/tui/utils"
 )
-
-// HitFilterColumns maps mouse coordinates to a filter column/row based on the rendered filter block.
-func HitFilterColumns(state FilterState, frame int, width int, x, y int) (colIdx int, rowIdx int, ok bool) {
-	block, _, blockWidth, titleHeight := RenderFilterBlock(state, frame)
-	cols := RenderFilterColumns(state, frame)
-	if len(cols) != 3 {
-		return 0, 0, false
-	}
-
-	nudge := 0
-	if width > blockWidth {
-		if (width-blockWidth)/2 > 2 {
-			nudge = -2
-		}
-	}
-
-	colIdx, rowIdx, ok = utils.MouseHit(utils.MouseHitSpec{
-		X:      x,
-		Y:      y,
-		Width:  width,
-		Header: "",
-		Block:  block,
-		TopPad: 0,
-		NudgeX: nudge,
-		CheckX: true,
-		Mapper: func(relX, relY int) (int, int, bool) {
-			return HitFilterColumnsRel(state, frame, titleHeight, cols, relX, relY)
-		},
-	})
-	return colIdx, rowIdx, ok
-}
 
 // HitFilterColumnsRel maps relative coordinates inside the filter block to a column/row.
 func HitFilterColumnsRel(state FilterState, frame int, titleHeight int, cols []string, relX int, relY int) (colIdx int, rowIdx int, ok bool) {
