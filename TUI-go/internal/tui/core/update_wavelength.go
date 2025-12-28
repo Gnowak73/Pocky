@@ -77,6 +77,5 @@ func (m Model) waveIndexAt(x, y int) (int, bool) {
 	summary := chrome.RenderSummary(m.Cfg, w)
 	header := boxLogo + "\n" + versionLine + summary
 	editorTop := lipgloss.Height(header)
-
 	return flares.HitWavelengthRow(m.Waves, w, x, y-editorTop)
 }

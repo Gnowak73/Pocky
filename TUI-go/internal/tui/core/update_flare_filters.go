@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/chrome"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/flares"
@@ -144,8 +143,26 @@ func (m Model) optionHit(x, y int) (col int, row int, ok bool) {
 	boxLogo, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
 	summary := chrome.RenderSummary(m.Cfg, w)
 	header := boxLogo + "\n" + versionLine + summary
-	topY := lipgloss.Height(header) + 2
+	block, _, blockWidth, titleHeight := flares.RenderFilterBlock(m.Filters, m.Frame)
+	cols := flares.RenderFilterColumns(m.Filters, m.Frame)
 
-	colIdx, rowIdx, hit := flares.HitFilterColumns(m.Filters, m.Frame, w, x, y-topY)
+	nudge := 0
+	if w > blockWidth && (w-blockWidth)/2 > 2 {
+		nudge = -2
+	}
+
+	colIdx, rowIdx, hit := utils.MouseHit(utils.MouseHitSpec{
+		X:      x,
+		Y:      y,
+		Width:  w,
+		Header: header,
+		Block:  block,
+		TopPad: 2,
+		NudgeX: nudge,
+		CheckX: true,
+		Mapper: func(relX, relY int) (int, int, bool) {
+			return flares.HitFilterColumnsRel(m.Filters, m.Frame, titleHeight, cols, relX, relY)
+		},
+	})
 	return colIdx, rowIdx, hit
 }

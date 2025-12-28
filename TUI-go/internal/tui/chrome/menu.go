@@ -158,39 +158,39 @@ func MenuIndexAt(x, y int, width int, logo LogoState, cfg config.Config, menu Me
 	summary := RenderSummary(cfg, w)
 	header := box + "\n" + versionLine + summary
 
+	block := ""
+	topPad := 0
+	rowStart := 0
+	rowCount := 0
 	if cache != nil && cache.Open {
 		lines, cacheOptLine := buildMenuRows(menu)
-		if cacheOptLine == -1 {
-			return 0, false
+		if cacheOptLine != -1 {
+			lines = insertCacheSubmenu(lines, cacheOptLine, *cache, frame)
+			subStart := cacheOptLine + 1
+			itemStart := subStart + 1
+			block = strings.Join(lines, "\n")
+			topPad = 1
+			rowStart = itemStart
+			rowCount = len(cache.Items)
 		}
-		lines = insertCacheSubmenu(lines, cacheOptLine, *cache, frame)
-		subStart := cacheOptLine + 1
-		itemStart := subStart + 1
-		_, row, ok := utils.MouseHit(utils.MouseHitSpec{
-			X:        x,
-			Y:        y,
-			Width:    w,
-			Header:   header,
-			Block:    strings.Join(lines, "\n"),
-			TopPad:   1,
-			CheckX:   false,
-			RowStart: itemStart,
-			RowCount: len(cache.Items),
-		})
-		return row, ok
+	} else {
+		block = RenderMenu(w, menu, "", nil, 0)
+		rowStart = 1
+		rowCount = len(menu.Items)
 	}
-
-	menuView := RenderMenu(w, menu, "", nil, 0)
+	if block == "" {
+		return 0, false
+	}
 	_, row, ok := utils.MouseHit(utils.MouseHitSpec{
 		X:        x,
 		Y:        y,
 		Width:    w,
 		Header:   header,
-		Block:    menuView,
-		TopPad:   0,
+		Block:    block,
+		TopPad:   topPad,
 		CheckX:   false,
-		RowStart: 1,
-		RowCount: len(menu.Items),
+		RowStart: rowStart,
+		RowCount: rowCount,
 	})
 	return row, ok
 }

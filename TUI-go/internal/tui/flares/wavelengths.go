@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type WaveOption struct {
@@ -79,55 +80,20 @@ func HitWavelengthRow(state WaveEditorState, width int, x, y int) (int, bool) {
 		return 0, false
 	}
 
-	title := styles.SummaryHeader.Bold(false).Render("Select AIA Wavelength Channels")
-	divWidth := max(lipgloss.Width(title)+6, 32)
-	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
-	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
-
-	// Rows are rendered with a leading space (indent) and centered as a block.
-	codeStyle := lipgloss.NewStyle().Width(6)
-	descStyle := lipgloss.NewStyle()
-	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
-
-	maxRowWidth := 0
-	for _, opt := range state.Options {
-		check := "[ ]"
-		if state.Selected[opt.Code] {
-			check = checkStyle.Render("[x]")
-		}
-		row := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			check,
-			" ",
-			codeStyle.Render(opt.Code+"Å"),
-			styles.LightGray.Render("  │  "),
-			descStyle.Render(opt.Desc),
-		)
-		if w := lipgloss.Width(row); w > maxRowWidth {
-			maxRowWidth = w
-		}
-	}
-
-	blockWidth := max(lipgloss.Width(titleBlock), maxRowWidth)
-	offsetX := 0
-	if width > blockWidth {
-		offsetX = (width - blockWidth) / 2
-	}
-	offsetX++ // leading space indent
-
-	// Y positioning: RenderWavelengthEditor adds two newlines, then the title block,
-	// a blank line, then the list rows.
-	titleHeight := lipgloss.Height(titleBlock)
-	rowStart := 1 + titleHeight + 1
-	if y < rowStart || y >= rowStart+len(state.Options) {
-		return 0, false
-	}
-
-	if x < offsetX || x >= offsetX+blockWidth+1 {
-		return 0, false
-	}
-
-	return y - rowStart, true
+	block, rowStart := renderWavelengthBlock(state)
+	_, row, ok := utils.MouseHit(utils.MouseHitSpec{
+		X:        x,
+		Y:        y,
+		Width:    width,
+		Header:   "",
+		Block:    block,
+		TopPad:   0,
+		NudgeX:   1,
+		CheckX:   true,
+		RowStart: rowStart,
+		RowCount: len(state.Options),
+	})
+	return row, ok
 }
 
 func WaveDisplay(val string) string {
@@ -185,6 +151,24 @@ func WaveDisplay(val string) string {
 }
 
 func RenderWavelengthEditor(state WaveEditorState, width int) string {
+	block, _ := renderWavelengthBlock(state)
+	help := styles.LightGray.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
+	indent := func(s string) string {
+		return " " + strings.ReplaceAll(s, "\n", "\n ")
+	}
+
+	if width <= 0 {
+		return "\n\n" + indent(block) + "\n\n\n\n\n" + indent(lipgloss.PlaceHorizontal(width, lipgloss.Center, help))
+	}
+
+	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
+	placed = indent(placed)
+	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	helpLine = indent(helpLine)
+	return "\n\n" + placed + "\n\n\n\n\n" + helpLine
+}
+
+func renderWavelengthBlock(state WaveEditorState) (string, int) {
 	title := styles.SummaryHeader.Copy().Bold(false).Render("Select AIA Wavelength Channels")
 	divWidth := max(lipgloss.Width(title)+6, 32)
 	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
@@ -218,24 +202,12 @@ func RenderWavelengthEditor(state WaveEditorState, width int) string {
 
 	list := strings.Join(rows, "\n")
 	list = " " + strings.ReplaceAll(list, "\n", "\n ")
-	help := styles.LightGray.Render("space toggle • ctrl+a toggle all • enter save • esc cancel")
-
 	block := lipgloss.JoinVertical(lipgloss.Left,
 		titleBlock,
 		"",
 		list,
 	)
-	indent := func(s string) string {
-		return " " + strings.ReplaceAll(s, "\n", "\n ")
-	}
 
-	if width <= 0 {
-		return "\n\n" + indent(block) + "\n\n\n\n\n" + indent(lipgloss.PlaceHorizontal(width, lipgloss.Center, help))
-	}
-
-	placed := lipgloss.Place(width, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	placed = indent(placed)
-	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
-	helpLine = indent(helpLine)
-	return "\n\n" + placed + "\n\n\n\n\n" + helpLine
+	rowStart := lipgloss.Height(titleBlock) + 1
+	return block, rowStart
 }
