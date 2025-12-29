@@ -28,7 +28,7 @@ type CacheState struct {
 	Content     string         // rendered table string used by the cache viewport
 	Filter      string         // the current search query string
 	Filtered    []Entry        // filtered list
-	FilterIdx   []int          // a parallel slice to filtered. Each entry stores original index in "Rows"
+	FilterIdx   []int          // a parallel slice to filtered. Each entry stores original index in "Rows" (faster than map)
 	Searching   bool           // are we searching in delete mode right now?
 	SearchInput string         // the live input string being types while searching is true before commiting to filter
 }
@@ -88,21 +88,15 @@ func LoadCache() (string, []Entry, error) {
 	return header, rows, nil
 }
 
-func (c CacheState) viewHeight() int {
-	// It could be that we didnt Filter anything yet and so we get nothing back.
-	// This is not the same as having a filter and getting nothing back.
-	n := len(c.Filtered)
-	if n == 0 && c.Filter == "" { // if no filtering, use full rows
-		n = len(c.Rows) // only happens if Filtered hasn't been populated yet
-	}
-	if n == 0 { // no filtering and result is zero, then no result
-		return 0
-	}
-	return clampHeight(n, 7, 25)
-}
-
 // FilterCacheRows returns rows matching the query (case-insensitive) plus their original indices.
 func FilterCacheRows(rows []Entry, query string) ([]Entry, []int) {
+	// given a query, we would like to only return the certain rows that match that query
+	// across one of the possible table values. We would like this search to be case insensitive.
+	// Given this search, we will return a slice of filtered entries and their index mappings to Rows
+	// so that when we select them for deletion we delete from Rows. We will input rows as "Rows".
+
+	// to prevent special casing, we will just use an if statement for the empty search to give back
+	// all rows with an identity mapping
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
 		idx := make([]int, len(rows))
@@ -122,29 +116,16 @@ func FilterCacheRows(rows []Entry, query string) ([]Entry, []int) {
 			strings.Contains(strings.ToLower(r.Coord), q) ||
 			strings.Contains(strings.ToLower(r.Wave), q) {
 			out = append(out, r)
-			idx = append(idx, i)
+			idx = append(idx, i) // acts as a map of filterIdx -> rowIdx
 		}
 	}
 	return out, idx
 }
 
-// CacheOriginalIndex maps a filtered row index back to the original Entry index.
-func (c CacheState) CacheOriginalIndex(filteredIdx int) int {
-	if filteredIdx < 0 {
-		return -1
-	}
-	if len(c.FilterIdx) > 0 && filteredIdx < len(c.FilterIdx) {
-		return c.FilterIdx[filteredIdx]
-	}
-	if filteredIdx < len(c.Rows) {
-		return filteredIdx
-	}
-	return -1
-}
-
-// ApplyCacheFilter updates filtered rows, cursor bounds, and rendered content.
-// most importantly it populates the content
 func (c *CacheState) ApplyCacheFilter(query string, width int) {
+	// Given that we have the new filtered indexes from FilterCacheRows, we need to update
+	// the table to only contain these rows. We will also populate content here for the viewport,
+	// which will be seen as an application of a "" filter to prevent special case logic.
 	c.Filter = strings.TrimSpace(query)
 	c.Filtered, c.FilterIdx = FilterCacheRows(c.Rows, c.Filter)
 	if len(c.Filtered) == 0 {
@@ -485,6 +466,19 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 	return "\n\n" + lipgloss.Place(effW, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
 }
 
+func (c CacheState) viewHeight() int {
+	// It could be that we didnt Filter anything yet and so we get nothing back.
+	// This is not the same as having a filter and getting nothing back.
+	n := len(c.Filtered)
+	if n == 0 && c.Filter == "" { // if no filtering, use full rows
+		n = len(c.Rows) // only happens if Filtered hasn't been populated yet
+	}
+	if n == 0 { // no filtering and result is zero, then no result
+		return 0
+	}
+	return clampHeight(n, 7, 25)
+}
+
 // EnsureVisible keeps the cache cursor within the viewport.
 func (c *CacheState) EnsureVisible() {
 	h := c.viewHeight()
@@ -497,4 +491,21 @@ func (c *CacheState) EnsureVisible() {
 		rows = c.Rows
 	}
 	c.Cursor, c.Offset = clampViewport(c.Cursor, c.Offset, len(rows), h)
+}
+
+func (c CacheState) CacheOriginalIndex(filteredIdx int) int {
+	// map[filtered index] gives the index in terms of the entire "Rows".
+	// If there actually are filtered results, FilterIdx will be populated. But if there
+	// arent any results, it will have length 0. In the cirsumstance there are no results,
+	// then we are directly working with "Rows" and dont need the map.
+	if filteredIdx < 0 {
+		return -1 // sentinel value
+	}
+	if len(c.FilterIdx) > 0 && filteredIdx < len(c.FilterIdx) {
+		return c.FilterIdx[filteredIdx]
+	}
+	if filteredIdx < len(c.Rows) {
+		return filteredIdx
+	}
+	return -1
 }
