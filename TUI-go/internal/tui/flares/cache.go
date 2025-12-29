@@ -137,33 +137,14 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 	c.Content = renderCacheTableString(c.Filtered, width)
 }
 
-func ClearCacheFile() (string, error) {
-	path := cacheFilePath
-	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
-	if data, err := os.ReadFile(path); err == nil {
-		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-		if len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
-			header = lines[0]
-		}
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(header+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return "", err
-	}
-	return header, nil
-}
-
 func SaveCachePruned(header string, rows []Entry, delete map[int]bool) error {
-	path := cacheFilePath
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	tmp, err := os.CreateTemp(filepath.Dir(cacheFilePath), "flare_cache_*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	f := tmp
 
 	fmt.Fprintln(f, header)
 	for i, r := range rows {
@@ -178,7 +159,7 @@ func SaveCachePruned(header string, rows []Entry, delete map[int]bool) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return os.Rename(tmpPath, cacheFilePath)
 }
 
 func cacheHeaderView(c CacheState) string {
@@ -508,4 +489,31 @@ func (c CacheState) CacheOriginalIndex(filteredIdx int) int {
 		return filteredIdx
 	}
 	return -1
+}
+
+func ClearCacheFile() (string, error) {
+	// we expect the header to follow a set formulation
+	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
+	if data, err := os.ReadFile(cacheFilePath); err == nil {
+		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+		if len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
+			header = lines[0]
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(cacheFilePath), "flare_cache_*.tmp")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(tmpPath, []byte(header+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmpPath, cacheFilePath); err != nil {
+		return "", err
+	}
+	return header, nil
 }

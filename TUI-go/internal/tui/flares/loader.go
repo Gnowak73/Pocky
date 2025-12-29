@@ -37,7 +37,9 @@ func LoadFlaresCmd(cfg config.Config) tea.Cmd {
 		}
 		tmp.Close()
 		tmpPath := tmp.Name()
-		defer os.Remove(tmpPath)
+		defer func() {
+			_ = os.Remove(tmpPath)
+		}()
 
 		cmd := exec.Command("python", "query.py", cfg.Start, cfg.End, cmp, flareClass, cfg.Wave, tmpPath)
 		cmd.Dir = ".."
@@ -114,12 +116,15 @@ func SaveFlareSelection(header string, entries []Entry, selected map[int]bool) e
 		existingHeader = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
 	}
 
-	tmpPath := cachePath + ".tmp"
-	out, err := os.Create(tmpPath)
+	tmp, err := os.CreateTemp(filepath.Dir(cachePath), "flare_cache_*.tmp")
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+	out := tmp
 
 	seen := make(map[string]struct{})
 	writeLine := func(line string) {
