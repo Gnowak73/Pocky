@@ -12,61 +12,59 @@ import (
 	"github.com/pocky/tui-go/internal/tui/styles"
 )
 
+var cacheFilePath = filepath.Join("..", "flare_cache.tsv")
+
 type CacheState struct {
-	MenuOpen    bool
-	MenuItems   []string
-	Selected    int
-	OpenFrame   int
-	Rows        []Entry
-	Header      string
-	Pick        map[int]bool
-	Cursor      int
-	Offset      int
-	Viewport    viewport.Model // bubbles viewport, built-in mouse and scroll
-	Content     string
-	Filter      string
-	Filtered    []Entry
-	FilterIdx   []int
-	Searching   bool
-	SearchInput string
+	MenuOpen    bool           // is the submenu open?
+	MenuItems   []string       // the items in the submenu
+	Selected    int            // the index of selected submenu item
+	OpenFrame   int            // the frame when "cache options" was opened (for animation)
+	Rows        []Entry        // full unfiltered list of cached flare entries loaded
+	Header      string         // the header line from the flare_cache.tsv file for reference to data storage
+	Pick        map[int]bool   // map of unfiltered entries and if they are chosen for deletion
+	Cursor      int            // the index for currently highlighted row for selection
+	Offset      int            // how much left padding is
+	Viewport    viewport.Model // bubbles viewport for view cache, built-in mouse and scroll
+	Content     string         // rendered table string used by the cache viewport
+	Filter      string         // the current search query string
+	Filtered    []Entry        // filtered list
+	FilterIdx   []int          // a parallel slice to filtered. Each entry stores original index in "Rows"
+	Searching   bool           // are we searching in delete mode right now?
+	SearchInput string         // the live input string being types while searching is true before commiting to filter
 }
 
 func NewCacheState() CacheState {
-	cacheMenu := []string{
-		"View Cache",
-		"Delete Rows",
-		"Clear Cache",
-		"Back",
-	}
 	return CacheState{
-		MenuItems: cacheMenu,
-		Pick:      make(map[int]bool),
-		Viewport:  viewport.New(80, 20),
+		MenuItems: []string{
+			"View Cache",
+			"Delete Rows",
+			"Clear Cache",
+			"Back",
+		},
+		Pick:     make(map[int]bool),
+		Viewport: viewport.New(80, 20), // some safe arbitrary default before scaling in update.go
 	}
-}
-
-func cacheFilePath() string {
-	return filepath.Join("..", "flare_cache.tsv")
 }
 
 func LoadCache() (string, []Entry, error) {
-	path := cacheFilePath()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(cacheFilePath)
 	if err != nil {
 		return "", nil, err
 	}
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	if len(lines) == 0 {
-		return "", nil, fmt.Errorf("cache empty")
-	}
-	header := lines[0]
+	header := lines[0] // first line is always header the way we've formatted the cache
+
+	// when parsing through the lines, we will look past the header, for lines 1+. If we see an empty line by
+	// coincidence we will just continue and move to the next one. If not, we separate by the tab escape char \t.
 	var rows []Entry
 	for _, line := range lines[1:] {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		row := Entry{Full: line}
+		row := Entry{Full: line} // the original tsv line
+
+		// we add conditions for length to prevent panics, NOTE: later we may add an actual value verification
 		if len(fields) > 0 {
 			row.Desc = fields[0]
 		}
@@ -91,11 +89,13 @@ func LoadCache() (string, []Entry, error) {
 }
 
 func (c CacheState) viewHeight() int {
+	// It could be that we didnt Filter anything yet and so we get nothing back.
+	// This is not the same as having a filter and getting nothing back.
 	n := len(c.Filtered)
-	if n == 0 && c.Filter == "" {
-		n = len(c.Rows)
+	if n == 0 && c.Filter == "" { // if no filtering, use full rows
+		n = len(c.Rows) // only happens if Filtered hasn't been populated yet
 	}
-	if n == 0 {
+	if n == 0 { // no filtering and result is zero, then no result
 		return 0
 	}
 	return clampHeight(n, 7, 25)
@@ -157,7 +157,7 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 }
 
 func ClearCacheFile() (string, error) {
-	path := cacheFilePath()
+	path := cacheFilePath
 	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
 	if data, err := os.ReadFile(path); err == nil {
 		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
@@ -176,7 +176,7 @@ func ClearCacheFile() (string, error) {
 }
 
 func SaveCachePruned(header string, rows []Entry, delete map[int]bool) error {
-	path := cacheFilePath()
+	path := cacheFilePath
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {

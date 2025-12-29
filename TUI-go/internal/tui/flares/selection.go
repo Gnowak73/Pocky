@@ -16,7 +16,7 @@ type Entry struct {
 	Start string
 	End   string
 	Coord string
-	Full  string
+	Full  string // the original full TSV line split by \t
 	Wave  string
 }
 
@@ -26,7 +26,7 @@ type SpinnerState struct {
 }
 
 type SelectorState struct {
-	List     []Entry // slice of entries
+	List     []Entry // slice of flare entries
 	Header   string
 	Selected map[int]bool
 	Cursor   int // just an int representing which row we are on
