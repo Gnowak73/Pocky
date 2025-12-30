@@ -68,4 +68,6 @@ func MouseHit(spec MouseHitSpec) (int, int, bool) {
 		return 0, 0, false
 	}
 	return 0, relY - spec.RowStart, true
+	// we return the coordinates relative to the top of the given block, not necessarily the same
+	// thing as the relative option coordinates (especially if we have a title or things above option select)
 }
