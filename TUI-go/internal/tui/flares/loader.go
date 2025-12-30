@@ -22,7 +22,7 @@ type FlaresLoadedMsg struct {
 
 func LoadFlaresCmd(cfg config.Config) tea.Cmd {
 	return func() tea.Msg {
-		cmp := ComparatorASCII(cfg.Comparator)
+		cmp := cfg.Comparator
 		if strings.TrimSpace(cfg.Start) == "" || strings.TrimSpace(cfg.End) == "" || strings.TrimSpace(cfg.Wave) == "" || cmp == "" {
 			return FlaresLoadedMsg{Err: fmt.Errorf("missing required fields")}
 		}

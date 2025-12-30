@@ -65,7 +65,8 @@ func LoadCache() (string, []Entry, error) {
 		fields := strings.Split(line, "\t")
 		row := Entry{Full: line} // the original tsv line
 
-		// we add conditions for length to prevent panics, NOTE: later we may add an actual value verification
+		// we add conditions for length to prevent panics,
+		// NOTE: later we may add an actual value verification
 		if len(fields) > 0 {
 			row.Desc = fields[0]
 		}
@@ -174,7 +175,8 @@ func renderCacheTableString(rows []Entry, width int) string {
 		BorderStyle(styles.FaintGray).
 		Headers("ROW", "DESC", "CLASS", "START", "END", "COORD", "WAVE")
 
-	truncateCell := func(s string, maxW int) string { // NOTE: two truncate functions so far
+		// NOTE: two truncate functions so far
+	truncateCell := func(s string, maxW int) string {
 		// max width cap so the table stays aligned
 		if maxW <= 0 {
 			return ""
@@ -409,7 +411,8 @@ func (c CacheState) RenderCacheDelete(width int) string { // value reciever, cop
 	body := lipgloss.JoinVertical(lipgloss.Center, titleLine, "", searchBlock, "", tableBlock, helpLine)
 
 	// to avoid clipping, we use an effective width or either innerW or terminal width for centering.
-	// Else, if we resize the window to be more narrow that the table, lipgloss.Place will crop it
+	// Else, if we resize the window to be more narrow that the table, lipgloss.Place will crop it.
+	// We rather it overflow, just not show it all
 	effW := max(innerW, width)
 
 	return "\n\n" + lipgloss.Place(effW,

@@ -11,36 +11,20 @@ import (
 )
 
 type Comparator struct {
-	Display string
-	Value   string
+	Display string // what is displayed on the screen
+	Value   string // the actual mathematical value
 }
 
 type FilterState struct {
 	Comparators  []Comparator
-	CompDisplays []string
-	ClassLetters []string
-	Magnitudes   []string
-	Focus        int // 0=comp, 1=letter, 2=mag
-	CompIdx      int
-	LetterIdx    int
-	MagIdx       int
-	FocusFrame   int
-}
-
-func NewFilterState(cfg config.Config) FilterState {
-	comps := DefaultComparator()
-	letters := DefaultClassLetters()
-	mags := DefaultMagnitudes()
-	compIdx, letterIdx, magIdx := ParseFilterSelection(cfg, comps, letters)
-	return FilterState{
-		Comparators:  comps,
-		CompDisplays: comparatorDisplayList(comps),
-		ClassLetters: letters,
-		Magnitudes:   mags,
-		CompIdx:      compIdx,
-		LetterIdx:    letterIdx,
-		MagIdx:       magIdx,
-	}
+	CompDisplays []string // precomputed display strings from Comparators for rendering
+	ClassLetters []string // GOES class letters list
+	Magnitudes   []string // list of numeric magnitudes 0.0-9.9
+	Focus        int      // the active column: 0=comp, 1=letter, 2=mag
+	CompIdx      int      // selected comparator index
+	LetterIdx    int      // selected class index
+	MagIdx       int      // selected magnitude index
+	FocusFrame   int      // animation frame when focus last changed
 }
 
 func DefaultComparator() []Comparator {
@@ -69,12 +53,18 @@ func DefaultMagnitudes() []string {
 }
 
 func ParseFilterSelection(cfg config.Config, comps []Comparator, letters []string) (int, int, int) {
+	// we need to read the current Config and return the matching indices for comparator,
+	// class, letter, and magnitude so the UI can highlight the correct selection.
+	// We will input the comps (list of comparator options) and the goes letter list. The output
+	// will be the selected indexes for comparator, letter, and magnitude.
+
+	// if no config fall back to 0's
 	compIdx := 0
 	letterIdx := 0
 	magIdx := 0
 
 	currentComp := strings.TrimSpace(cfg.Comparator)
-	currentClass := strings.TrimSpace(cfg.FlareClass)
+	currentClass := strings.TrimSpace(cfg.FlareClass) // config combines magnitude and class
 
 	for i, c := range comps {
 		if c.Value == currentComp {
@@ -83,53 +73,42 @@ func ParseFilterSelection(cfg config.Config, comps []Comparator, letters []strin
 		}
 	}
 
+	// since its stored in form [Letter][Magnitude] like A3.7, we want the currentClass to have
+	// length 4. As long as its length is >= 1, we can first get the letter.
 	if len(currentClass) >= 1 {
-		letter := string(currentClass[0])
+		letter := string(currentClass[0]) // index gives byte, not rune or string
 		for i, l := range letters {
 			if l == letter {
 				letterIdx = i
 				break
 			}
 		}
+		// once we have the letter, we ignore it and look for the last 3 spaces
 		mag := currentClass[1:]
 		if len(mag) > 2 {
-			magIdx = int(mag[0]-'0')*10 + int(mag[2]-'0')
+			// string[idx] gives a byte value in decimal. If we subtract '0', which acts as
+			// some reference byte that is incremented to get all following numeric chars,
+			// then we get the integer form of string[idx].
+			magIdx = int(mag[0]-'0')*10 + int(mag[2]-'0') // turn uint8 into int
 		}
 	}
 
 	return compIdx, letterIdx, magIdx
 }
 
-func ComparatorASCII(val string) string {
-	val = strings.TrimSpace(val)
-	switch val {
-	case "≥":
-		return ">="
-	case "≤":
-		return "<="
-	case "All", "ALL":
-		return "All"
-	case "≡":
-		return "=="
-	default:
-		return val
-	}
-}
-
-func PrettyComparator(val string) string {
-	val = strings.TrimSpace(val)
-	if val == "" {
-		return "<unset>"
-	}
-	switch val {
-	case ">=":
-		return "≥"
-	case "<=":
-		return "≤"
-	case "==":
-		return "≡"
-	default:
-		return val
+func NewFilterState(cfg config.Config) FilterState {
+	comps := DefaultComparator()
+	letters := DefaultClassLetters()
+	mags := DefaultMagnitudes()
+	compIdx, letterIdx, magIdx := ParseFilterSelection(cfg, comps, letters)
+	return FilterState{
+		Comparators:  comps,
+		CompDisplays: comparatorDisplayList(comps),
+		ClassLetters: letters,
+		Magnitudes:   mags,
+		CompIdx:      compIdx,
+		LetterIdx:    letterIdx,
+		MagIdx:       magIdx,
 	}
 }
 

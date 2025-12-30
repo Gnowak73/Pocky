@@ -9,9 +9,9 @@ import (
 )
 
 type DateEditorState struct {
-	Start string
-	End   string
-	Focus int // which item we are on in the date editor
+	Start string // starting date
+	End   string // ending date
+	Focus int    // which item we are on in the date editor
 }
 
 func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string {
@@ -25,8 +25,7 @@ func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string
 	renderField := func(val, placeholder string, focused bool) string {
 		line := lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			promptStyle.Render("> "),
-			valueStyle.Render(val),
+			promptStyle.Render("> "), valueStyle.Render(val),
 		)
 
 		if strings.TrimSpace(val) == "" {
@@ -35,8 +34,7 @@ func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string
 			}
 			line = lipgloss.JoinHorizontal(
 				lipgloss.Top,
-				promptStyle.Render("> "),
-				ghostStyle.Render(placeholder),
+				promptStyle.Render("> "), ghostStyle.Render(placeholder),
 			)
 		}
 		if focused {

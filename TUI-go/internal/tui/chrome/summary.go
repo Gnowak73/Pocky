@@ -17,6 +17,19 @@ func unsetValue(val string) string {
 	return val
 }
 
+func unsetValueComparator(val string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "<unset>"
+	}
+	for _, c := range flares.DefaultComparator() {
+		if c.Value == val {
+			return c.Display
+		}
+	}
+	return val
+}
+
 func RenderSummary(cfg config.Config, width int) string {
 	rows := [][]string{
 		{"Wavelength: " + flares.WaveDisplay(cfg.Wave)},
@@ -24,7 +37,7 @@ func RenderSummary(cfg config.Config, width int) string {
 		{"Date End: " + unsetValue(cfg.End)},
 		{"Data Source: " + unsetValue(cfg.Source)},
 		{"Flare Class: " + unsetValue(cfg.FlareClass)},
-		{"Comparator: " + flares.PrettyComparator(cfg.Comparator)},
+		{"Comparator: " + unsetValueComparator(cfg.Comparator)},
 		{"Last Email: " + unsetValue(cfg.DLEmail)},
 	}
 
