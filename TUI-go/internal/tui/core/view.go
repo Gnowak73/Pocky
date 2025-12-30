@@ -8,6 +8,10 @@ import (
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
+// Update() copies the model but it also returns it. This is how it mutates the model, NOT by using
+// a pointer and mutating the original mode. View does not return anything, so it only takes in copies of
+// the model. Hence, any changes done during view will not permanently affect the model.
+
 func (m Model) View() string {
 	if m.Mode == ModeCacheView {
 		body := m.Cache.RenderCacheView(m.Width, m.Height)

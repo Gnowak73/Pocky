@@ -22,7 +22,7 @@ type CacheState struct {
 	OpenFrame   int            // the frame when "cache options" was opened (for animation)
 	Rows        []Entry        // full unfiltered list of cached flare entries loaded
 	Header      string         // the header line from the flare_cache.tsv file for reference to data storage
-	Pick        map[int]bool   // map of unfiltered entries and if they are chosen for deletion
+	Pick        map[int]bool   // map of unfiltered entries and if they are chosen for deletion in terms of "Rows" IDX
 	Cursor      int            // the index for currently highlighted row for selection
 	Offset      int            // how much left padding is
 	Viewport    viewport.Model // bubbles viewport for view cache, built-in mouse and scroll
@@ -127,6 +127,9 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 	// Given that we have the new filtered indexes from FilterCacheRows, we need to update
 	// the table to only contain these rows. We will also populate content here for the viewport,
 	// which will be seen as an application of a "" filter to prevent special case logic.
+
+	// since view is a value reciever, populating inside of the renderers wont populate the model's
+	// actual content. Thus, we add populating to this filter which will be called in updates.
 	c.Filter = strings.TrimSpace(query)
 	c.Filtered, c.FilterIdx = FilterCacheRows(c.Rows, c.Filter)
 
@@ -171,6 +174,18 @@ func renderCacheTableString(rows []Entry, width int) string {
 		BorderStyle(styles.FaintGray).
 		Headers("ROW", "DESC", "CLASS", "START", "END", "COORD", "WAVE")
 
+	truncateCell := func(s string, maxW int) string { // NOTE: two truncate functions so far
+		// max width cap so the table stays aligned
+		if maxW <= 0 {
+			return ""
+		}
+		runes := []rune(s) // runes accounts for underlying byte array
+		if len(runes) <= maxW {
+			return s
+		}
+		return string(runes[:maxW])
+	}
+
 	for i, r := range rows {
 		rowNum := truncateCell(fmt.Sprintf("%d", i+1), maxWidths[0])
 		desc := descStyle.Render(truncateCell("...", maxWidths[1]))
@@ -195,86 +210,79 @@ func renderCacheTableString(rows []Entry, width int) string {
 	return t.String()
 }
 
-func (c *CacheState) RenderCacheView(width int, height int) string {
-	rows := c.Filtered
-	if rows == nil {
-		rows = c.Rows
-	}
+func (c CacheState) RenderCacheView(width int, height int) string {
+	// now that we can get a styled table string, we build the cache viewport.
+	rows := c.Rows // currently we assume no filter is being applied
+
 	availWidth := width
 	if availWidth > 0 {
 		availWidth = max(availWidth-6, 20)
 	}
-	c.Content = renderCacheTableString(rows, availWidth)
-	contentWidth := lipgloss.Width(c.Content)
-	contentHeight := lipgloss.Height(c.Content)
+	content := renderCacheTableString(rows, availWidth)
+	contentWidth := lipgloss.Width(content)
+	contentHeight := lipgloss.Height(content)
+
+	// we have some arbitrary formulas to add padding about the viewport dimensions
 	targetW := min(max(contentWidth+2, 20), max(availWidth-2, 20))
 	targetH := min(contentHeight+2, max(height-10, 5))
-	c.Viewport.Width = targetW
-	c.Viewport.Height = targetH
-	centered := centerContent(c.Content, c.Viewport.Width)
-	c.Viewport.SetContent(centered)
 
-	header := cacheHeaderView(*c)
-	footer := cacheFooterView(*c)
+	vp := c.Viewport // since view() is value reciever, we copy everything
+
+	vp.Width = targetW
+	vp.Height = targetH
+	centered := centerContent(content, vp.Width)
+	vp.SetContent(centered)
+
+	header := cacheHeaderView(c)
+	footer := cacheFooterView(c)
 	help := styles.LightGray.Render("↑/↓ scroll • pgup/pgdown jump • esc back")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#8B5EDB")).
 		Padding(0, 1).
-		Width(c.Viewport.Width + 2)
+		Width(vp.Width + 2)
 
 	centeredView := lipgloss.Place(
-		c.Viewport.Width,
-		lipgloss.Height(c.Viewport.View()),
+		vp.Width,
+		lipgloss.Height(vp.View()),
 		lipgloss.Center,
 		lipgloss.Top,
-		c.Viewport.View(),
+		vp.View(),
 	)
 
 	mainBlock := box.Render(centeredView)
 
 	body := lipgloss.JoinVertical(
 		lipgloss.Center,
-		header,
-		mainBlock,
-		footer,
-		"",
-		help,
+		header, mainBlock, footer, "", help,
 	)
 	if width <= 0 {
 		return "\n\n" + body
 	}
-	placed := lipgloss.Place(width, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
+	placed := lipgloss.Place(
+		width,
+		lipgloss.Height(body),
+		lipgloss.Center,
+		lipgloss.Top,
+		body,
+	)
 	return "\n\n" + placed
 }
 
-func (c *CacheState) RenderCacheDelete(width int) string {
+func (c CacheState) RenderCacheDelete(width int) string { // value reciever, copy
+	// vp := c.Viewport
 	title := styles.SummaryHeader.Bold(false).Render("Delete Cache Rows (Scroll)")
 	height := c.viewHeight()
 	rows := c.Filtered
+
 	if rows == nil {
 		rows = c.Rows
 	}
-	if len(rows) == 0 {
-		msg := styles.LightGray.Render("Cache empty.")
-		block := lipgloss.JoinVertical(lipgloss.Center, title, "", msg)
-		bw := lipgloss.Width(block)
-		effW := width
-		if effW <= 0 {
-			effW = bw
-		}
-		if bw > effW {
-			effW = bw
-		}
-		return "\n\n" + lipgloss.Place(effW, lipgloss.Height(block), lipgloss.Center, lipgloss.Top, block)
-	}
 
 	start := max(c.Offset, 0)
-	if max := max(len(rows)-height, 0); start > max {
-		start = max
-	}
-	end := min(len(rows), start+height)
+	start = min(start, max(len(rows)-height, 0)) // index of first visible row
+	end := min(len(rows), start+height)          // index of last visible row
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
@@ -291,7 +299,7 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 			return s
 		}
 		if maxLen <= 3 {
-			return s[:maxLen]
+			return s[:maxLen] // no room for elipses
 		}
 		return s[:maxLen-3] + "..."
 	}
@@ -308,6 +316,7 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 		}
 	}
 
+	// to make computation faster, we make a slice of rows with capacity equal to number of visible rows
 	tableRows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		r := rows[i]
@@ -348,39 +357,67 @@ func (c *CacheState) RenderCacheDelete(width int) string {
 		})
 
 	tableStr := t.String()
+
+	// we have the table string, now all we do is render, place, and join
 	searchText := c.Filter
 	if c.Searching {
 		searchText = c.SearchInput + "▌"
 	}
 	searchLine := styles.LightGray.Render(fmt.Sprintf("Search: %s", searchText))
 	help := styles.LightGray.Render("↑/↓ move • / search (space ok) • tab toggle • enter delete • esc cancel")
+
+	// we need the max width of the content block so the lines align to the same width
 	innerW := lipgloss.Width(tableStr)
-	if w := lipgloss.Width(title); w > innerW {
-		innerW = w
-	}
-	if w := lipgloss.Width(searchLine); w > innerW {
-		innerW = w
-	}
-	if w := lipgloss.Width(help); w > innerW {
-		innerW = w
-	}
+	innerW = max(innerW, lipgloss.Width(title))
+	innerW = max(innerW, lipgloss.Width(searchLine))
+	innerW = max(innerW, lipgloss.Width(help))
 	if innerW == 0 {
 		innerW = width
 	}
-	titleLine := lipgloss.Place(innerW, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
-	searchBlock := lipgloss.Place(innerW, lipgloss.Height(searchLine), lipgloss.Center, lipgloss.Top, searchLine)
-	tableBlock := lipgloss.Place(innerW, lipgloss.Height(tableStr), lipgloss.Center, lipgloss.Top, tableStr)
-	helpLine := lipgloss.Place(innerW, 1, lipgloss.Center, lipgloss.Top, help)
 
+	titleLine := lipgloss.Place(
+		innerW,
+		lipgloss.Height(title),
+		lipgloss.Center,
+		lipgloss.Top,
+		title,
+	)
+	searchBlock := lipgloss.Place(
+		innerW,
+		lipgloss.Height(searchLine),
+		lipgloss.Center,
+		lipgloss.Top,
+		searchLine,
+	)
+	tableBlock := lipgloss.Place(
+		innerW,
+		lipgloss.Height(tableStr),
+		lipgloss.Center,
+		lipgloss.Top,
+		tableStr,
+	)
+	helpLine := lipgloss.Place(
+		innerW,
+		1,
+		lipgloss.Center,
+		lipgloss.Top,
+		help,
+	)
+
+	// after centering each line individually, we joint them.
+	// (since these lines are already placed in terminal width, pos. makes no difference, we could even use strings.Join)
 	body := lipgloss.JoinVertical(lipgloss.Center, titleLine, "", searchBlock, "", tableBlock, helpLine)
-	effW := width
-	if effW <= 0 {
-		effW = innerW
-	}
-	if innerW > effW {
-		effW = innerW
-	}
-	return "\n\n" + lipgloss.Place(effW, lipgloss.Height(body), lipgloss.Center, lipgloss.Top, body)
+
+	// to avoid clipping, we use an effective width or either innerW or terminal width for centering.
+	// Else, if we resize the window to be more narrow that the table, lipgloss.Place will crop it
+	effW := max(innerW, width)
+
+	return "\n\n" + lipgloss.Place(effW,
+		lipgloss.Height(body),
+		lipgloss.Center,
+		lipgloss.Top,
+		body,
+	)
 }
 
 func (c CacheState) viewHeight() int {
@@ -482,18 +519,6 @@ func cacheFooterView(c CacheState) string {
 		Render(fmt.Sprintf("%3.0f%%", c.Viewport.ScrollPercent()*100))
 	line := strings.Repeat("─", max(0, c.Viewport.Width-lipgloss.Width(info)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
-}
-
-func truncateCell(s string, maxW int) string {
-	// we need to cap column text to a max width so the table stays aligned
-	if maxW <= 0 {
-		return ""
-	}
-	runes := []rune(s) // runes accounts for underlying byte array
-	if len(runes) <= maxW {
-		return s
-	}
-	return string(runes[:maxW])
 }
 
 func centerContent(content string, width int) string {
