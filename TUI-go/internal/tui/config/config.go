@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type Config struct {
@@ -89,20 +91,5 @@ func Save(cfg Config) error {
 	fmt.Fprintf(&b, "COMPARATOR=\"%s\"\n", cfg.Comparator)
 	fmt.Fprintf(&b, "DL_EMAIL=\"%s\"\n", cfg.DLEmail)
 
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".vars.env.*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer func() { // defer to remove temp path after the save
-		_ = os.Remove(tmpPath)
-	}()
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	// we must add owner read/write for file
-	if err := os.WriteFile(tmpPath, []byte(b.String()), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, target)
+	return utils.AtomicSave(target, ".vars.env.*", []byte(b.String()), 0o600)
 }

@@ -255,7 +255,6 @@ func buildMenuRows(menu MenuState) ([]string, int) {
 			cacheIndex = len(lines) - 1
 		}
 	}
-
 	return lines, cacheIndex
 }
 

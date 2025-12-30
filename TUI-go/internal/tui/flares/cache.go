@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	lgtbl "github.com/charmbracelet/lipgloss/table"
 	"github.com/pocky/tui-go/internal/tui/styles"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 var cacheFilePath = filepath.Join("..", "flare_cache.tsv")
@@ -128,6 +129,8 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 	// which will be seen as an application of a "" filter to prevent special case logic.
 	c.Filter = strings.TrimSpace(query)
 	c.Filtered, c.FilterIdx = FilterCacheRows(c.Rows, c.Filter)
+
+	// the cursor needs to be adjusted in case we move outside of bounds from filter
 	if len(c.Filtered) == 0 {
 		c.Cursor = 0
 		c.Offset = 0
@@ -137,68 +140,27 @@ func (c *CacheState) ApplyCacheFilter(query string, width int) {
 	c.Content = renderCacheTableString(c.Filtered, width)
 }
 
-func SaveCachePruned(header string, rows []Entry, delete map[int]bool) error {
-	tmp, err := os.CreateTemp(filepath.Dir(cacheFilePath), "flare_cache_*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	f := tmp
-
-	fmt.Fprintln(f, header)
-	for i, r := range rows {
-		if delete[i] {
-			continue
-		}
-		if strings.TrimSpace(r.Full) == "" {
-			continue
-		}
-		fmt.Fprintln(f, r.Full)
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, cacheFilePath)
-}
-
-func cacheHeaderView(c CacheState) string {
-	title := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		Render("flare_cache.tsv")
-	line := strings.Repeat("─", max(0, c.Viewport.Width-lipgloss.Width(title)))
-	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
-}
-
-func cacheFooterView(c CacheState) string {
-	info := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		Render(fmt.Sprintf("%3.0f%%", c.Viewport.ScrollPercent()*100))
-	line := strings.Repeat("─", max(0, c.Viewport.Width-lipgloss.Width(info)))
-	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
-}
-
-// renderCacheTableString builds a styled table (similar to previous layout).
 func renderCacheTableString(rows []Entry, width int) string {
+	// output is for the view cache screen as a styled string from a table
 	if width <= 0 {
-		width = 80
+		width = 80 // once again we use a default safe width
 	}
+
+	// we will set the default max width caps, which will be different upon window width for resizing
 	rowCap, descCap := 4, 3
-	classCap, startCap, endCap, coordCap, waveCap := 8, 32, 32, 30, 24
+	classCap, startCap, endCap, coordCap, waveCap := 11, 32, 32, 30, 24
 	if width > 0 {
 		switch {
 		case width < 70:
-			classCap, startCap, endCap, coordCap, waveCap = 5, 12, 12, 9, 10
+			classCap, startCap, endCap, coordCap, waveCap = 5, 7, 7, 8, 9
 		case width < 90:
-			classCap, startCap, endCap, coordCap, waveCap = 7, 18, 18, 14, 14
+			classCap, startCap, endCap, coordCap, waveCap = 6, 14, 14, 10, 11
 		case width < 110:
-			classCap, startCap, endCap, coordCap, waveCap = 9, 22, 22, 18, 18
+			classCap, startCap, endCap, coordCap, waveCap = 8, 18, 18, 13, 14
 		}
 	}
 	maxWidths := []int{rowCap, descCap, classCap, startCap, endCap, coordCap, waveCap}
-	base := lipgloss.NewStyle().Padding(0, 1)
+	base := lipgloss.NewStyle().Padding(0, 1) // breathing room: 1 padding left/right
 	headerStyle := base.Inherit(styles.VeryLightGray).Bold(true)
 	rowEven := base.Inherit(styles.Gray)
 	rowOdd := base.Inherit(styles.LightGray)
@@ -231,32 +193,6 @@ func renderCacheTableString(rows []Entry, width int) string {
 	})
 
 	return t.String()
-}
-
-func truncateCell(s string, maxW int) string {
-	if maxW <= 0 {
-		return ""
-	}
-	runes := []rune(s)
-	if len(runes) <= maxW {
-		return s
-	}
-	return string(runes[:maxW])
-}
-
-func centerContent(content string, width int) string {
-	if width <= 0 {
-		return content
-	}
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		w := lipgloss.Width(line)
-		if w < width {
-			pad := (width - w) / 2
-			lines[i] = strings.Repeat(" ", pad) + line
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 func (c *CacheState) RenderCacheView(width int, height int) string {
@@ -492,6 +428,7 @@ func (c CacheState) CacheOriginalIndex(filteredIdx int) int {
 }
 
 func ClearCacheFile() (string, error) {
+	// we will return the header so after clearing the file we rebuild the header automatically
 	// we expect the header to follow a set formulation
 	header := "description\tflare_class\tstart\tend\tcoordinates\twavelength"
 	if data, err := os.ReadFile(cacheFilePath); err == nil {
@@ -500,20 +437,76 @@ func ClearCacheFile() (string, error) {
 			header = lines[0]
 		}
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(cacheFilePath), "flare_cache_*.tmp")
+	err := utils.AtomicSave(
+		cacheFilePath,
+		"flare_cache_*.tmp",
+		[]byte(header+"\n"),
+		0o600,
+	)
 	if err != nil {
 		return "", err
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(tmpPath, []byte(header+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmpPath, cacheFilePath); err != nil {
-		return "", err
-	}
 	return header, nil
+}
+
+func SaveCachePruned(header string, rows []Entry, delete map[int]bool) error {
+	var b strings.Builder // Builder allows us to build string incrementally without repeated allocations
+	fmt.Fprintln(&b, header)
+	for i, r := range rows {
+		if delete[i] {
+			continue
+		}
+		if strings.TrimSpace(r.Full) == "" {
+			continue
+		}
+		fmt.Fprintln(&b, r.Full) // keeping non empty and not deleted lines for atomic save
+	}
+	return utils.AtomicSave(cacheFilePath, "flare_cache_*.tmp", []byte(b.String()), 0o600)
+}
+
+func cacheHeaderView(c CacheState) string {
+	// for viewing the cache, we would like a pill title at the top with a horizontal bar [title]-------
+	title := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1). // pad 1 horizontally
+		Render("flare_cache.tsv")
+	line := strings.Repeat("─", max(0, c.Viewport.Width-lipgloss.Width(title)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
+}
+
+func cacheFooterView(c CacheState) string {
+	// for viewing the cache, we would like a pill footer at the bottom with a horizonta bar ------[percent]
+	info := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Render(fmt.Sprintf("%3.0f%%", c.Viewport.ScrollPercent()*100))
+	line := strings.Repeat("─", max(0, c.Viewport.Width-lipgloss.Width(info)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
+}
+
+func truncateCell(s string, maxW int) string {
+	// we need to cap column text to a max width so the table stays aligned
+	if maxW <= 0 {
+		return ""
+	}
+	runes := []rune(s) // runes accounts for underlying byte array
+	if len(runes) <= maxW {
+		return s
+	}
+	return string(runes[:maxW])
+}
+
+func centerContent(content string, width int) string {
+	if width <= 0 {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		w := lipgloss.Width(line)
+		if w < width {
+			pad := (width - w) / 2
+			lines[i] = strings.Repeat(" ", pad) + line
+		}
+	}
+	return strings.Join(lines, "\n")
 }

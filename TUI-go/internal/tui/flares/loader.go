@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pocky/tui-go/internal/tui/config"
+	"github.com/pocky/tui-go/internal/tui/utils"
 )
 
 type FlaresLoadedMsg struct {
@@ -116,15 +117,7 @@ func SaveFlareSelection(header string, entries []Entry, selected map[int]bool) e
 		existingHeader = "description\tflare_class\tstart\tend\tcoordinates\twavelength"
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(cachePath), "flare_cache_*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		_ = os.Remove(tmpPath)
-	}()
-	out := tmp
+	var b strings.Builder
 
 	seen := make(map[string]struct{})
 	writeLine := func(line string) {
@@ -132,7 +125,7 @@ func SaveFlareSelection(header string, entries []Entry, selected map[int]bool) e
 			return
 		}
 		seen[line] = struct{}{}
-		fmt.Fprintln(out, line)
+		fmt.Fprintln(&b, line)
 	}
 
 	writeLine(existingHeader)
@@ -147,10 +140,7 @@ func SaveFlareSelection(header string, entries []Entry, selected map[int]bool) e
 		}
 	}
 
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, cachePath)
+	return utils.AtomicSave(cachePath, "flare_cache_*.tmp", []byte(b.String()), 0o600)
 }
 
 func isoToHuman(s string) string {
