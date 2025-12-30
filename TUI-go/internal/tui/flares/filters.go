@@ -96,6 +96,14 @@ func ParseFilterSelection(cfg config.Config, comps []Comparator, letters []strin
 	return compIdx, letterIdx, magIdx
 }
 
+func comparatorDisplayList(comp []Comparator) []string {
+	out := make([]string, len(comp))
+	for i, c := range comp {
+		out[i] = c.Display
+	}
+	return out
+}
+
 func NewFilterState(cfg config.Config) FilterState {
 	comps := DefaultComparator()
 	letters := DefaultClassLetters()
@@ -113,23 +121,27 @@ func NewFilterState(cfg config.Config) FilterState {
 }
 
 func RenderFilterColumns(state FilterState, frame int) []string {
+	// given the state, we will return a slice of strings, one for each column selector
 	headerStyle := styles.LightGray
 	itemStyle := styles.PinkOption
-	checkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F785D1"))
-	focusBox := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1)
+	checkStyle := styles.MenuSelected
+
+	// we will start with a plain box and inherit the new styles on top of this
 	plainBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1)
 
 	renderColumn := func(title string, opts []string, selected int, focused bool, window int) string {
-		start := 0
+		start := 0 // the first visible row index
+		// width is for the selector box, NOT the window width
+
+		// if we have more options than the window, we will try to center it and then clamp it to not
+		// go before index 0. We then will clamp so it doesn't run past the end either.
 		if len(opts) > window {
 			start = max(selected-window/2, 0)
 			start = min(start, len(opts)-window)
 		}
-		end := min(len(opts), start+window)
+		end := min(len(opts), start+window) // we choose the max number of rows that is allowed to show
 
 		var rows []string
 		for i := start; i < end; i++ {
@@ -137,37 +149,38 @@ func RenderFilterColumns(state FilterState, frame int) []string {
 			if i == selected {
 				prefix = checkStyle.Render("[x]")
 			}
-			line := lipgloss.JoinHorizontal(lipgloss.Top, prefix, " ", itemStyle.Render(opts[i]))
+			line := lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				prefix, " ", itemStyle.Render(opts[i]),
+			)
 			rows = append(rows, line)
 		}
 
-		headerText := headerStyle.Copy().Foreground(lipgloss.Color("#3A3A3A")).Render(title)
+		headerText := headerStyle.Foreground(lipgloss.Color("#3A3A3A")).Render(title)
 		if focused {
+			// for the animation, we measure how many frames since focus started, we will use max
+			// to prevent negative values, and scale by /8 so the animation reaches 1 after 8 frames.
+			// clamp will keep the 0-1 range for interpolation as we go from startHex to endHex
 			headerAnimT := utils.Clamp(float64(max(frame-state.FocusFrame, 0))/8.0, 0.0, 1.0)
 			headerText = utils.RenderGradientText(
 				title,
 				utils.BlendHex("#7D5FFF", "#FFB7D5", headerAnimT),
 				utils.BlendHex("#8B5EDB", "#F785D1", headerAnimT),
-				headerStyle.Copy().Bold(true),
+				headerStyle.Bold(true),
 			)
 		}
 
 		content := lipgloss.JoinVertical(
 			lipgloss.Left,
-			headerText,
-			"",
-			strings.Join(rows, "\n"),
+			headerText, "", strings.Join(rows, "\n"),
 		)
 		if focused {
-			return focusBox.Copy().
-				BorderForeground(lipgloss.Color("#F785D1")).
-				Render(content)
+			return plainBox.BorderForeground(lipgloss.Color("#F785D1")).Render(content)
 		}
-		return plainBox.Copy().
-			BorderForeground(lipgloss.Color("#2B2B2B")).
-			Render(content)
+		return plainBox.BorderForeground(lipgloss.Color("#2B2B2B")).Render(content)
 	}
 
+	// we build three columns side by side
 	compCol := renderColumn("Comparator",
 		state.CompDisplays,
 		state.CompIdx,
@@ -186,11 +199,35 @@ func RenderFilterColumns(state FilterState, frame int) []string {
 		state.Focus == 2,
 		9)
 
-	return []string{
+	return []string{ // to add padding to already render string we make new style will padding to seaprate columns
 		lipgloss.NewStyle().PaddingRight(2).Render(compCol),
 		lipgloss.NewStyle().PaddingRight(2).Render(letCol),
 		magCol,
 	}
+}
+
+func RenderFilterBlock(state FilterState, frame int) (string, int, int, int) {
+	// before putting everything together, we need to be able to return the dimensions of the
+	// tui menu for mouse testing along with a title and the summary
+
+	titleStyle := styles.SummaryHeader.Bold(false)
+	cols := RenderFilterColumns(state, frame)
+	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	title := titleStyle.Render("Set Flare Filters")
+
+	colWidth := lipgloss.Width(columns)
+	colWidth = max(colWidth, lipgloss.Width(title))
+	divWidth := max(colWidth, lipgloss.Width(title)+6) // width for horizontal divider
+
+	divider := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
+
+	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
+	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
+
+	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
+	titleHeight := lipgloss.Height(titleBlock) + 1 // plus the blank line before columns
+	return block, lipgloss.Height(block), lipgloss.Width(block), titleHeight
 }
 
 func RenderFilterEditor(state FilterState, frame int, width int) string {
@@ -201,36 +238,19 @@ func RenderFilterEditor(state FilterState, frame int, width int) string {
 		return "\n\n" + block + "\n\n" + help
 	}
 
-	placed := lipgloss.Place(width, blockHeight, lipgloss.Center, lipgloss.Top, block)
-	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
+	placed := lipgloss.Place(
+		width,
+		blockHeight,
+		lipgloss.Center,
+		lipgloss.Top,
+		block,
+	)
+	helpLine := lipgloss.Place(
+		width,
+		1,
+		lipgloss.Center,
+		lipgloss.Top,
+		help,
+	)
 	return "\n\n" + placed + "\n\n" + helpLine
-}
-
-// RenderFilterBlock builds the title+columns layout and returns the block string plus its dimensions.
-// It also returns the height of the title block (including the blank line before columns) to align hit testing.
-func RenderFilterBlock(state FilterState, frame int) (string, int, int, int) {
-	titleStyle := styles.SummaryHeader.Bold(false)
-	cols := RenderFilterColumns(state, frame)
-	columns := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	title := titleStyle.Render("Set Flare Filters")
-	colWidth := lipgloss.Width(columns)
-	if colWidth < lipgloss.Width(title) {
-		colWidth = lipgloss.Width(title)
-	}
-	divWidth := max(colWidth, lipgloss.Width(title)+6)
-	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A")).Render(strings.Repeat("─", divWidth))
-	titleBlock := lipgloss.JoinVertical(lipgloss.Center, title, divider)
-	titleBlock = lipgloss.PlaceHorizontal(colWidth, lipgloss.Center, titleBlock)
-
-	block := lipgloss.JoinVertical(lipgloss.Left, titleBlock, "", columns)
-	titleHeight := lipgloss.Height(titleBlock) + 1 // plus the blank line before columns
-	return block, lipgloss.Height(block), lipgloss.Width(block), titleHeight
-}
-
-func comparatorDisplayList(comp []Comparator) []string {
-	out := make([]string, len(comp))
-	for i, c := range comp {
-		out[i] = c.Display
-	}
-	return out
 }
