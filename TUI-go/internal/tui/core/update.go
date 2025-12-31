@@ -25,6 +25,7 @@ func tick() tea.Cmd {
 	// We take the time, plug it into the function, return a tick Msg empty struct
 	// Note that tea.Msg is an empty interfact type, so any type (such as tickMsg)
 	// can be used to satisfy tea.Msg. We set ticks per second, which results in FPS, at 80 ms per tick.
+	// This is ONLY used for animations
 	return tea.Tick(time.Millisecond*80, func(time.Time) tea.Msg { return tickMsg{} })
 }
 

@@ -15,28 +15,41 @@ import (
 )
 
 type FlaresLoadedMsg struct {
-	Entries []Entry
-	Header  string
-	Err     error
+	Entries []Entry // slice of flare entries
+	Header  string  // the raw header line from the flares data source. Used to preserve exact header when writing.
+	Err     error   // error for python crashes
 }
 
 func LoadFlaresCmd(cfg config.Config) tea.Cmd {
-	return func() tea.Msg {
-		cmp := cfg.Comparator
-		if strings.TrimSpace(cfg.Start) == "" || strings.TrimSpace(cfg.End) == "" || strings.TrimSpace(cfg.Wave) == "" || cmp == "" {
+	// given the config, we need an async (runs outside of main update loop) bubble tea command
+	// that runs the external leader, parses its output into entries/header, and returns a FlaresLoadedMsg
+	// so the model can update once loading finishes.
+
+	return func() tea.Msg { // instantly gets called (no time scheduling)
+
+		// none of the inputs can be empty for the python script
+		if strings.TrimSpace(cfg.Start) == "" ||
+			strings.TrimSpace(cfg.End) == "" ||
+			strings.TrimSpace(cfg.Wave) == "" ||
+			strings.TrimSpace(cfg.FlareClass) == "" ||
+			strings.TrimSpace(cfg.Comparator) == "" {
 			return FlaresLoadedMsg{Err: fmt.Errorf("missing required fields")}
 		}
 
+		cmp := cfg.Comparator
 		flareClass := cfg.FlareClass
-		if strings.TrimSpace(flareClass) == "" {
-			flareClass = "A0.0"
-		}
-
 		tmp, err := os.CreateTemp("", "pocky_flares_*.tsv")
 		if err != nil {
 			return FlaresLoadedMsg{Err: err}
 		}
-		tmp.Close()
+		// after making the tempfile, we close the open file description (the hander) for the temp file.
+		// This is usually a small integer managed by the OS that indexes an internal table of open files.
+		// The file stays on disk until we remove it. But our goal is to get the path, we don't need to have
+		// it open for read/write.
+		if err := tmp.Close(); err != nil {
+			return FlaresLoadedMsg{Err: err}
+		}
+
 		tmpPath := tmp.Name()
 		defer func() {
 			_ = os.Remove(tmpPath)
