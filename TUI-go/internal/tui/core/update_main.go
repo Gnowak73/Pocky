@@ -58,6 +58,11 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 			m.Menu.NoticeFrame = m.Frame
 			break
 		}
+		if strings.TrimSpace(m.Cfg.FlareClass) == "" {
+			m.Menu.Notice = "Set a GOES class + magnitude."
+			m.Menu.NoticeFrame = m.Frame
+			break
+		}
 
 		m.Mode = ModeSelectFlares
 		m.Selector.Loading = true

@@ -27,15 +27,6 @@ func LoadFlaresCmd(cfg config.Config) tea.Cmd {
 
 	return func() tea.Msg { // instantly gets called (no time scheduling)
 
-		// none of the inputs can be empty for the python script
-		if strings.TrimSpace(cfg.Start) == "" ||
-			strings.TrimSpace(cfg.End) == "" ||
-			strings.TrimSpace(cfg.Wave) == "" ||
-			strings.TrimSpace(cfg.FlareClass) == "" ||
-			strings.TrimSpace(cfg.Comparator) == "" {
-			return FlaresLoadedMsg{Err: fmt.Errorf("missing required fields")}
-		}
-
 		cmp := cfg.Comparator
 		flareClass := cfg.FlareClass
 		tmp, err := os.CreateTemp("", "pocky_flares_*.tsv")
@@ -50,15 +41,24 @@ func LoadFlaresCmd(cfg config.Config) tea.Cmd {
 			return FlaresLoadedMsg{Err: err}
 		}
 
+		// we only want the temp path. After we get the output of the python script,
+		// we will put it into the temp file and read from it. Thus, we close the tmp handle and move on.
+		// Also prevents us from having it open to read/write while python is writing to it to, don't want
+		// a read/write lock problem.
 		tmpPath := tmp.Name()
 		defer func() {
 			_ = os.Remove(tmpPath)
 		}()
 
-		cmd := exec.Command("python", "query.py", cfg.Start, cfg.End, cmp, flareClass, cfg.Wave, tmpPath)
-		cmd.Dir = ".."
+		// we do the python command (make a symlink or shim so "python" command works)
+		cmd := exec.Command(
+			"python",
+			"query.py", cfg.Start, cfg.End, cmp, flareClass, cfg.Wave, tmpPath,
+		)
+		cmd.Dir = ".." // script directory is in /Pocky, one outside of /TUI-go
 		if output, err := cmd.CombinedOutput(); err != nil {
-			return FlaresLoadedMsg{Err: fmt.Errorf("flare listing failed: %v (%s)", err, strings.TrimSpace(string(output)))}
+			msg := strings.TrimSpace(string(output))
+			return FlaresLoadedMsg{Err: fmt.Errorf("flare listing failed: %v (%s)", err, msg)}
 		}
 
 		f, err := os.Open(tmpPath)
