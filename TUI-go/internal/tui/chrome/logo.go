@@ -3,7 +3,7 @@
 package chrome
 
 import (
-	"errors"
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -33,13 +33,13 @@ func LoadLogo() ([]string, error) {
 	// we read as bytes, but want the output as a string
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.New("could not find logo.txt in parent /Pocky directory")
+		return nil, fmt.Errorf("could not find logo.txt in parent /Pocky directory")
 	}
 
 	// remove new line trailing characters
 	content := strings.TrimRight(string(data), "\r\n")
 	if content == "" {
-		return nil, errors.New("logo.txt is empty")
+		return nil, fmt.Errorf("logo.txt is empty")
 	}
 	return strings.Split(content, "\n"), nil
 }

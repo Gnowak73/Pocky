@@ -71,7 +71,6 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.Selector.Cursor = 0
 		m.Selector.Offset = 0
 		m.Selector.List = nil
-		m.Selector.Header = ""
 		return m, flares.LoadFlaresCmd(m.Cfg)
 	case "Cache Options":
 		m.Cache.MenuOpen = true

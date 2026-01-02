@@ -27,7 +27,6 @@ type SpinnerState struct {
 
 type SelectorState struct {
 	List     []Entry // slice of flare entries
-	Header   string
 	Selected map[int]bool
 	Cursor   int // just an int representing which row we are on
 	Offset   int // index of first visible item in flare list

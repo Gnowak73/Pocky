@@ -22,7 +22,6 @@ func (m Model) handleFlaresLoaded(msg flares.FlaresLoadedMsg) (tea.Model, tea.Cm
 		return m, nil
 	}
 	m.Selector.List = msg.Entries
-	m.Selector.Header = msg.Header
 
 	// we make a new selector list to ensure the previous entires are wiped out
 	m.Selector.Selected = make(map[int]bool)

@@ -2,6 +2,7 @@ package flares
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/config"
@@ -74,4 +75,25 @@ func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	combined := lipgloss.JoinVertical(lipgloss.Left, placed, "", "", helpLine)
 	return "\n\n" + combined
+}
+
+func ValidDate(val string) bool {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return false
+	}
+	if len(val) != len("2006-01-02") {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", val)
+	return err == nil
+}
+
+func Chronological(start, end string) bool {
+	s, err1 := time.Parse("2006-01-02", start)
+	e, err2 := time.Parse("2006-01-02", end)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return !s.After(e)
 }
