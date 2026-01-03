@@ -78,11 +78,13 @@ func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string
 }
 
 func ValidDate(val string) bool {
+	// we will check the length of the date along with time.Parse, which will
+	// take a string and parse it into a time.Time value or return an error
 	val = strings.TrimSpace(val)
 	if val == "" {
 		return false
 	}
-	if len(val) != len("2006-01-02") {
+	if len(val) != len("2005-06-06") {
 		return false
 	}
 	_, err := time.Parse("2006-01-02", val)
@@ -90,6 +92,7 @@ func ValidDate(val string) bool {
 }
 
 func Chronological(start, end string) bool {
+	// after parsing, we check if one time is after the other
 	s, err1 := time.Parse("2006-01-02", start)
 	e, err2 := time.Parse("2006-01-02", end)
 	if err1 != nil || err2 != nil {

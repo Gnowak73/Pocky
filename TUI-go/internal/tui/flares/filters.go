@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/styles"
 	"github.com/pocky/tui-go/internal/tui/utils"
@@ -162,7 +163,7 @@ func RenderFilterColumns(state FilterState, frame int) []string {
 			// to prevent negative values, and scale by /8 so the animation reaches 1 after 8 frames.
 			// clamp will keep the 0-1 range for interpolation as we go from startHex to endHex
 			headerAnimT := utils.Clamp(float64(max(frame-state.FocusFrame, 0))/8.0, 0.0, 1.0)
-			headerText = utils.RenderGradientText(
+			headerText = renderGradientText(
 				title,
 				utils.BlendHex("#7D5FFF", "#FFB7D5", headerAnimT),
 				utils.BlendHex("#8B5EDB", "#F785D1", headerAnimT),
@@ -202,7 +203,7 @@ func RenderFilterColumns(state FilterState, frame int) []string {
 	return []string{ // to add padding to already render string we make new style will padding to seaprate columns
 		lipgloss.NewStyle().PaddingRight(2).Render(compCol),
 		lipgloss.NewStyle().PaddingRight(2).Render(letCol),
-		magCol,
+		magCol, // we pad right on middle column so no need to pad right on last column
 	}
 }
 
@@ -279,7 +280,7 @@ func HitFilterColumnsRel(state FilterState, frame int, titleHeight int, cols []s
 	wCol1 := lipgloss.Width(col1)
 	wCol2 := lipgloss.Width(col2)
 
-	colStartX := []int{0, wCol0 + pad, wCol0 + pad + wCol1 + pad} // horizontal layout
+	colStartX := []int{0, wCol0 + pad, wCol0 + pad + wCol1} // horizontal layout
 	colWidths := []int{wCol0, wCol1, wCol2}
 	colIdx = -1 // sentinel value
 
@@ -337,4 +338,33 @@ func HitFilterColumnsRel(state FilterState, frame int, titleHeight int, cols []s
 	}
 
 	return colIdx, actualIdx, true
+}
+
+func renderGradientText(text, startHex, endHex string, base lipgloss.Style) string {
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return ""
+	}
+
+	start, err := colorful.Hex(startHex)
+	if err != nil {
+		start = colorful.Color{}
+	}
+	end, err := colorful.Hex(endHex)
+	if err != nil {
+		end = colorful.Color{}
+	}
+
+	var parts []string
+	steps := len(runes)
+	for i, r := range runes {
+		t := 0.0
+		if steps > 1 {
+			t = float64(i) / float64(steps-1)
+		}
+		col := start.BlendHcl(end, t)
+		s := base
+		parts = append(parts, s.Foreground(lipgloss.Color(col.Hex())).Render(string(r)))
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Left, parts...)
 }

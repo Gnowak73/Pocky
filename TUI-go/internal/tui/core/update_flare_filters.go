@@ -156,7 +156,14 @@ func (m Model) optionHit(x, y int) (col int, row int, ok bool) {
 		NudgeX: 0,
 		CheckX: true,
 		Mapper: func(relX, relY int) (int, int, bool) {
-			return flares.HitFilterColumnsRel(m.Filters, m.Frame, titleHeight, cols, relX, relY)
+			return flares.HitFilterColumnsRel(
+				m.Filters,
+				m.Frame,
+				titleHeight,
+				cols,
+				relX,
+				relY,
+			)
 		},
 	})
 	return colIdx, rowIdx, hit

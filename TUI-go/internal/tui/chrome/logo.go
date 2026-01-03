@@ -134,8 +134,26 @@ func buildGradient(count int) []lipgloss.Style {
 		if count > 1 {
 			t = float64(i) / float64(count-1)
 		}
-		color := utils.BlendStops(stops, t)
+		color := blendStops(stops, t)
 		stylesOut[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(color.Hex()))
 	}
 	return stylesOut
+}
+
+func blendStops(stops []colorful.Color, t float64) colorful.Color {
+	if len(stops) == 0 {
+		return colorful.Color{}
+	}
+	if len(stops) == 1 {
+		return stops[0]
+	}
+	t = utils.Clamp(t, 0, 1)
+	span := float64(len(stops) - 1)
+	pos := t * span
+	idx := int(pos)
+	if idx >= len(stops)-1 {
+		return stops[len(stops)-1]
+	}
+	frac := pos - float64(idx)
+	return stops[idx].BlendHcl(stops[idx+1], frac)
 }
