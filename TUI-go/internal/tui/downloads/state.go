@@ -53,6 +53,7 @@ type DownloadState struct {
 	OutputCh     <-chan DownloadOutputMsg
 	DoneCh       <-chan DownloadFinishedMsg
 	Cancel       context.CancelFunc
+	Confirming  bool // confirm before running the download
 }
 
 func NewDownloadState(cfg config.Config) DownloadState {

@@ -53,9 +53,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width > 0 && msg.Height > 0 {
 			m.Cache.Viewport.Width = max(msg.Width-6, 20)
 			m.Cache.Viewport.Height = max(msg.Height-10, 8)
-			downloadWidth := max(msg.Width-24, 60)
-			if downloadWidth > 2 {
-				downloadWidth--
+			downloadWidth := (msg.Width * 3) / 5
+			if msg.Width < 160 {
+				downloadWidth = (msg.Width * 4) / 5
+			}
+			if downloadWidth < 60 {
+				downloadWidth = 60
+			}
+			if downloadWidth > msg.Width-4 {
+				downloadWidth = msg.Width - 4
 			}
 			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((msg.Height-12)/2, 8)
@@ -97,9 +103,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.DoneCh = msg.DoneCh
 		m.Download.Cancel = msg.Cancel
 		if m.Width > 0 && m.Height > 0 {
-			downloadWidth := max(m.Width-24, 60)
-			if downloadWidth > 2 {
-				downloadWidth--
+			downloadWidth := (m.Width * 3) / 5
+			if m.Width < 160 {
+				downloadWidth = (m.Width * 4) / 5
+			}
+			if downloadWidth < 60 {
+				downloadWidth = 60
+			}
+			if downloadWidth > m.Width-4 {
+				downloadWidth = m.Width - 4
 			}
 			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
