@@ -121,6 +121,7 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		m.Download.LastOutput = ""
+		m.Download.Output = nil
 		m.Download.Running = true
 		m.Mode = ModeDownloadRun
 		return m, downloads.RunDownloadCmd(m.Download, m.Cfg)
@@ -130,4 +131,33 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) handleDownloadRunKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "q", "esc":
+		if m.Download.Cancel != nil {
+			m.Download.Cancel()
+		}
+		m.Download.Output = nil
+		m.Download.Viewport.SetContent("")
+		m.Download.OutputCh = nil
+		m.Download.DoneCh = nil
+		m.Download.Cancel = nil
+		m.Download.Running = false
+		m.Mode = ModeMain
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.Download.Viewport, cmd = m.Download.Viewport.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m Model) handleDownloadRunMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.Download.Viewport, cmd = m.Download.Viewport.Update(msg)
+	return m, cmd
 }

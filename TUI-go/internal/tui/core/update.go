@@ -1,6 +1,8 @@
 package core
 
 import (
+	"regexp"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -8,7 +10,10 @@ import (
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
+	"github.com/charmbracelet/lipgloss"
 )
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 // The cycle of the TUI is Init() -> return tea.Cmd function -> eval tea.Cmd
 // Then we go into the loop of Update() -> return model + tea.Cmd -> View()
@@ -48,6 +53,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width > 0 && msg.Height > 0 {
 			m.Cache.Viewport.Width = max(msg.Width-6, 20)
 			m.Cache.Viewport.Height = max(msg.Height-10, 8)
+			m.Download.Viewport.Width = max(msg.Width-24, 60)
+			m.Download.Viewport.Height = max((msg.Height-12)/2, 8)
+			if m.Mode == ModeDownloadRun {
+				m.Download.Output = nil
+				m.Download.Viewport.SetContent("")
+				m.Download.Viewport.GotoBottom()
+			}
 			if m.Mode == ModeCacheView && m.Cache.Content != "" {
 				// we need to to set new content that matches the smaller
 				// window size in view cache
@@ -75,10 +87,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tick()
 	case flares.FlaresLoadedMsg:
 		return m.handleFlaresLoaded(msg)
+	case downloads.DownloadStartedMsg:
+		m.Download.Running = true
+		m.Download.OutputCh = msg.OutputCh
+		m.Download.DoneCh = msg.DoneCh
+		m.Download.Cancel = msg.Cancel
+		if m.Width > 0 && m.Height > 0 {
+			m.Download.Viewport.Width = max(m.Width-24, 60)
+			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
+		}
+		m.Download.Viewport.SetContent("")
+		return m, downloads.ListenDownloadCmd(msg.OutputCh, msg.DoneCh)
+	case downloads.DownloadOutputMsg:
+		if !m.Download.Running {
+			return m, nil
+		}
+		line := stripANSI(msg.Line)
+		if idx := strings.LastIndex(line, "\r"); idx >= 0 {
+			line = line[idx+1:]
+		}
+		innerW := m.Download.Viewport.Width
+		if innerW > 0 {
+			line = truncateLine(line, innerW)
+		}
+		if strings.Contains(msg.Line, "\r") && len(m.Download.Output) > 0 {
+			m.Download.Output[len(m.Download.Output)-1] = line
+		} else {
+			m.Download.Output = append(m.Download.Output, line)
+		}
+		const maxOutputLines = 300
+		if len(m.Download.Output) > maxOutputLines {
+			m.Download.Output = m.Download.Output[len(m.Download.Output)-maxOutputLines:]
+		}
+		m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
+		m.Download.Viewport.GotoBottom()
+		return m, downloads.ListenDownloadCmd(m.Download.OutputCh, m.Download.DoneCh)
 	case downloads.DownloadFinishedMsg:
 		m.Download.Running = false
 		m.Download.LastOutput = msg.Output
-		if msg.Err != nil {
+		m.Download.OutputCh = nil
+		m.Download.DoneCh = nil
+		m.Download.Cancel = nil
+		if msg.Canceled {
+			m.Menu.Notice = "Download canceled."
+		} else if msg.Err != nil {
 			m.Menu.Notice = msg.Err.Error()
 		} else {
 			m.Menu.Notice = "Download finished."
@@ -91,7 +143,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Menu.NoticeFrame = m.Frame
 			}
 		}
-		m.Mode = ModeDownloadForm
+		if m.Mode == ModeDownloadRun {
+			if msg.Canceled {
+				m.Mode = ModeMain
+			} else {
+				m.Mode = ModeDownloadForm
+			}
+		}
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -99,6 +157,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouseMsg(msg)
 	}
 	return m, nil
+}
+
+func truncateLine(s string, maxW int) string {
+	if maxW <= 0 {
+		return s
+	}
+	if lipgloss.Width(s) <= maxW {
+		return s
+	}
+	var b strings.Builder
+	w := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if w+rw > maxW {
+			break
+		}
+		b.WriteRune(r)
+		w += rw
+	}
+	return b.String()
+}
+
+func stripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
 }
 
 // next, we go to View() in view.go

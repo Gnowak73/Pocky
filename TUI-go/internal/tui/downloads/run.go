@@ -1,19 +1,57 @@
 package downloads
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pocky/tui-go/internal/tui/config"
 )
 
 type DownloadFinishedMsg struct {
-	Output string // this will be the output from the python file just like in query.py
-	Email  string // last JSOC email used for downloads
-	Err    error
+	Output   string // this will be the output from the python file just like in query.py
+	Email    string // last JSOC email used for downloads
+	Canceled bool
+	Err      error
+}
+
+type DownloadStartedMsg struct {
+	OutputCh <-chan string
+	DoneCh   <-chan DownloadFinishedMsg
+	Cancel   context.CancelFunc
+}
+
+type DownloadOutputMsg struct {
+	Line string
+}
+
+func ListenDownloadCmd(outputCh <-chan string, doneCh <-chan DownloadFinishedMsg) tea.Cmd {
+	// keep the loop alive by blocking for a single output or completion message,
+	// then returning it back to the update loop.
+	return func() tea.Msg {
+		if outputCh == nil || doneCh == nil {
+			return nil
+		}
+		select {
+		case line, ok := <-outputCh:
+			if ok {
+				return DownloadOutputMsg{Line: line}
+			}
+			msg, ok := <-doneCh
+			if ok {
+				return msg
+			}
+			return nil
+		case msg := <-doneCh:
+			return msg
+		}
+	}
 }
 
 func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
@@ -74,6 +112,15 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			} else {
 				cadence = "12s"
 			}
+		}
+		if state.Protocol == ProtocolFido {
+			cadence = strings.TrimSuffix(cadence, "s")
+			cadence = strings.TrimSuffix(cadence, "S")
+			if cadence == "" {
+				cadence = "12"
+			}
+		} else if !strings.HasSuffix(cadence, "s") && !strings.HasSuffix(cadence, "S") {
+			cadence += "s"
 		}
 		padBefore := strings.TrimSpace(state.Form.PadBefore)
 		if padBefore == "" {
@@ -149,13 +196,72 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			return DownloadFinishedMsg{Err: fmt.Errorf("unknown protocol")}
 		}
 
-		// run from the repo root like loader.go so scripts resolve paths correctly.
-		cmd.Dir = ".."
-		output, err := cmd.CombinedOutput()
-		return DownloadFinishedMsg{
-			Output: strings.TrimSpace(string(output)),
-			Email:  usedEmail,
-			Err:    err,
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+		cmd.Dir = ".." // run from repo root like loader.go so scripts resolve paths correctly.
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			cancel()
+			return DownloadFinishedMsg{Err: err}
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			cancel()
+			return DownloadFinishedMsg{Err: err}
+		}
+
+		if err := cmd.Start(); err != nil {
+			cancel()
+			return DownloadFinishedMsg{Err: err}
+		}
+
+		outputCh := make(chan string, 128)
+		doneCh := make(chan DownloadFinishedMsg, 1)
+
+		go func() {
+			defer close(outputCh)
+			defer close(doneCh)
+
+			var b strings.Builder
+			var mu sync.Mutex
+			var wg sync.WaitGroup
+
+			readPipe := func(r io.ReadCloser) {
+				defer wg.Done()
+				defer func() {
+					_ = r.Close()
+				}()
+				scanner := bufio.NewScanner(r)
+				for scanner.Scan() {
+					line := scanner.Text()
+					outputCh <- line
+					mu.Lock()
+					b.WriteString(line)
+					b.WriteByte('\n')
+					mu.Unlock()
+				}
+			}
+
+			wg.Add(2)
+			go readPipe(stdout)
+			go readPipe(stderr)
+
+			err := cmd.Wait()
+			wg.Wait()
+
+			doneCh <- DownloadFinishedMsg{
+				Output:   strings.TrimSpace(b.String()),
+				Email:    usedEmail,
+				Err:      err,
+				Canceled: ctx.Err() == context.Canceled,
+			}
+		}()
+
+		return DownloadStartedMsg{
+			OutputCh: outputCh,
+			DoneCh:   doneCh,
+			Cancel:   cancel,
 		}
 	}
 }

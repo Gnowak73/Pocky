@@ -3,8 +3,10 @@
 package downloads
 
 import (
+	"context"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/pocky/tui-go/internal/tui/config"
 )
 
@@ -41,11 +43,16 @@ type DownloadState struct {
 	MenuSelected int      // index of selected item
 	LastErr      string   // last error thrown
 	Protocol     Protocol
-	Level        Level        // which level of fits data is chosen
-	Form         DownloadForm // argument information required for python scripts
-	Focus        int          // the index of the currently active form field
-	Running      bool         // download in progress?
-	LastOutput   string       // capture stdout/stderr for display
+	Level        Level          // which level of fits data is chosen
+	Form         DownloadForm   // argument information required for python scripts
+	Focus        int            // the index of the currently active form field
+	Running      bool           // download in progress?
+	LastOutput   string         // capture stdout/stderr for display
+	Output       []string       // running output buffer for the viewport
+	Viewport     viewport.Model // shows terminal output for python scripts
+	OutputCh     <-chan string
+	DoneCh       <-chan DownloadFinishedMsg
+	Cancel       context.CancelFunc
 }
 
 func NewDownloadState(cfg config.Config) DownloadState {
@@ -83,5 +90,6 @@ func NewDownloadState(cfg config.Config) DownloadState {
 		MenuSelected: 0,
 		Level:        Level1,
 		Form:         downloadForm,
+		Viewport:     viewport.New(80, 20),
 	}
 }

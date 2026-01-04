@@ -130,12 +130,17 @@ func RenderForm(state DownloadState, width int) string {
 }
 
 func RenderRun(state DownloadState, width int) string {
-	msg := "Running download..."
-	if !state.Running && state.LastOutput != "" {
-		msg = state.LastOutput
+	body := state.Viewport.View()
+	boxed := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.FaintGray.GetForeground()).
+		Padding(0, 0, 0, 1).
+		Render(body)
+	if width <= 0 {
+		return "\n\n" + boxed
 	}
-	line := styles.LightGray.Render(msg)
-	return lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, line)
+	centered := lipgloss.PlaceHorizontal(width, lipgloss.Center, boxed)
+	return "\n\n" + centered
 }
 
 func FormLines(state DownloadState) []FieldLine {
