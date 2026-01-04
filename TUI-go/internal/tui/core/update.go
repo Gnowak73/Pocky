@@ -2,6 +2,7 @@ package core
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,26 +117,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
 		}
+		m.Download.Cursor = 0
 		m.Download.Viewport.SetContent("")
 		return m, downloads.ListenDownloadCmd(msg.OutputCh, msg.DoneCh)
 	case downloads.DownloadOutputMsg:
 		if !m.Download.Running {
 			return m, nil
 		}
-		line := stripANSI(msg.Line)
-		innerW := m.Download.Viewport.Width
-		if innerW > 0 {
-			line = truncateLine(line, innerW)
-		}
-		if msg.Replace && len(m.Download.Output) > 0 {
-			m.Download.Output[len(m.Download.Output)-1] = line
-		} else {
-			m.Download.Output = append(m.Download.Output, line)
-		}
-		const maxOutputLines = 300
-		if len(m.Download.Output) > maxOutputLines {
-			m.Download.Output = m.Download.Output[len(m.Download.Output)-maxOutputLines:]
-		}
+		applyDownloadOutput(&m.Download, msg, m.Download.Viewport.Width)
 		m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
 		m.Download.Viewport.GotoBottom()
 		return m, downloads.ListenDownloadCmd(m.Download.OutputCh, m.Download.DoneCh)
@@ -198,6 +187,75 @@ func truncateLine(s string, maxW int) string {
 
 func stripANSI(s string) string {
 	return ansiRE.ReplaceAllString(s, "")
+}
+
+func applyDownloadOutput(state *downloads.DownloadState, msg downloads.DownloadOutputMsg, width int) {
+	line := msg.Line
+	replace := msg.Replace
+	cursor := state.Cursor
+
+	for i := 0; i < len(line); {
+		if line[i] == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
+			j := i + 2
+			for j < len(line) && ((line[j] >= '0' && line[j] <= '9') || line[j] == ';' || line[j] == '?') {
+				j++
+			}
+			if j >= len(line) {
+				break
+			}
+			params := line[i+2 : j]
+			switch line[j] {
+			case 'A':
+				n := 1
+				if params != "" {
+					if v, err := strconv.Atoi(params); err == nil {
+						n = v
+					}
+				}
+				cursor -= n
+				if cursor < 0 {
+					cursor = 0
+				}
+			case 'K':
+				if cursor >= 0 && cursor < len(state.Output) {
+					state.Output[cursor] = ""
+				}
+			}
+			i = j + 1
+			continue
+		}
+		i++
+	}
+
+	text := stripANSI(strings.ReplaceAll(line, "\r", ""))
+	if width > 0 {
+		text = truncateLine(text, width)
+	}
+	if text == "" {
+		state.Cursor = cursor
+		return
+	}
+
+	if replace {
+		if cursor < len(state.Output) {
+			state.Output[cursor] = text
+		} else if cursor == len(state.Output) {
+			state.Output = append(state.Output, text)
+		}
+	} else {
+		state.Output = append(state.Output, text)
+		cursor = len(state.Output) - 1
+	}
+
+	const maxOutputLines = 300
+	if len(state.Output) > maxOutputLines {
+		state.Output = state.Output[len(state.Output)-maxOutputLines:]
+		if cursor >= maxOutputLines {
+			cursor = maxOutputLines - 1
+		}
+	}
+
+	state.Cursor = cursor
 }
 
 // next, we go to View() in view.go

@@ -54,6 +54,7 @@ type DownloadState struct {
 	DoneCh       <-chan DownloadFinishedMsg
 	Cancel       context.CancelFunc
 	Confirming  bool // confirm before running the download
+	Cursor      int  // current output cursor line for ANSI updates
 }
 
 func NewDownloadState(cfg config.Config) DownloadState {
