@@ -59,7 +59,7 @@ func (m Model) View() string {
 	case ModeDownloadForm:
 		body = downloads.RenderForm(m.Download, w)
 	case ModeDownloadRun:
-		body = summary + "Downloading..."
+		body = summary + downloads.RenderRun(m.Download, w)
 	default:
 		noticeLine := chrome.NoticeLine(
 			m.Menu.Notice,

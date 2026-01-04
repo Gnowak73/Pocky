@@ -1,0 +1,161 @@
+package downloads
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/pocky/tui-go/internal/tui/config"
+)
+
+type DownloadFinishedMsg struct {
+	Output string // this will be the output from the python file just like in query.py
+	Email  string // last JSOC email used for downloads
+	Err    error
+}
+
+func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
+	// we run the download asynchronously so the TUI stays responsive; this mirrors the
+	// loader.go pattern where python runs outside the main update loop and returns a msg.
+	return func() tea.Msg {
+		// fall back to the shared assets in the parent directory of the running binary,
+		// same pattern as config.ParentDirFile in loader and config handling.
+		tsv := strings.TrimSpace(state.Form.TSVPath)
+		if tsv == "" {
+			tsv = config.ParentDirFile("flare_cache.tsv")
+			if tsv == "" {
+				tsv = "flare_cache.tsv"
+			}
+		}
+		if _, err := os.Stat(tsv); err != nil {
+			return DownloadFinishedMsg{
+				Err: fmt.Errorf("flare_cache.tsv not found at %s", tsv),
+			}
+		}
+
+		// resolve output directory by level with the same parent-dir fallback as the cache path.
+		outDir := strings.TrimSpace(state.Form.OutDir)
+		if outDir == "" {
+			if state.Level == Level1p5 {
+				outDir = config.ParentDirFile("data_aia_lvl1.5")
+				if outDir == "" {
+					outDir = "data_aia_lvl1.5"
+				}
+			} else {
+				outDir = config.ParentDirFile("data_aia_lvl1")
+				if outDir == "" {
+					outDir = "data_aia_lvl1"
+				}
+			}
+		}
+
+		maxConn := strings.TrimSpace(state.Form.MaxConn)
+		if maxConn == "" {
+			maxConn = "6"
+		}
+		maxSplits := strings.TrimSpace(state.Form.MaxSplits)
+		if maxSplits == "" {
+			maxSplits = "3"
+		}
+		attempts := strings.TrimSpace(state.Form.Attempts)
+		if attempts == "" {
+			if state.Protocol == ProtocolFido {
+				attempts = "3"
+			} else {
+				attempts = "5"
+			}
+		}
+		cadence := strings.TrimSpace(state.Form.Cadence)
+		if cadence == "" {
+			if state.Protocol == ProtocolFido {
+				cadence = "12"
+			} else {
+				cadence = "12s"
+			}
+		}
+		padBefore := strings.TrimSpace(state.Form.PadBefore)
+		if padBefore == "" {
+			padBefore = "0"
+		}
+		padAfter := strings.TrimSpace(state.Form.PadAfter)
+
+		// use last saved email as a fallback to mirror the shell flow.
+		email := strings.TrimSpace(state.Form.Email)
+		if email == "" {
+			email = strings.TrimSpace(cfg.DLEmail)
+		}
+
+		usedEmail := ""
+		var cmd *exec.Cmd
+		switch state.Protocol {
+		case ProtocolDRMS:
+			// DRMS always requires an email, and uses the series + optional pad-after.
+			if email == "" {
+				return DownloadFinishedMsg{Err: fmt.Errorf("JSOC email is required")}
+			}
+			args := []string{
+				"fetch_jsoc_drms.py",
+				"--tsv", tsv,
+				"--out", outDir,
+				"--max-conn", maxConn,
+				"--max-splits", maxSplits,
+				"--attempts", attempts,
+				"--cadence", cadence,
+				"--series", "aia.lev1_euv_12s",
+				"--pad-before", padBefore,
+			}
+			if padAfter != "" {
+				args = append(args, "--pad-after", padAfter)
+			}
+			if state.Level == Level1p5 {
+				args = append(args, "--aia-scale")
+			}
+			args = append(args, "--email", email)
+			usedEmail = email
+			cmd = exec.Command("python", args...)
+
+		case ProtocolFido:
+			provider := strings.TrimSpace(string(state.Form.Provider))
+			if provider == "" {
+				provider = "vso"
+			}
+			if provider == "jsoc" && email == "" {
+				return DownloadFinishedMsg{Err: fmt.Errorf("JSOC email is required")}
+			}
+
+			// Fido uses a different script and cadence units (seconds vs 12s).
+			args := []string{
+				"fetch_fido.py",
+				"--tsv", tsv,
+				"--out", outDir,
+				"--cadence", cadence,
+				"--pad-before", padBefore,
+				"--max-conn", maxConn,
+				"--max-splits", maxSplits,
+				"--attempts", attempts,
+				"--provider", provider,
+			}
+			if padAfter != "" {
+				args = append(args, "--pad-after", padAfter)
+			}
+			if provider == "jsoc" {
+				args = append(args, "--email", email)
+				usedEmail = email
+			}
+			cmd = exec.Command("python", args...)
+		default:
+			return DownloadFinishedMsg{Err: fmt.Errorf("unknown protocol")}
+		}
+
+		// run from the repo root like loader.go so scripts resolve paths correctly.
+		cmd.Dir = ".."
+		output, err := cmd.CombinedOutput()
+		return DownloadFinishedMsg{
+			Output: strings.TrimSpace(string(output)),
+			Email:  usedEmail,
+			Err:    err,
+		}
+	}
+}

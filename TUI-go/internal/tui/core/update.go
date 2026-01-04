@@ -5,6 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pocky/tui-go/internal/tui/chrome"
+	"github.com/pocky/tui-go/internal/tui/config"
+	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
@@ -73,6 +75,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tick()
 	case flares.FlaresLoadedMsg:
 		return m.handleFlaresLoaded(msg)
+	case downloads.DownloadFinishedMsg:
+		m.Download.Running = false
+		m.Download.LastOutput = msg.Output
+		if msg.Err != nil {
+			m.Menu.Notice = msg.Err.Error()
+		} else {
+			m.Menu.Notice = "Download finished."
+		}
+		m.Menu.NoticeFrame = m.Frame
+		if msg.Email != "" {
+			m.Cfg.DLEmail = msg.Email
+			if err := config.Save(m.Cfg); err != nil {
+				m.Menu.Notice = err.Error()
+				m.Menu.NoticeFrame = m.Frame
+			}
+		}
+		m.Mode = ModeDownloadForm
+		return m, nil
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 	case tea.MouseMsg:

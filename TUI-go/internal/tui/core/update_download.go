@@ -120,8 +120,10 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "enter":
+		m.Download.LastOutput = ""
+		m.Download.Running = true
 		m.Mode = ModeDownloadRun
-		return m, nil
+		return m, downloads.RunDownloadCmd(m.Download, m.Cfg)
 	default:
 		if len(msg.Runes) > 0 {
 			downloads.AppendFormRunes(&m.Download, m.Download.Focus, msg.Runes)

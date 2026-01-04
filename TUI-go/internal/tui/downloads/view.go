@@ -129,6 +129,15 @@ func RenderForm(state DownloadState, width int) string {
 	return "\n\n\n\n" + placed + "\n\n" + hintLine + "\n\n\n\n" + helpLine
 }
 
+func RenderRun(state DownloadState, width int) string {
+	msg := "Running download..."
+	if !state.Running && state.LastOutput != "" {
+		msg = state.LastOutput
+	}
+	line := styles.LightGray.Render(msg)
+	return lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, line)
+}
+
 func FormLines(state DownloadState) []FieldLine {
 	return formLines(state)
 }
