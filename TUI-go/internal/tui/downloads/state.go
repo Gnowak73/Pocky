@@ -50,7 +50,7 @@ type DownloadState struct {
 	LastOutput   string         // capture stdout/stderr for display
 	Output       []string       // running output buffer for the viewport
 	Viewport     viewport.Model // shows terminal output for python scripts
-	OutputCh     <-chan string
+	OutputCh     <-chan DownloadOutputMsg
 	DoneCh       <-chan DownloadFinishedMsg
 	Cancel       context.CancelFunc
 }

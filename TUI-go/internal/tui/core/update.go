@@ -53,7 +53,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width > 0 && msg.Height > 0 {
 			m.Cache.Viewport.Width = max(msg.Width-6, 20)
 			m.Cache.Viewport.Height = max(msg.Height-10, 8)
-			m.Download.Viewport.Width = max(msg.Width-24, 60)
+			downloadWidth := max(msg.Width-24, 60)
+			if downloadWidth > 2 {
+				downloadWidth--
+			}
+			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((msg.Height-12)/2, 8)
 			if m.Mode == ModeDownloadRun {
 				m.Download.Output = nil
@@ -93,7 +97,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.DoneCh = msg.DoneCh
 		m.Download.Cancel = msg.Cancel
 		if m.Width > 0 && m.Height > 0 {
-			m.Download.Viewport.Width = max(m.Width-24, 60)
+			downloadWidth := max(m.Width-24, 60)
+			if downloadWidth > 2 {
+				downloadWidth--
+			}
+			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
 		}
 		m.Download.Viewport.SetContent("")
@@ -103,14 +111,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		line := stripANSI(msg.Line)
-		if idx := strings.LastIndex(line, "\r"); idx >= 0 {
-			line = line[idx+1:]
-		}
 		innerW := m.Download.Viewport.Width
 		if innerW > 0 {
 			line = truncateLine(line, innerW)
 		}
-		if strings.Contains(msg.Line, "\r") && len(m.Download.Output) > 0 {
+		if msg.Replace && len(m.Download.Output) > 0 {
 			m.Download.Output[len(m.Download.Output)-1] = line
 		} else {
 			m.Download.Output = append(m.Download.Output, line)

@@ -22,16 +22,17 @@ type DownloadFinishedMsg struct {
 }
 
 type DownloadStartedMsg struct {
-	OutputCh <-chan string
+	OutputCh <-chan DownloadOutputMsg
 	DoneCh   <-chan DownloadFinishedMsg
 	Cancel   context.CancelFunc
 }
 
 type DownloadOutputMsg struct {
-	Line string
+	Line    string
+	Replace bool
 }
 
-func ListenDownloadCmd(outputCh <-chan string, doneCh <-chan DownloadFinishedMsg) tea.Cmd {
+func ListenDownloadCmd(outputCh <-chan DownloadOutputMsg, doneCh <-chan DownloadFinishedMsg) tea.Cmd {
 	// keep the loop alive by blocking for a single output or completion message,
 	// then returning it back to the update loop.
 	return func() tea.Msg {
@@ -39,13 +40,13 @@ func ListenDownloadCmd(outputCh <-chan string, doneCh <-chan DownloadFinishedMsg
 			return nil
 		}
 		select {
-		case line, ok := <-outputCh:
-			if ok {
-				return DownloadOutputMsg{Line: line}
-			}
-			msg, ok := <-doneCh
+		case msg, ok := <-outputCh:
 			if ok {
 				return msg
+			}
+			done, ok := <-doneCh
+			if ok {
+				return done
 			}
 			return nil
 		case msg := <-doneCh:
@@ -216,7 +217,7 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			return DownloadFinishedMsg{Err: err}
 		}
 
-		outputCh := make(chan string, 128)
+		outputCh := make(chan DownloadOutputMsg, 128)
 		doneCh := make(chan DownloadFinishedMsg, 1)
 
 		go func() {
@@ -232,14 +233,46 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 				defer func() {
 					_ = r.Close()
 				}()
-				scanner := bufio.NewScanner(r)
-				for scanner.Scan() {
-					line := scanner.Text()
-					outputCh <- line
+				reader := bufio.NewReader(r)
+				var lineBuf strings.Builder
+				flush := func(replace bool) {
+					text := lineBuf.String()
+					lineBuf.Reset()
+					if text == "" {
+						return
+					}
+					outputCh <- DownloadOutputMsg{Line: text, Replace: replace}
 					mu.Lock()
-					b.WriteString(line)
+					b.WriteString(text)
 					b.WriteByte('\n')
 					mu.Unlock()
+				}
+				for {
+					ch, err := reader.ReadByte()
+					if err != nil {
+						if err == io.EOF {
+							flush(false)
+							return
+						}
+						return
+					}
+					switch ch {
+					case '\r':
+						text := lineBuf.String()
+						lineBuf.Reset()
+						if text == "" {
+							continue
+						}
+						outputCh <- DownloadOutputMsg{Line: text, Replace: true}
+						mu.Lock()
+						b.WriteString(text)
+						b.WriteByte('\n')
+						mu.Unlock()
+					case '\n':
+						flush(false)
+					default:
+						_ = lineBuf.WriteByte(ch)
+					}
 				}
 			}
 

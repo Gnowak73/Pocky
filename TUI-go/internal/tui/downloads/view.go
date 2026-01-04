@@ -1,6 +1,7 @@
 package downloads
 
 import (
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -131,16 +132,37 @@ func RenderForm(state DownloadState, width int) string {
 
 func RenderRun(state DownloadState, width int) string {
 	body := state.Viewport.View()
+	scrollbar := renderScrollbar(state.Viewport.Height, state.Viewport.ScrollPercent())
+	content := lipgloss.JoinHorizontal(lipgloss.Top, body, scrollbar)
 	boxed := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.FaintGray.GetForeground()).
 		Padding(0, 0, 0, 1).
-		Render(body)
+		Render(content)
 	if width <= 0 {
 		return "\n\n" + boxed
 	}
 	centered := lipgloss.PlaceHorizontal(width, lipgloss.Center, boxed)
 	return "\n\n" + centered
+}
+
+func renderScrollbar(height int, percent float64) string {
+	if height <= 0 {
+		return ""
+	}
+	pos := 0
+	if height > 1 {
+		pos = int(math.Round(percent * float64(height-1)))
+	}
+	var rows []string
+	for i := 0; i < height; i++ {
+		ch := styles.FaintGray.Render("│")
+		if i == pos {
+			ch = styles.PinkOption.Render("█")
+		}
+		rows = append(rows, ch)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func FormLines(state DownloadState) []FieldLine {
