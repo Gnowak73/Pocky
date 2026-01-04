@@ -9,6 +9,7 @@ import (
 )
 
 type (
+	Protocol string // the server protocol for download (e.g., Fido and DRMS)
 	Provider string // a string type for the provider
 	Level    string // a string stype for the data level FITs
 )
@@ -18,26 +19,28 @@ const (
 	ProviderVSO  Provider = "vso"
 	Level1       Level    = "lvl1"
 	Level1p5     Level    = "lvl1.5"
+	ProtocolDRMS Protocol = "drms"
+	ProtocolFido Protocol = "fido"
 )
 
 type DownloadForm struct {
-	Provider  string // JSOC or VSO
-	Email     string // email input
-	TSVPath   string // path to the flare cache
-	OutDir    string // output for the downloads
-	MaxConn   string // connections for downloads
-	MaxSplits string // the per-file split count. How many chunks a single file is split into for parallel downloading.
-	Attempts  string // how many retries for download
-	Cadence   string // cadence of the instrument, usually 12s
-	PadBefore string // how many minutes before the flare start to record
-	PadAfter  string // how many minutes are the flare start to record
+	Provider  Provider // JSOC or VSO for Fido; ignored for DRMS
+	Email     string   // email input
+	TSVPath   string   // path to the flare cache
+	OutDir    string   // output for the downloads
+	MaxConn   string   // connections for downloads
+	MaxSplits string   // the per-file split count. How many chunks a single file is split into for parallel downloading.
+	Attempts  string   // how many retries for download
+	Cadence   string   // cadence of the instrument, usually 12s
+	PadBefore string   // how many minutes before the flare start to record
+	PadAfter  string   // how many minutes are the flare start to record
 }
 
 type DownloadState struct {
-	MenuItems    []string     // items for the selection menu
-	MenuSelected int          // index of selected item
-	Provider     Provider     // chosen provider
-	LastErr      string       // last error thrown
+	MenuItems    []string // items for the selection menu
+	MenuSelected int      // index of selected item
+	LastErr      string   // last error thrown
+	Protocol     Protocol
 	Level        Level        // which level of fits data is chosen
 	Form         DownloadForm // argument information required for python scripts
 	Focus        int          // the index of the currently active form field
@@ -78,7 +81,6 @@ func NewDownloadState(cfg config.Config) DownloadState {
 	return DownloadState{
 		MenuItems:    menu,
 		MenuSelected: 0,
-		Provider:     ProviderJSOC,
 		Level:        Level1,
 		Form:         downloadForm,
 	}

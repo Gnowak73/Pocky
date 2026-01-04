@@ -10,15 +10,16 @@ func (m Model) handleDownloadMenuSel(choice string) (tea.Model, tea.Cmd) {
 	switch choice {
 	case "JSOC DRMS Lvl 1":
 		m.Download.Level = downloads.Level1
-		m.Download.Provider = downloads.ProviderJSOC
+		m.Download.Protocol = downloads.ProtocolDRMS
 		m.Mode = ModeDownloadForm
 	case "JSOC DRMS Lvl 1.5":
 		m.Download.Level = downloads.Level1p5
-		m.Download.Provider = downloads.ProviderJSOC
+		m.Download.Protocol = downloads.ProtocolDRMS
 		m.Mode = ModeDownloadForm
 	case "Fido Fetch Lvl 1":
 		m.Download.Level = downloads.Level1
-		m.Download.Provider = downloads.ProviderVSO
+		m.Download.Protocol = downloads.ProtocolFido
+		m.Download.Form.Provider = downloads.ProviderVSO
 		m.Mode = ModeDownloadForm
 	case "Back":
 		m.Mode = ModeMain
@@ -90,6 +91,8 @@ func (m Model) handleDownloadMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	isProvider := m.Download.Protocol == downloads.ProtocolFido && m.Download.Focus == 0 // check if we can toggle
+
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -107,6 +110,15 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "backspace", "delete":
 		downloads.DeleteFormChar(&m.Download, m.Download.Focus)
+	case " ":
+		if isProvider {
+			if m.Download.Form.Provider == downloads.ProviderJSOC {
+				m.Download.Form.Provider = downloads.ProviderVSO
+			} else {
+				m.Download.Form.Provider = downloads.ProviderJSOC
+			}
+			return m, nil
+		}
 	case "enter":
 		m.Mode = ModeDownloadRun
 		return m, nil

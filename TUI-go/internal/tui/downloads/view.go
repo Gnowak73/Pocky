@@ -20,7 +20,10 @@ func formLines(state DownloadState) []FieldLine {
 	form := state.Form
 	lines := []FieldLine{}
 
-	if state.Provider == ProviderJSOC {
+	if state.Protocol == ProtocolFido {
+		lines = append(lines, FieldLine{"Provider", string(form.Provider)})
+	}
+	if state.Protocol == ProtocolDRMS || form.Provider == ProviderJSOC {
 		lines = append(lines, FieldLine{"Email", form.Email})
 	}
 
@@ -49,6 +52,7 @@ func RenderForm(state DownloadState, width int) string {
 		"Pad Before": "Minutes before event start",
 		"Pad After":  "Minutes after event start (Blank = to event end)",
 		"Email":      "JSOC Email (env JSOC_EMAIL used if blank)",
+		"Provider":   "Fido provider (space toggles jsoc/vso)",
 	}
 
 	// given the state and the width of the application window, we will return a
@@ -133,7 +137,7 @@ func DeleteFormChar(state *DownloadState, focus int) {
 	// intead of doing this like done in dates.go and update_dates.go, we would like to have
 	// a general helper that can be used on any of the field lines so we don't hardcode each case.
 	// We need a target which points towards the form field value we are typing.
-	target := formFieldPtr(state, focus)
+	target := FormFieldPtr(state, focus)
 	if target == nil {
 		return
 	}
@@ -144,18 +148,26 @@ func DeleteFormChar(state *DownloadState, focus int) {
 
 func AppendFormRunes(state *DownloadState, focus int, runes []rune) {
 	// we append on a rune to the target string
-	target := formFieldPtr(state, focus)
+	target := FormFieldPtr(state, focus)
 	if target == nil {
 		return
 	}
 	*target += string(runes)
 }
 
-func formFieldPtr(state *DownloadState, focus int) *string {
+func FormFieldPtr(state *DownloadState, focus int) *string {
 	fields := []*string{} // slice of pointers to actual string fields
 	// we will return the pointer which our focus is currently on for typing rune inputs
 
-	if state.Provider == ProviderJSOC {
+	// Provider is display-only; shift focus if Fido
+	if state.Protocol == ProtocolFido {
+		if focus == 0 {
+			return nil
+		}
+		focus--
+	}
+
+	if state.Protocol == ProtocolDRMS || state.Form.Provider == ProviderJSOC {
 		fields = append(fields, &state.Form.Email)
 	}
 
