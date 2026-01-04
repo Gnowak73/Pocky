@@ -30,7 +30,7 @@ type CacheMenuView struct {
 	OpenFrame int // the frame counter captures when the submenu was opened for the animation
 }
 
-const versionLine = "VERSION: 0.2"
+const versionLine = "VERSION: 0.3"
 
 func RenderMenu(width int, menu MenuState, noticeLine string, cache *CacheMenuView, frame int) string {
 	// the goal is to return a string to print to the TUI, reflecting the state of the

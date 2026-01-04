@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pocky/tui-go/internal/tui/chrome"
+	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
@@ -76,7 +77,9 @@ func (m Model) handleMenuSelection(choice string) (tea.Model, tea.Cmd) {
 		m.Cache.MenuOpen = true
 		m.Cache.OpenFrame = m.Frame
 		m.Cache.Selected = 0
-
+	case "Download FITS":
+		m.Mode = ModeDownloadMenu
+		m.Download = downloads.NewDownloadState(m.Cfg) // refresh initialization to config   NOTE: might not be needed
 	case "Quit":
 		return m, tea.Quit
 	default:

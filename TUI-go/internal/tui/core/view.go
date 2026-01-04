@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/chrome"
+	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
@@ -24,7 +25,10 @@ func (m Model) View() string {
 		return body + "\n" + status
 	}
 
-	box, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
+	// we return the width from the logoheader, which computes the effective width of the logo block
+	// (it falls back to the logo's width if m.width is 0 or too small). We reuse that width so the
+	// summmary/menu/editor lines align to the logo block, not just the full terminal width.
+	logoBox, versionLine, w := chrome.RenderLogoHeader(m.Width, m.Logo)
 	summary := chrome.RenderSummary(m.Cfg, w)
 	var body string
 	var extraNotice string
@@ -40,6 +44,22 @@ func (m Model) View() string {
 		body = summary + m.Selector.Render(w)
 	case ModeCacheDelete:
 		body = summary + m.Cache.RenderCacheDelete(w)
+	case ModeDownloadMenu:
+		menu := chrome.MenuState{
+			Items:    m.Download.MenuItems,
+			Selected: m.Download.MenuSelected,
+		}
+		noticeLine := chrome.NoticeLine(
+			m.Menu.Notice,
+			m.Menu.NoticeFrame,
+			m.Frame,
+			w,
+		)
+		body = summary + chrome.RenderMenu(w, menu, noticeLine, nil, m.Frame)
+	case ModeDownloadForm:
+		body = downloads.RenderForm(m.Download, w)
+	case ModeDownloadRun:
+		body = summary + "Downloading..."
 	default:
 		noticeLine := chrome.NoticeLine(
 			m.Menu.Notice,
@@ -85,14 +105,14 @@ func (m Model) View() string {
 	status := chrome.RenderStatus(statusLabel(m), "esc to quit", m.Width)
 	if m.Height > 0 {
 		// the +1 accounts for the Versionline height
-		logoHeight := lipgloss.Height(box) + 1 + lipgloss.Height(body+extraNotice)
+		logoHeight := lipgloss.Height(logoBox) + 1 + lipgloss.Height(body+extraNotice)
 		// we will fill a number of newlien characters between main content and status bar to
 		// vertically fill the terminal
 		gap := max(m.Height-logoHeight-lipgloss.Height(status), 0)
-		return box + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
+		return logoBox + "\n" + versionLine + body + extraNotice + strings.Repeat("\n", gap) + status
 	}
 
-	return box + "\n" + versionLine + body + extraNotice + "\n" + status // without gap
+	return logoBox + "\n" + versionLine + body + extraNotice + "\n" + status // without gap
 }
 
 func statusLabel(m Model) string {
@@ -117,6 +137,12 @@ func statusLabel(m Model) string {
 		return "View Cache"
 	case ModeCacheDelete:
 		return "Delete Cache Rows"
+	case ModeDownloadMenu:
+		return "Download FITs"
+	case ModeDownloadForm:
+		return "Download FITs Form"
+	case ModeDownloadRun:
+		return "Downloading..."
 	default:
 		return "Ready"
 	}

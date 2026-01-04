@@ -20,6 +20,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleFlareFilterKeys(msg)
 	case ModeSelectFlares:
 		return m.handleSelectFlaresKeys(msg)
+	case ModeDownloadMenu:
+		return m.handleDownloadMenuKeys(msg)
+	case ModeDownloadForm:
+		return m.handleDownloadFormKeys(msg)
+	case ModeDownloadRun:
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -41,6 +47,10 @@ func (m Model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleFlareFilterMouse(msg)
 	case ModeSelectFlares:
 		return m.handleSelectFlaresMouse(msg)
+	case ModeDownloadMenu:
+		return m.handleDownloadMenuMouse(msg)
+	case ModeDownloadRun:
+		return m, nil
 	default:
 		return m, nil
 	}

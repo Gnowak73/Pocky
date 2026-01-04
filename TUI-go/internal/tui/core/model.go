@@ -6,6 +6,7 @@ package core
 import (
 	"github.com/pocky/tui-go/internal/tui/chrome"
 	"github.com/pocky/tui-go/internal/tui/config"
+	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
 )
 
@@ -24,6 +25,7 @@ type Model struct {
 	Selector flares.SelectorState
 	Cache    flares.CacheState
 	Date     flares.DateEditorState
+	Download downloads.DownloadState
 
 	// TUI window
 	Frame  int
@@ -43,6 +45,9 @@ const ( // we use iota, a predeclared identifier to enumerate
 	ModeSelectFlares
 	ModeCacheView
 	ModeCacheDelete
+	ModeDownloadMenu
+	ModeDownloadForm
+	ModeDownloadRun
 )
 
 func NewModel(logoLines []string, cfg config.Config) Model {
@@ -67,5 +72,6 @@ func NewModel(logoLines []string, cfg config.Config) Model {
 		Filters:  flares.NewFilterState(cfg),
 		Selector: flares.NewSelectorState(),
 		Cache:    flares.NewCacheState(),
+		Download: downloads.NewDownloadState(cfg),
 	}
 }
