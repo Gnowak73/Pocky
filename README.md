@@ -46,8 +46,8 @@ pipx install terminaltexteffects
 # pip
 pip install terminaltexteffects
 ```
-```
-```
+
+
 
 Gum is a part of the charm library: https://github.com/charmbracelet/gum. It is used to prompt
 the user in the TUI and record input data. To download it via package manager:
