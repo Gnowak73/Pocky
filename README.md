@@ -113,6 +113,7 @@ Once you have made a conda env, you need these packages:
 Install them with `conda install`, or use `conda install pip` and then `pip install`.
 
 <hr/>
+
 ### Controls
 
 Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks. General
