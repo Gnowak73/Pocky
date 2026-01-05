@@ -24,6 +24,7 @@ NOTE: please note any issues via private message or an issue request.
 
 <hr/>
 ### Bash Executable Setup
+---
 
 Some GNU coreutils are needed: `date -d`, `awk`, GNU `sed`, and GNU `grep`. If you are on a Linux system with
 Bash >= 4.0, you are already set. If you are on some other Unix-based system like macOS, you need to obtain
