@@ -47,7 +47,7 @@ func RenderDateEditor(cfg config.Config, date DateEditorState, width int) string
 	startField := renderField(
 		strings.TrimSpace(date.Start),
 		strings.TrimSpace(cfg.Start),
-		date.Focus == 1,
+		date.Focus == 0,
 	)
 
 	endField := renderField(
