@@ -1,4 +1,6 @@
-<img src="Media/Menu.png" width="80%" />
+<p align="center">
+  <img src="Media/Menu.png" width="82%" />
+</p>
 Pocky is a Go TUI for building flare queries, downloading FITS data, and analyzing data via
 machine learning and Fourier Analysis. There are minimal bash and full Go versions of the program.
 The bash file is `pocky.sh` in the main directory. The compiled Go file is in `TUI-go/` as `pocky`.
@@ -12,4 +14,3 @@ On Unix systems (Linux/macOS) make sure these files are executable:
 ```bash
 chmod +x pocky.sh pocky
 ```
-
