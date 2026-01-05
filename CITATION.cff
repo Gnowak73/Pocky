@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use Pocky, please cite it."
+title: "Pocky"
+version: "0.3"
+date-released: "2026-01-05"
+url: "https://github.com/Gnowak73/Pocky"
+authors:
+  - family-names: "Nowaskie"
+    given-names: "Gabriel"
+    email: "gabriel.nowaskie341@topper.wku.edu"
