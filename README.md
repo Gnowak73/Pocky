@@ -23,6 +23,7 @@ sufficient permissions. All Go executables should run out of the box.
 NOTE: please note any issues via private message or an issue request.
 
 <hr/>
+
 ### Bash Executable Setup
 
 Some GNU coreutils are needed: `date -d`, `awk`, GNU `sed`, and GNU `grep`. If you are on a Linux system with
@@ -66,6 +67,7 @@ scoop install charm-gum
 ```
 
 <hr/>
+
 ### Go Executables Setup
 
 The Go executables are the recommended executable to run, as they automatically download needed packages
