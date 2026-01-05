@@ -1,7 +1,7 @@
 <div align="center">
 
 [![Release](https://img.shields.io/github/v/release/Gnowak73/Pocky)](https://github.com/Gnowak73/Pocky/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/Gnowak73/Pocky/ci.yml)](https://github.com/Gnowak73/Pocky/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/Gnowak73/Pocky/ci.yml?branch=main)](https://github.com/Gnowak73/Pocky/actions)
 [![License](https://img.shields.io/github/license/Gnowak73/Pocky)](LICENSE)
 
 </div>
