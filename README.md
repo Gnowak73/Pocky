@@ -22,9 +22,8 @@ sufficient permissions. All Go executables should run out of the box.
 
 NOTE: please note any issues via private message or an issue request.
 
-<hr/>
+<hr style="border:0;border-top:1px solid #333;opacity:0.4;">
 ### Bash Executable Setup
----
 
 Some GNU coreutils are needed: `date -d`, `awk`, GNU `sed`, and GNU `grep`. If you are on a Linux system with
 Bash >= 4.0, you are already set. If you are on some other Unix-based system like macOS, you need to obtain
@@ -66,7 +65,7 @@ winget install charmbracelet.gum
 scoop install charm-gum
 ```
 
-<hr/>
+<hr style="border:0;border-top:1px solid #333;opacity:0.4;">
 ### Go Executables Setup
 
 The Go executables are the recommended executable to run, as they automatically download needed packages
@@ -113,7 +112,7 @@ Once you have made a conda env, you need these packages:
 
 Install them with `conda install`, or use `conda install pip` and then `pip install`.
 
-<hr/>
+<hr style="border:0;border-top:1px solid #333;opacity:0.4;">
 ### Controls
 Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks. General
 controls for each menu are shown in hints at the bottom.
