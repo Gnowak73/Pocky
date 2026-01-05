@@ -24,3 +24,17 @@ go build ./cmd/pocky
 ```
 
 This requires a recent Go install for compiling. See https://go.dev/doc/install.
+
+### Controls
+Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks.
+
+- `↑/k` and `↓/j` move through menus and lists.
+- `enter` selects or confirms the current item.
+- `esc` or `q` goes back or cancels a screen.
+- Mouse wheel scrolls in tables and viewports.
+- Left click selects items and changes focus.
+- If mouse input does not register, try right clicking to give the terminal focus.
+  Some terminals only start sending mouse tracking events after a focus action,
+  and right click is the quickest way to force that without changing selection.
+
+### Setup and Installation
