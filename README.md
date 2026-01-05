@@ -114,6 +114,7 @@ Install them with `conda install`, or use `conda install pip` and then `pip inst
 
 <hr/>
 ### Controls
+
 Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks. General
 controls for each menu are shown in hints at the bottom.
 
