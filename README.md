@@ -26,9 +26,10 @@ go build ./cmd/pocky
 This requires a recent Go install for compiling. See https://go.dev/doc/install.
 
 ### Controls
-Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks.
+Pocky is fully keyboard-driven, but also supports mouse hover, scrolling, and clicks. General
+controls for each menu is shown in hints at the bottom.
 
-- `↑/k` and `↓/j` move through menus and lists.
+- arrow keys or vim controls move through the menu.
 - `enter` selects or confirms the current item.
 - `esc` or `q` goes back or cancels a screen.
 - Mouse wheel scrolls in tables and viewports.
