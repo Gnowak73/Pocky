@@ -144,10 +144,26 @@ func RenderRun(state DownloadState, width int) string {
 		Padding(0, 0, 0, 1).
 		Render(content)
 	if width <= 0 {
-		return "\n\n" + boxed + "\n\n" + styles.Gray.Faint(true).Render("q/esc cancel • ↑/↓ scroll • mouse wheel")
+		if state.EventStatus != "" {
+			status := styles.Gray.Faint(true).Render(state.EventStatus)
+			boxed = boxed + "\n" + status
+		}
+		hint := "q/esc cancel • ↑/↓ scroll • mouse wheel"
+		if state.DonePrompt {
+			hint = "Download finished • press enter to return"
+		}
+		return "\n\n" + boxed + "\n\n" + styles.Gray.Faint(true).Render(hint)
 	}
 	centered := lipgloss.PlaceHorizontal(width, lipgloss.Center, boxed)
-	help := styles.Gray.Faint(true).Render("q/esc cancel • ↑/↓ scroll • mouse wheel")
+	if state.EventStatus != "" {
+		status := styles.Gray.Faint(true).Render(state.EventStatus)
+		centered += "\n" + lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, status)
+	}
+	helpText := "q/esc cancel • ↑/↓ scroll • mouse wheel"
+	if state.DonePrompt {
+		helpText = "Download finished • press enter to return"
+	}
+	help := styles.Gray.Faint(true).Render(helpText)
 	helpLine := lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Top, help)
 	return "\n\n" + centered + "\n\n" + helpLine
 }

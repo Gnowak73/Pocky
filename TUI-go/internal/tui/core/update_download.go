@@ -126,6 +126,10 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.Download.Confirming {
 			m.Download.LastOutput = ""
 			m.Download.Output = nil
+			m.Download.ProgressIdx = nil
+			m.Download.ProgressTime = nil
+			m.Download.EventStatus = ""
+			m.Download.EventIdx = -1
 			m.Download.Running = true
 			m.Download.Confirming = false
 			m.Mode = ModeDownloadRun
@@ -153,6 +157,11 @@ func (m Model) handleDownloadRunKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Download.Cancel()
 		}
 		m.Download.Output = nil
+		m.Download.ProgressIdx = nil
+		m.Download.ProgressTime = nil
+		m.Download.EventStatus = ""
+		m.Download.EventIdx = -1
+		m.Download.DonePrompt = false
 		m.Download.Viewport.SetContent("")
 		m.Download.OutputCh = nil
 		m.Download.DoneCh = nil
@@ -160,15 +169,35 @@ func (m Model) handleDownloadRunKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Download.Running = false
 		m.Mode = ModeMain
 		return m, nil
-	default:
-		var cmd tea.Cmd
-		m.Download.Viewport, cmd = m.Download.Viewport.Update(msg)
-		return m, cmd
+	case "enter":
+		if m.Download.DonePrompt {
+			m.Download.DonePrompt = false
+			m.Mode = ModeMain
+			return m, nil
+		}
 	}
+
+	key := msg.String()
+	if key == "up" || key == "k" || key == "pgup" || key == "home" {
+		m.Download.Follow = false
+	}
+
+	var cmd tea.Cmd
+	m.Download.Viewport, cmd = m.Download.Viewport.Update(msg)
+	if key == "down" || key == "j" || key == "pgdown" || key == "end" {
+		m.Download.Follow = m.Download.Viewport.AtBottom()
+	}
+	return m, cmd
 }
 
 func (m Model) handleDownloadRunMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.Download.Viewport, cmd = m.Download.Viewport.Update(msg)
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.Download.Follow = false
+	case tea.MouseButtonWheelDown:
+		m.Download.Follow = m.Download.Viewport.AtBottom()
+	}
 	return m, cmd
 }

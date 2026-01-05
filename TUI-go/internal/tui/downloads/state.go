@@ -5,6 +5,7 @@ package downloads
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/pocky/tui-go/internal/tui/config"
@@ -55,6 +56,12 @@ type DownloadState struct {
 	Cancel       context.CancelFunc
 	Confirming  bool // confirm before running the download
 	Cursor      int  // current output cursor line for ANSI updates
+	ProgressIdx map[string]int // per-file progress bar line indices
+	ProgressTime map[string]time.Time // last update time for progress lines
+	Follow      bool // auto-scroll when at bottom
+	EventStatus string // latest event progress line
+	EventIdx   int    // index of the event status line in output buffer
+	DonePrompt bool   // wait for enter before returning to main menu
 }
 
 func NewDownloadState(cfg config.Config) DownloadState {

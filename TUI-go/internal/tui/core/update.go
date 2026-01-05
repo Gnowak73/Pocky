@@ -15,6 +15,7 @@ import (
 )
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+var percentRE = regexp.MustCompile(`(\d+)%`)
 
 // The cycle of the TUI is Init() -> return tea.Cmd function -> eval tea.Cmd
 // Then we go into the loop of Update() -> return model + tea.Cmd -> View()
@@ -118,6 +119,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
 		}
 		m.Download.Cursor = 0
+		m.Download.ProgressIdx = make(map[string]int)
+		m.Download.ProgressTime = make(map[string]time.Time)
+		m.Download.EventStatus = ""
+		m.Download.EventIdx = -1
+		m.Download.Follow = true
 		m.Download.Viewport.SetContent("")
 		return m, downloads.ListenDownloadCmd(msg.OutputCh, msg.DoneCh)
 	case downloads.DownloadOutputMsg:
@@ -126,7 +132,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		applyDownloadOutput(&m.Download, msg, m.Download.Viewport.Width)
 		m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
-		m.Download.Viewport.GotoBottom()
+		if m.Download.Follow {
+			m.Download.Viewport.GotoBottom()
+		}
 		return m, downloads.ListenDownloadCmd(m.Download.OutputCh, m.Download.DoneCh)
 	case downloads.DownloadFinishedMsg:
 		m.Download.Running = false
@@ -134,6 +142,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.OutputCh = nil
 		m.Download.DoneCh = nil
 		m.Download.Cancel = nil
+		m.Download.ProgressIdx = nil
+		m.Download.ProgressTime = nil
+		m.Download.EventStatus = ""
+		m.Download.EventIdx = -1
+		m.Download.DonePrompt = true
 		if msg.Canceled {
 			m.Menu.Notice = "Download canceled."
 		} else if msg.Err != nil {
@@ -147,13 +160,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err := config.Save(m.Cfg); err != nil {
 				m.Menu.Notice = err.Error()
 				m.Menu.NoticeFrame = m.Frame
-			}
-		}
-		if m.Mode == ModeDownloadRun {
-			if msg.Canceled {
-				m.Mode = ModeMain
-			} else {
-				m.Mode = ModeDownloadForm
 			}
 		}
 		return m, nil
@@ -190,72 +196,143 @@ func stripANSI(s string) string {
 }
 
 func applyDownloadOutput(state *downloads.DownloadState, msg downloads.DownloadOutputMsg, width int) {
-	line := msg.Line
-	replace := msg.Replace
-	cursor := state.Cursor
-
-	for i := 0; i < len(line); {
-		if line[i] == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
-			j := i + 2
-			for j < len(line) && ((line[j] >= '0' && line[j] <= '9') || line[j] == ';' || line[j] == '?') {
-				j++
-			}
-			if j >= len(line) {
-				break
-			}
-			params := line[i+2 : j]
-			switch line[j] {
-			case 'A':
-				n := 1
-				if params != "" {
-					if v, err := strconv.Atoi(params); err == nil {
-						n = v
-					}
-				}
-				cursor -= n
-				if cursor < 0 {
-					cursor = 0
-				}
-			case 'K':
-				if cursor >= 0 && cursor < len(state.Output) {
-					state.Output[cursor] = ""
-				}
-			}
-			i = j + 1
+	raw := msg.Line
+	segments := strings.Split(raw, "\r")
+	for i, seg := range segments {
+		replace := msg.Replace || i > 0 || strings.Contains(raw, "\x1b[2K")
+		progressKey := ""
+		if idx := strings.Index(seg, ".fits:"); idx > 0 {
+			progressKey = strings.TrimSpace(seg[:idx])
+		}
+		if strings.Contains(seg, "Files Downloaded:") || strings.Contains(seg, "file/s") || strings.Contains(seg, "%|") {
+			replace = true
+		}
+		text := strings.ReplaceAll(seg, "\x1b[2K", "")
+		text = stripANSI(text)
+		rawText := strings.TrimSpace(text)
+		if rawText == "" {
 			continue
 		}
-		i++
-	}
+		if isEventStatusLine(rawText) {
+			state.EventStatus = trimEventStatus(rawText)
+			if width > 0 {
+				rawText = truncateLine(rawText, width)
+			}
+			if state.EventIdx >= 0 && state.EventIdx < len(state.Output) {
+				state.Output[state.EventIdx] = rawText
+			} else {
+				state.Output = append(state.Output, rawText)
+				state.EventIdx = len(state.Output) - 1
+			}
+			continue
+		}
+		if width > 0 {
+			text = truncateLine(text, width)
+		}
+		if text == "" {
+			continue
+		}
 
-	text := stripANSI(strings.ReplaceAll(line, "\r", ""))
-	if width > 0 {
-		text = truncateLine(text, width)
-	}
-	if text == "" {
-		state.Cursor = cursor
-		return
-	}
-
-	if replace {
-		if cursor < len(state.Output) {
-			state.Output[cursor] = text
-		} else if cursor == len(state.Output) {
+		if progressKey != "" {
+			if state.ProgressIdx == nil {
+				state.ProgressIdx = make(map[string]int)
+			}
+			if state.ProgressTime == nil {
+				state.ProgressTime = make(map[string]time.Time)
+			}
+			if idx, ok := state.ProgressIdx[progressKey]; ok && idx >= 0 && idx < len(state.Output) {
+				state.Output[idx] = text
+			} else {
+				state.Output = append(state.Output, text)
+				state.ProgressIdx[progressKey] = len(state.Output) - 1
+			}
+			state.ProgressTime[progressKey] = time.Now()
+		} else if replace && len(state.Output) > 0 {
+			state.Output[len(state.Output)-1] = text
+		} else {
 			state.Output = append(state.Output, text)
 		}
-	} else {
-		state.Output = append(state.Output, text)
-		cursor = len(state.Output) - 1
 	}
 
 	const maxOutputLines = 300
 	if len(state.Output) > maxOutputLines {
 		state.Output = state.Output[len(state.Output)-maxOutputLines:]
-		if cursor >= maxOutputLines {
-			cursor = maxOutputLines - 1
-		}
 	}
 
-	state.Cursor = cursor
+	pruneProgressLines(state)
+}
+
+func pruneProgressLines(state *downloads.DownloadState) {
+	if len(state.ProgressIdx) == 0 || len(state.ProgressTime) == 0 {
+		return
+	}
+	now := time.Now()
+	for key, idx := range state.ProgressIdx {
+		if idx < 0 || idx >= len(state.Output) {
+			delete(state.ProgressIdx, key)
+			delete(state.ProgressTime, key)
+			continue
+		}
+		line := state.Output[idx]
+		percent := parsePercent(line)
+		if percent >= 100 {
+			removeProgressLine(state, key, idx)
+			continue
+		}
+		if last, ok := state.ProgressTime[key]; ok {
+			if percent >= 95 && now.Sub(last) > 2*time.Second {
+				removeProgressLine(state, key, idx)
+				continue
+			}
+			if now.Sub(last) > 10*time.Second {
+				removeProgressLine(state, key, idx)
+			}
+		}
+	}
+}
+
+func isEventStatusLine(line string) bool {
+	return strings.Contains(line, " events |") && strings.Contains(line, "/") && strings.HasPrefix(line, "[")
+}
+
+func trimEventStatus(line string) string {
+	idx := strings.Index(line, "skipped:")
+	if idx == -1 {
+		return line
+	}
+	rest := line[idx:]
+	next := strings.Index(rest, " | ")
+	if next == -1 {
+		return line
+	}
+	return strings.TrimSpace(line[:idx+next])
+}
+
+
+func removeProgressLine(state *downloads.DownloadState, key string, idx int) {
+	delete(state.ProgressIdx, key)
+	delete(state.ProgressTime, key)
+	if idx < 0 || idx >= len(state.Output) {
+		return
+	}
+	state.Output = append(state.Output[:idx], state.Output[idx+1:]...)
+	for k, v := range state.ProgressIdx {
+		if v > idx {
+			state.ProgressIdx[k] = v - 1
+		}
+	}
+}
+
+func parsePercent(line string) int {
+	m := percentRE.FindStringSubmatch(line)
+	if len(m) < 2 {
+		return -1
+	}
+	val, err := strconv.Atoi(m[1])
+	if err != nil {
+		return -1
+	}
+	return val
 }
 
 // next, we go to View() in view.go
