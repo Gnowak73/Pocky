@@ -100,7 +100,7 @@ ln -s python3 "$(dirname "$(which python3)")/python"
 
 Once this is finished, typing `python` in a terminal should do the same thing as the `python3` command.
 
-#### Python Packages
+### Python Packages
 
 Once you have made a conda env, you need these packages:
 
