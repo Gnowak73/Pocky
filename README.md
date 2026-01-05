@@ -82,6 +82,8 @@ where you input the executable name into `[name]`. This requires a recent Go ins
 See https://go.dev/doc/install. In the case of any recompiles or the use of the bash version, users may
 need to grant execute permissions via `chmod +x`.
 
+<hr/>
+
 ### Python Setup
 
 To run the parts of the program which run Python files for data analysis, server querying, or downloading FITS,
