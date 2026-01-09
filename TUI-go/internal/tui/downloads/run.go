@@ -17,14 +17,26 @@ import (
 type DownloadFinishedMsg struct {
 	Output   string // this will be the output from the python file just like in query.py
 	Email    string // last JSOC email used for downloads
-	Canceled bool
+	Canceled bool   // tells the UI the user canceled the dwonload to exit cleanly without error
 	Err      error
 }
 
+// we do not know how many messages we need to print out to show the terminal. We want a stream. Hence,
+// we need a way to take the outputs from python and then pass them off to a viewport immediately
+// or with respect to some queue. To do this, we will use channels, which are threat safe and will
+// synchronise such that we take a message after listening to the python script and pass it on to
+// the go program.
+
 type DownloadStartedMsg struct {
-	OutputCh <-chan DownloadOutputMsg
-	DoneCh   <-chan DownloadFinishedMsg
-	Cancel   context.CancelFunc
+	OutputCh <-chan DownloadOutputMsg   // stream live lines as python runs, python -> viewport
+	DoneCh   <-chan DownloadFinishedMsg // send a single final message when process ends
+	Cancel   context.CancelFunc         // when called, any command (exec.CommandContext) is killed to abort
+
+	// we require the DoenCh as RunDownloadCmd runs asynchronously, as the UI needs to update
+	// while recieving inputs. The goroutine can't return values directly to the update loop,
+	// so we send a final result over the doneCh. In the query loader.go, we just return a
+	// tea.Cmd what runs the command and returns a FlaresLoadedMsg. We did not use a goroutine
+	// there because we only needed one final result (weren't listening or streaming).
 }
 
 type DownloadOutputMsg struct {
