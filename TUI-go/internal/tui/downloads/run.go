@@ -39,19 +39,30 @@ type DownloadStartedMsg struct {
 	// there because we only needed one final result (weren't listening or streaming).
 }
 
+// we need a way to take the messages from the python output and then format them correctly to the
+// viewport. For example, when we have a progress bar load from the download, we will get a message for
+// each update in the progress bar. We dont want to print these out on separate lines. Rather, we want to
+// take them and replace the old line they were on, to show the animation of the message like seen
+// traditionally in the terminal. We will seoncd one of these messages through a channel.
+
 type DownloadOutputMsg struct {
-	Line    string
-	Replace bool
+	Line    string // the text from stdout/stderr
+	Replace bool   // overwrite the last progress line?
 }
 
 func ListenDownloadCmd(outputCh <-chan DownloadOutputMsg, doneCh <-chan DownloadFinishedMsg) tea.Cmd {
-	// keep the loop alive by blocking for a single output or completion message,
-	// then returning it back to the update loop.
+	// We wait for the next output or completion message and return it as a tea.Msg, so the UI
+	// keeps recieving updates until the download finishes through the Update(). We only use
+	// reading channels since we don't need to send any info out.
 	return func() tea.Msg {
 		if outputCh == nil || doneCh == nil {
 			return nil
 		}
-		select {
+		select { // waits on multiple channel operations at once and runs first one that's ready
+		// we only check the bool "ok" since we use buffered channels, and we dont want zero values recieved
+		// from closed channels to appear. "ok" tells us whether a recieved message comes form an open
+		// or closed channel. Note deadlock.
+
 		case msg, ok := <-outputCh:
 			if ok {
 				return msg
@@ -70,82 +81,32 @@ func ListenDownloadCmd(outputCh <-chan DownloadOutputMsg, doneCh <-chan Download
 func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 	// we run the download asynchronously so the TUI stays responsive; this mirrors the
 	// loader.go pattern where python runs outside the main update loop and returns a msg.
+
 	return func() tea.Msg {
-		// fall back to the shared assets in the parent directory of the running binary,
-		// same pattern as config.ParentDirFile in loader and config handling.
+		// same pattern as config.ParentDirFile in loader and config handling. If the user
+		// leaves things blank we will return errors. Less hand holding.
 		tsv := strings.TrimSpace(state.Form.TSVPath)
-		if tsv == "" {
-			tsv = config.ParentDirFile("flare_cache.tsv")
-			if tsv == "" {
-				tsv = "flare_cache.tsv"
-			}
-		}
 		if _, err := os.Stat(tsv); err != nil {
 			return DownloadFinishedMsg{
 				Err: fmt.Errorf("flare_cache.tsv not found at %s", tsv),
 			}
 		}
 
-		// resolve output directory by level with the same parent-dir fallback as the cache path.
 		outDir := strings.TrimSpace(state.Form.OutDir)
-		if outDir == "" {
-			if state.Level == Level1p5 {
-				outDir = config.ParentDirFile("data_aia_lvl1.5")
-				if outDir == "" {
-					outDir = "data_aia_lvl1.5"
-				}
-			} else {
-				outDir = config.ParentDirFile("data_aia_lvl1")
-				if outDir == "" {
-					outDir = "data_aia_lvl1"
-				}
-			}
-		}
-
 		maxConn := strings.TrimSpace(state.Form.MaxConn)
-		if maxConn == "" {
-			maxConn = "6"
-		}
 		maxSplits := strings.TrimSpace(state.Form.MaxSplits)
-		if maxSplits == "" {
-			maxSplits = "3"
-		}
 		attempts := strings.TrimSpace(state.Form.Attempts)
-		if attempts == "" {
-			if state.Protocol == ProtocolFido {
-				attempts = "3"
-			} else {
-				attempts = "5"
-			}
-		}
 		cadence := strings.TrimSpace(state.Form.Cadence)
-		if cadence == "" {
-			if state.Protocol == ProtocolFido {
-				cadence = "12"
-			} else {
-				cadence = "12s"
-			}
-		}
+
+		// lenient for seconds with or without "s" at the end
 		if state.Protocol == ProtocolFido {
 			cadence = strings.TrimSuffix(cadence, "s")
-			cadence = strings.TrimSuffix(cadence, "S")
-			if cadence == "" {
-				cadence = "12"
-			}
 		} else if !strings.HasSuffix(cadence, "s") && !strings.HasSuffix(cadence, "S") {
 			cadence += "s"
 		}
 		padBefore := strings.TrimSpace(state.Form.PadBefore)
-		if padBefore == "" {
-			padBefore = "0"
-		}
 		padAfter := strings.TrimSpace(state.Form.PadAfter)
-
-		// use last saved email as a fallback to mirror the shell flow.
 		email := strings.TrimSpace(state.Form.Email)
-		if email == "" {
-			email = strings.TrimSpace(cfg.DLEmail)
-		}
 
 		usedEmail := ""
 		var cmd *exec.Cmd
