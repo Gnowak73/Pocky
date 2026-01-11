@@ -107,8 +107,11 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 		padBefore := strings.TrimSpace(state.Form.PadBefore)
 		padAfter := strings.TrimSpace(state.Form.PadAfter)
 		email := strings.TrimSpace(state.Form.Email)
-
 		usedEmail := ""
+
+		// we will make a pointer to a exec.Cmd, a struct which runs external commands. Thus,
+		// we can later assign it in a switch statement so it runs the correct python command
+		// given the download options.
 		var cmd *exec.Cmd
 		switch state.Protocol {
 		case ProtocolDRMS:
@@ -139,14 +142,12 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 
 		case ProtocolFido:
 			provider := strings.TrimSpace(string(state.Form.Provider))
-			if provider == "" {
-				provider = "vso"
-			}
+
 			if provider == "jsoc" && email == "" {
 				return DownloadFinishedMsg{Err: fmt.Errorf("JSOC email is required")}
 			}
 
-			// Fido uses a different script and cadence units (seconds vs 12s).
+			// Fido uses a different script.
 			args := []string{
 				"fetch_fido.py",
 				"--tsv", tsv,
