@@ -171,13 +171,20 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			return DownloadFinishedMsg{Err: fmt.Errorf("unknown protocol")}
 		}
 
+		// context.Context is a type for controlling long-running work. We will use it to let one part
+		// of the program signal "timout" to another part without global flags. In this case, cancel download.
+		// In other words, its an interface holding state information. Using context.WithCancel returns
+		// a concrete struct that implements that interface. When we call cancel(), it closes a
+		// context.Context.Done() channel and sets ctx.Err() to context.Canceled. the exec.CommandContext
+		// registers a watcher on ctx.Done(). When it closes, we kill the process.
 		ctx, cancel := context.WithCancel(context.Background())
 		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 		cmd.Dir = ".." // run from repo root like loader.go so scripts resolve paths correctly.
 
+		// need to set up live streamming of the process output before starting it
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			cancel()
+			cancel() // stops the context, function returned as a var from prior withCancel
 			return DownloadFinishedMsg{Err: err}
 		}
 		stderr, err := cmd.StderrPipe()
@@ -185,16 +192,20 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			cancel()
 			return DownloadFinishedMsg{Err: err}
 		}
-
-		if err := cmd.Start(); err != nil {
+		if err := cmd.Start(); err != nil { // starts python process
 			cancel()
 			return DownloadFinishedMsg{Err: err}
 		}
 
-		outputCh := make(chan DownloadOutputMsg, 128)
+		// we have buffered channels to hold info. The outputCh can get bursty output, so a small
+		// buffer prevents the reader goroutines from blocking if the UI is busy, since unbuffered channels
+		// will block if output arrives faster than can be recieved, processed, and drained. doneCh only ever
+		// sends one final message, so a 1 sized buffer is enough.
+		outputCh := make(chan DownloadOutputMsg, 256) // ~256 lines can be held
 		doneCh := make(chan DownloadFinishedMsg, 1)
 
 		go func() {
+			// once go routine finishes, we make sure both channels are closed
 			defer close(outputCh)
 			defer close(doneCh)
 
