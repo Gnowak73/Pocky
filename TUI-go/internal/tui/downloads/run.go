@@ -36,7 +36,9 @@ type DownloadStartedMsg struct {
 	// while recieving inputs. The goroutine can't return values directly to the update loop,
 	// so we send a final result over the doneCh. In the query loader.go, we just return a
 	// tea.Cmd what runs the command and returns a FlaresLoadedMsg. We did not use a goroutine
-	// there because we only needed one final result (weren't listening or streaming).
+	// there because we only needed one final result (weren't listening or streaming)
+	// tea.Cmds are asynchronous and ran through goroutines, but here we need to use tea.Cmd to run
+	// python then on top of that we need to listen in and read/write info asynchronously.
 }
 
 // we need a way to take the messages from the python output and then format them correctly to the
@@ -181,13 +183,14 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 		cmd.Dir = ".." // run from repo root like loader.go so scripts resolve paths correctly.
 
-		// need to set up live streamming of the process output before starting it
-		stdout, err := cmd.StdoutPipe()
+		// need to set up live streamming of the process output before starting it.
+		// Pip is just read/write stream with two ends
+		stdout, err := cmd.StdoutPipe() // get normal output
 		if err != nil {
 			cancel() // stops the context, function returned as a var from prior withCancel
 			return DownloadFinishedMsg{Err: err}
 		}
-		stderr, err := cmd.StderrPipe()
+		stderr, err := cmd.StderrPipe() // get errors
 		if err != nil {
 			cancel()
 			return DownloadFinishedMsg{Err: err}
@@ -204,45 +207,65 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 		outputCh := make(chan DownloadOutputMsg, 256) // ~256 lines can be held
 		doneCh := make(chan DownloadFinishedMsg, 1)
 
+		// for asynchonous we use go command. This will be for managing the process + channels. Inside
+		// of this we will require two more go routines for reading/writing from the two pipes. This
+		// is not just efficiently, it is also necessary. The OS gives each pipe a limited buffer.
+		//  If the child keeps writing to one pipe and nobody reads it, the buffer fills. Once full,
+		//  the child's write() blocks, so we read both to drain them consistently. Having one write
+		//  closed effectively stalls the entire process since its often single-threaded (or writes in the
+		//  same thread). If the thread blocks on a write to a full pipe, the process can't continue its
+		//  work or write to the other pipe either.
 		go func() {
 			// once go routine finishes, we make sure both channels are closed
 			defer close(outputCh)
 			defer close(doneCh)
 
-			var b strings.Builder
-			var mu sync.Mutex
-			var wg sync.WaitGroup
+			// we will use a shared output string "b" for the full stdout/etderr and store that in
+			// DownloadFinishedMsg.Output at the end. Future maybe we use it for logging/debugging
+
+			var b strings.Builder // efficiently build string without repeated allocations
+			var mu sync.Mutex     // protects the shared strings.Builder for read/write output
+			var wg sync.WaitGroup // wait for goroutine to finish before final send
 
 			readPipe := func(r io.ReadCloser) {
+				// io.ReadCloser is an interface that has Read([]byte) (int, error) and Close() error.
+				// Its a readable stream so we can close-like stdout/stderr pipes.
 				defer wg.Done()
 				defer func() {
-					_ = r.Close()
+					_ = r.Close() // dont care about error, just close
 				}()
-				reader := bufio.NewReader(r)
+				reader := bufio.NewReader(r) // wrap io reader with buffering
+				// buffer is more efficient, less system calls
+
 				var lineBuf strings.Builder
-				flush := func(replace bool) {
+				flush := func() {
+					// this function takes whatever is in lineBuf, clears it, and
+					// sends it to the UI as a normal line, then appends it to the
+					// shared output builder with a newline.
 					text := lineBuf.String()
 					lineBuf.Reset()
 					if text == "" {
 						return
 					}
-					outputCh <- DownloadOutputMsg{Line: text, Replace: replace}
+					outputCh <- DownloadOutputMsg{Line: text, Replace: false}
 					mu.Lock()
-					b.WriteString(text)
-					b.WriteByte('\n')
+					b.WriteString(text) // put all text in builder
+					b.WriteByte('\n')   // add single new line byte to end
 					mu.Unlock()
 				}
 				for {
+					// we read bytes to see escape bytes. That way we can know when to move
+					// cursor to next like or update progress bars etc.
 					ch, err := reader.ReadByte()
 					if err != nil {
-						if err == io.EOF {
-							flush(false)
+						if err == io.EOF { // check for EOF sentinel error value (end of file)
+							flush()
 							return
 						}
 						return
 					}
 					switch ch {
-					case '\r':
+					case '\r': // carriage return + progress bar refresh
 						text := lineBuf.String()
 						lineBuf.Reset()
 						if text == "" {
@@ -253,29 +276,35 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 						b.WriteString(text)
 						b.WriteByte('\n')
 						mu.Unlock()
-					case '\n':
-						flush(false)
+					case '\n': // make new line
+						flush()
 					default:
 						_ = lineBuf.WriteByte(ch)
 					}
 				}
 			}
-
+			// we have two readPipes, one for the stdout and one for stderr. (All exec commands
+			// have these two pipes). As both have access to the save string builder "b", we use
+			// a mutex to lock and unlock for each write, preventing overlapping problems.
+			// The waitgroup is so that we wait for both pipes to get done before moving onto
+			// the next part in our code.
 			wg.Add(2)
 			go readPipe(stdout)
 			go readPipe(stderr)
 
-			err := cmd.Wait()
-			wg.Wait()
+			err := cmd.Wait() // block until python process exits and prevent process table zombie
+			wg.Wait()         // block until both pipes are drained
 
 			doneCh <- DownloadFinishedMsg{
-				Output:   strings.TrimSpace(b.String()),
+				Output:   strings.TrimSpace(b.String()), // total output
 				Email:    usedEmail,
 				Err:      err,
-				Canceled: ctx.Err() == context.Canceled,
+				Canceled: ctx.Err() == context.Canceled, // tells us if we canceled or it failed
 			}
 		}()
 
+		// this happens right after starting the goroutine, so the download has officially started.
+		// We will use this to know when the Update() should listen in to the channels.
 		return DownloadStartedMsg{
 			OutputCh: outputCh,
 			DoneCh:   doneCh,
