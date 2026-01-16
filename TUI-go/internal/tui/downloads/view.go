@@ -129,7 +129,7 @@ func RenderForm(state DownloadState, width int) string {
 	)
 	confirmLine := ""
 	if state.Confirming {
-		confirmLine = "\n\n" + renderConfirmBox(width)
+		confirmLine = "\n\n" + renderConfirmBox(width, state.ConfirmChoice)
 	}
 	return "\n\n\n\n" + placed + "\n\n" + hintLine + confirmLine + "\n\n\n\n" + helpLine
 }
@@ -187,14 +187,21 @@ func renderScrollbar(height int, percent float64) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-func renderConfirmBox(width int) string {
+func renderConfirmBox(width int, choice int) string {
 	title := styles.LightGray.Render("Proceed with download?")
-	yes := styles.PinkOption.Render("Yes (y)")
-	no := styles.LightGray.Render("No (n)")
+	yesStyle := styles.LightGray
+	noStyle := styles.LightGray
+	if choice == 0 {
+		yesStyle = styles.PinkOption
+	} else {
+		noStyle = styles.PinkOption
+	}
+	yes := yesStyle.Render("Yes")
+	no := noStyle.Render("No")
 	choices := lipgloss.JoinHorizontal(lipgloss.Center, yes, "   ", no)
 
 	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Purple.GetForeground()).
 		Padding(1, 2).
 		Render(lipgloss.JoinVertical(lipgloss.Center, title, choices))

@@ -62,6 +62,7 @@ type DownloadState struct {
 	EventStatus  string               // latest event progress line
 	EventIdx     int                  // index of the event status line in output buffer
 	DonePrompt   bool                 // wait for enter before returning to main menu
+	ConfirmChoice int                 // which confirm option is highlighted (0 yes, 1 no)
 }
 
 func DefaultDownloadForm(cfg config.Config, protocol Protocol, level Level) DownloadForm {
@@ -114,6 +115,7 @@ func NewDownloadState(cfg config.Config) DownloadState {
 		MenuSelected: 0,
 		Level:        Level1,
 		Form:         downloadForm,
+		ConfirmChoice: 0,
 		Viewport:     viewport.New(80, 20),
 	}
 }

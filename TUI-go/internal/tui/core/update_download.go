@@ -96,6 +96,35 @@ func (m Model) handleDownloadMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isProvider := m.Download.Protocol == downloads.ProtocolFido && m.Download.Focus == 0 // check if we can toggle
 
+	if m.Download.Confirming {
+		switch msg.String() {
+		case "left", "h", "up", "k":
+			m.Download.ConfirmChoice = 0
+			return m, nil
+		case "right", "l", "down", "j":
+			m.Download.ConfirmChoice = 1
+			return m, nil
+		case "enter":
+			if m.Download.ConfirmChoice == 1 {
+				m.Download.Confirming = false
+				return m, nil
+			}
+			m.Download.LastOutput = ""
+			m.Download.Output = nil
+			m.Download.ProgressIdx = nil
+			m.Download.ProgressTime = nil
+			m.Download.EventStatus = ""
+			m.Download.EventIdx = -1
+			m.Download.Running = true
+			m.Download.Confirming = false
+			m.Mode = ModeDownloadRun
+			return m, downloads.RunDownloadCmd(m.Download, m.Cfg)
+		case "esc":
+			m.Download.Confirming = false
+			return m, nil
+		}
+	}
+
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -124,25 +153,8 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		m.Download.Confirming = true
+		m.Download.ConfirmChoice = 0
 		return m, nil
-	case "Y":
-		if m.Download.Confirming {
-			m.Download.LastOutput = ""
-			m.Download.Output = nil
-			m.Download.ProgressIdx = nil
-			m.Download.ProgressTime = nil
-			m.Download.EventStatus = ""
-			m.Download.EventIdx = -1
-			m.Download.Running = true
-			m.Download.Confirming = false
-			m.Mode = ModeDownloadRun
-			return m, downloads.RunDownloadCmd(m.Download, m.Cfg)
-		}
-	case "N":
-		if m.Download.Confirming {
-			m.Download.Confirming = false
-			return m, nil
-		}
 	default:
 		if len(msg.Runes) > 0 {
 			downloads.AppendFormRunes(&m.Download, m.Download.Focus, msg.Runes)
