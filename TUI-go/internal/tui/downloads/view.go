@@ -188,7 +188,7 @@ func renderScrollbar(height int, percent float64) string {
 }
 
 func renderConfirmBox(width int, choice int) string {
-	title := styles.LightGray.Render("Proceed with download?")
+	title := styles.LightGray.Render("Proceed with Download?")
 	yesStyle := styles.LightGray
 	noStyle := styles.LightGray
 	if choice == 0 {
