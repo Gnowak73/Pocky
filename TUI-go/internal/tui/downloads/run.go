@@ -303,7 +303,8 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			}
 		}()
 
-		// this happens right after starting the goroutine, so the download has officially started.
+		// this happens right after starting the goroutine, so the download has officially started (as
+		// cmd.Start() didnt return an error and neither did the pipes).
 		// We will use this to know when the Update() should listen in to the channels.
 		return DownloadStartedMsg{
 			OutputCh: outputCh,

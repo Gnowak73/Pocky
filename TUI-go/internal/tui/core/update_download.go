@@ -11,14 +11,17 @@ func (m Model) handleDownloadMenuSel(choice string) (tea.Model, tea.Cmd) {
 	case "JSOC DRMS Lvl 1":
 		m.Download.Level = downloads.Level1
 		m.Download.Protocol = downloads.ProtocolDRMS
+		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolDRMS, downloads.Level1)
 		m.Mode = ModeDownloadForm
 	case "JSOC DRMS Lvl 1.5":
 		m.Download.Level = downloads.Level1p5
 		m.Download.Protocol = downloads.ProtocolDRMS
+		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolDRMS, downloads.Level1p5)
 		m.Mode = ModeDownloadForm
 	case "Fido Fetch Lvl 1":
 		m.Download.Level = downloads.Level1
 		m.Download.Protocol = downloads.ProtocolFido
+		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolFido, downloads.Level1)
 		m.Download.Form.Provider = downloads.ProviderVSO
 		m.Mode = ModeDownloadForm
 	case "Back":
@@ -99,11 +102,11 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.Mode = ModeDownloadMenu
 		return m, nil
-	case "up", "k":
+	case "up":
 		if m.Download.Focus > 0 {
 			m.Download.Focus--
 		}
-	case "down", "j":
+	case "down":
 		max := len(downloads.FormLines(m.Download)) - 1
 		if m.Download.Focus < max {
 			m.Download.Focus++
@@ -122,7 +125,7 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.Download.Confirming = true
 		return m, nil
-	case "y", "Y":
+	case "Y":
 		if m.Download.Confirming {
 			m.Download.LastOutput = ""
 			m.Download.Output = nil
@@ -135,7 +138,7 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Mode = ModeDownloadRun
 			return m, downloads.RunDownloadCmd(m.Download, m.Cfg)
 		}
-	case "n", "N":
+	case "N":
 		if m.Download.Confirming {
 			m.Download.Confirming = false
 			return m, nil

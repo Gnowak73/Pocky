@@ -54,27 +54,52 @@ type DownloadState struct {
 	OutputCh     <-chan DownloadOutputMsg
 	DoneCh       <-chan DownloadFinishedMsg
 	Cancel       context.CancelFunc
-	Confirming  bool // confirm before running the download
-	Cursor      int  // current output cursor line for ANSI updates
-	ProgressIdx map[string]int // per-file progress bar line indices
+	Confirming   bool                 // confirm before running the download
+	Cursor       int                  // current output cursor line for ANSI updates
+	ProgressIdx  map[string]int       // per-file progress bar line indices
 	ProgressTime map[string]time.Time // last update time for progress lines
-	Follow      bool // auto-scroll when at bottom
-	EventStatus string // latest event progress line
-	EventIdx   int    // index of the event status line in output buffer
-	DonePrompt bool   // wait for enter before returning to main menu
+	Follow       bool                 // auto-scroll when at bottom
+	EventStatus  string               // latest event progress line
+	EventIdx     int                  // index of the event status line in output buffer
+	DonePrompt   bool                 // wait for enter before returning to main menu
 }
 
-func NewDownloadState(cfg config.Config) DownloadState {
+func DefaultDownloadForm(cfg config.Config, protocol Protocol, level Level) DownloadForm {
 	tsvPath := config.ParentDirFile("flare_cache.tsv")
 	if tsvPath == "" {
 		tsvPath = "flare_cache.tsv"
 	}
 	outDir := config.ParentDirFile("data_aia_lvl1")
-	if outDir == "" {
-		outDir = "data_aia_lvl1"
+	if level == Level1p5 {
+		outDir = config.ParentDirFile("data_aia_lvl1.5")
 	}
-	email := strings.TrimSpace(cfg.DLEmail)
+	if outDir == "" {
+		if level == Level1p5 {
+			outDir = "data_aia_lvl1.5"
+		} else {
+			outDir = "data_aia_lvl1"
+		}
+	}
+	attempts := "5"
+	if protocol == ProtocolFido {
+		attempts = "3"
+	}
+	cadence := "12s"
 
+	return DownloadForm{
+		Email:     strings.TrimSpace(cfg.DLEmail),
+		TSVPath:   tsvPath,
+		OutDir:    outDir,
+		MaxConn:   "6",
+		MaxSplits: "3",
+		Attempts:  attempts,
+		Cadence:   cadence,
+		PadBefore: "0",
+		PadAfter:  "",
+	}
+}
+
+func NewDownloadState(cfg config.Config) DownloadState {
 	menu := []string{
 		"JSOC DRMS Lvl 1",
 		"JSOC DRMS Lvl 1.5",
@@ -82,17 +107,7 @@ func NewDownloadState(cfg config.Config) DownloadState {
 		"Back",
 	}
 
-	downloadForm := DownloadForm{
-		Email:     email,
-		TSVPath:   tsvPath,
-		OutDir:    outDir,
-		MaxConn:   "6",
-		MaxSplits: "3",
-		Attempts:  "5",
-		Cadence:   "12s",
-		PadBefore: "0",
-		PadAfter:  "",
-	}
+	downloadForm := DefaultDownloadForm(cfg, ProtocolDRMS, Level1)
 
 	return DownloadState{
 		MenuItems:    menu,
