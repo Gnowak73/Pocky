@@ -31,6 +31,7 @@ type DownloadStartedMsg struct {
 	OutputCh <-chan DownloadOutputMsg   // stream live lines as python runs, python -> viewport
 	DoneCh   <-chan DownloadFinishedMsg // send a single final message when process ends
 	Cancel   context.CancelFunc         // when called, any command (exec.CommandContext) is killed to abort
+	Resize   func(int, int)             // resize the PTY on window changes
 
 	// we require the DoenCh as RunDownloadCmd runs asynchronously, as the UI needs to update
 	// while recieving inputs. The goroutine can't return values directly to the update loop,
@@ -183,23 +184,6 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 		cmd.Dir = ".." // run from repo root like loader.go so scripts resolve paths correctly.
 
-		// need to set up live streamming of the process output before starting it.
-		// Pip is just read/write stream with two ends
-		stdout, err := cmd.StdoutPipe() // get normal output
-		if err != nil {
-			cancel() // stops the context, function returned as a var from prior withCancel
-			return DownloadFinishedMsg{Err: err}
-		}
-		stderr, err := cmd.StderrPipe() // get errors
-		if err != nil {
-			cancel()
-			return DownloadFinishedMsg{Err: err}
-		}
-		if err := cmd.Start(); err != nil { // starts python process
-			cancel()
-			return DownloadFinishedMsg{Err: err}
-		}
-
 		// we have buffered channels to hold info. The outputCh can get bursty output, so a small
 		// buffer prevents the reader goroutines from blocking if the UI is busy, since unbuffered channels
 		// will block if output arrives faster than can be recieved, processed, and drained. doneCh only ever
@@ -207,33 +191,89 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 		outputCh := make(chan DownloadOutputMsg, 256) // ~256 lines can be held
 		doneCh := make(chan DownloadFinishedMsg, 1)
 
-		// for asynchonous we use go command. This will be for managing the process + channels. Inside
-		// of this we will require two more go routines for reading/writing from the two pipes. This
-		// is not just efficiently, it is also necessary. The OS gives each pipe a limited buffer.
-		//  If the child keeps writing to one pipe and nobody reads it, the buffer fills. Once full,
-		//  the child's write() blocks, so we read both to drain them consistently. Having one write
-		//  closed effectively stalls the entire process since its often single-threaded (or writes in the
-		//  same thread). If the thread blocks on a write to a full pipe, the process can't continue its
-		//  work or write to the other pipe either.
+		// for asynchonous we use go command. This will be for managing the process + channels.
+		// We read from a PTY stream, which merges stdout/stderr into one output just like a real
+		// terminal. This avoids tqdm falling back to non-interactive logging.
+		var pipe io.Reader
+		var resize func(int, int)
+		var err error
+		var stdout io.ReadCloser
+		var stderr io.ReadCloser
+		if state.TerminalMode == TerminalEmulator {
+			pipe, resize, err = startDownloadProcess(cmd, state.Viewport.Width, state.Viewport.Height)
+			if err != nil {
+				cancel()
+				return DownloadFinishedMsg{Err: err}
+			}
+		} else {
+			stdout, err = cmd.StdoutPipe()
+			if err != nil {
+				cancel()
+				return DownloadFinishedMsg{Err: err}
+			}
+			stderr, err = cmd.StderrPipe()
+			if err != nil {
+				cancel()
+				return DownloadFinishedMsg{Err: err}
+			}
+			if err = cmd.Start(); err != nil {
+				cancel()
+				return DownloadFinishedMsg{Err: err}
+			}
+		}
+
 		go func() {
 			// once go routine finishes, we make sure both channels are closed
 			defer close(outputCh)
 			defer close(doneCh)
+			defer func() {
+				if state.TerminalMode == TerminalEmulator {
+					if closer, ok := pipe.(io.Closer); ok {
+						_ = closer.Close()
+					}
+					return
+				}
+				if stdout != nil {
+					_ = stdout.Close()
+				}
+				if stderr != nil {
+					_ = stderr.Close()
+				}
+			}()
 
 			// we will use a shared output string "b" for the full stdout/etderr and store that in
 			// DownloadFinishedMsg.Output at the end. Future maybe we use it for logging/debugging
 
 			var b strings.Builder // efficiently build string without repeated allocations
 			var mu sync.Mutex     // protects the shared strings.Builder for read/write output
-			var wg sync.WaitGroup // wait for goroutine to finish before final send
 
+			readPTY := func(r io.Reader) {
+				// io.ReadCloser is an interface that has Read([]byte) (int, error) and Close() error.
+				// Its a readable stream so we can close-like PTY streams.
+				reader := bufio.NewReader(r) // wrap io reader with buffering
+				// buffer is more efficient, less system calls
+
+				buf := make([]byte, 4096)
+				for {
+					n, err := reader.Read(buf)
+					if n > 0 {
+						text := string(buf[:n])
+						outputCh <- DownloadOutputMsg{Line: text, Replace: false}
+						mu.Lock()
+						b.WriteString(text)
+						mu.Unlock()
+					}
+					if err != nil {
+						if err == io.EOF { // check for EOF sentinel error value (end of file)
+							return
+						}
+						return
+					}
+				}
+			}
 			readPipe := func(r io.ReadCloser) {
 				// io.ReadCloser is an interface that has Read([]byte) (int, error) and Close() error.
 				// Its a readable stream so we can close-like stdout/stderr pipes.
-				defer wg.Done()
-				defer func() {
-					_ = r.Close() // dont care about error, just close
-				}()
 				reader := bufio.NewReader(r) // wrap io reader with buffering
 				// buffer is more efficient, less system calls
 
@@ -283,17 +323,27 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 					}
 				}
 			}
-			// we have two readPipes, one for the stdout and one for stderr. (All exec commands
-			// have these two pipes). As both have access to the save string builder "b", we use
-			// a mutex to lock and unlock for each write, preventing overlapping problems.
-			// The waitgroup is so that we wait for both pipes to get done before moving onto
-			// the next part in our code.
-			wg.Add(2)
-			go readPipe(stdout)
-			go readPipe(stderr)
 
-			err := cmd.Wait() // block until python process exits and prevent process table zombie
-			wg.Wait()         // block until both pipes are drained
+			if state.TerminalMode == TerminalEmulator {
+				// read from the PTY stream, which merges stdout/stderr like a real terminal.
+				// As we still share the output string builder "b", we use a mutex to prevent
+				// overlapping writes.
+				readPTY(pipe)
+				err = cmd.Wait() // block until python process exits and prevent process table zombie
+			} else {
+				var wg sync.WaitGroup
+				wg.Add(2)
+				go func() {
+					defer wg.Done()
+					readPipe(stdout)
+				}()
+				go func() {
+					defer wg.Done()
+					readPipe(stderr)
+				}()
+				err = cmd.Wait()
+				wg.Wait()
+			}
 
 			doneCh <- DownloadFinishedMsg{
 				Output:   strings.TrimSpace(b.String()), // total output
@@ -310,6 +360,7 @@ func RunDownloadCmd(state DownloadState, cfg config.Config) tea.Cmd {
 			OutputCh: outputCh,
 			DoneCh:   doneCh,
 			Cancel:   cancel,
+			Resize:   resize,
 		}
 	}
 }

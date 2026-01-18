@@ -27,6 +27,7 @@ type SpinnerState struct {
 
 type SelectorState struct {
 	List     []Entry // slice of flare entries
+	Header   string  // header line from python output used for cache writes
 	Selected map[int]bool
 	Cursor   int // just an int representing which row we are on
 	Offset   int // index of first visible item in flare list

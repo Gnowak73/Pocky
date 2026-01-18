@@ -11,17 +11,29 @@ func (m Model) handleDownloadMenuSel(choice string) (tea.Model, tea.Cmd) {
 	case "JSOC DRMS Lvl 1":
 		m.Download.Level = downloads.Level1
 		m.Download.Protocol = downloads.ProtocolDRMS
-		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolDRMS, downloads.Level1)
+		m.Download.Form = downloads.DefaultDownloadForm(
+			m.Cfg,
+			downloads.ProtocolDRMS,
+			downloads.Level1,
+		)
 		m.Mode = ModeDownloadForm
 	case "JSOC DRMS Lvl 1.5":
 		m.Download.Level = downloads.Level1p5
 		m.Download.Protocol = downloads.ProtocolDRMS
-		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolDRMS, downloads.Level1p5)
+		m.Download.Form = downloads.DefaultDownloadForm(
+			m.Cfg,
+			downloads.ProtocolDRMS,
+			downloads.Level1p5,
+		)
 		m.Mode = ModeDownloadForm
 	case "Fido Fetch Lvl 1":
 		m.Download.Level = downloads.Level1
 		m.Download.Protocol = downloads.ProtocolFido
-		m.Download.Form = downloads.DefaultDownloadForm(m.Cfg, downloads.ProtocolFido, downloads.Level1)
+		m.Download.Form = downloads.DefaultDownloadForm(
+			m.Cfg,
+			downloads.ProtocolFido,
+			downloads.Level1,
+		)
 		m.Download.Form.Provider = downloads.ProviderVSO
 		m.Mode = ModeDownloadForm
 	case "Back":
@@ -95,6 +107,11 @@ func (m Model) handleDownloadMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isProvider := m.Download.Protocol == downloads.ProtocolFido && m.Download.Focus == 0 // check if we can toggle
+	lines := downloads.FormLines(m.Download)
+	isTerminalMode := false
+	if m.Download.Focus >= 0 && m.Download.Focus < len(lines) {
+		isTerminalMode = lines[m.Download.Focus].Label == "Terminal Mode"
+	}
 
 	if m.Download.Confirming {
 		switch msg.String() {
@@ -108,6 +125,20 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.Download.ConfirmChoice == 1 {
 				m.Download.Confirming = false
 				return m, nil
+			}
+			if m.Width > 0 && m.Height > 0 {
+				downloadWidth := (m.Width * 3) / 5
+				if m.Width < 160 {
+					downloadWidth = (m.Width * 4) / 5
+				}
+				if downloadWidth < 60 {
+					downloadWidth = 60
+				}
+				if downloadWidth > m.Width-4 {
+					downloadWidth = m.Width - 4
+				}
+				m.Download.Viewport.Width = downloadWidth
+				m.Download.Viewport.Height = max((m.Height-12)/2, 8)
 			}
 			m.Download.LastOutput = ""
 			m.Download.Output = nil
@@ -142,8 +173,23 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "backspace", "delete":
 		downloads.DeleteFormChar(&m.Download, m.Download.Focus)
-	case " ":
-		if isProvider {
+	case " ", "left", "h", "right", "l":
+		if isTerminalMode {
+			switch msg.String() {
+			case "left", "h":
+				m.Download.TerminalMode = downloads.TerminalParser
+			case "right", "l":
+				m.Download.TerminalMode = downloads.TerminalEmulator
+			default:
+				if m.Download.TerminalMode == downloads.TerminalEmulator {
+					m.Download.TerminalMode = downloads.TerminalParser
+				} else {
+					m.Download.TerminalMode = downloads.TerminalEmulator
+				}
+			}
+			return m, nil
+		}
+		if msg.String() == " " && isProvider {
 			if m.Download.Form.Provider == downloads.ProviderJSOC {
 				m.Download.Form.Provider = downloads.ProviderVSO
 			} else {
@@ -177,10 +223,14 @@ func (m Model) handleDownloadRunKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Download.EventStatus = ""
 		m.Download.EventIdx = -1
 		m.Download.DonePrompt = false
+		if m.Download.Emu != nil {
+			m.Download.Emu.Reset()
+		}
 		m.Download.Viewport.SetContent("")
 		m.Download.OutputCh = nil
 		m.Download.DoneCh = nil
 		m.Download.Cancel = nil
+		m.Download.PTYResize = nil
 		m.Download.Running = false
 		m.Mode = ModeMain
 		return m, nil

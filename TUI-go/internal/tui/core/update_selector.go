@@ -36,6 +36,7 @@ func (m Model) handleSelectFlaresKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		err := flares.SaveFlareSelection(
 			m.Selector.List,
 			m.Selector.Selected,
+			m.Selector.Header,
 		)
 
 		if err != nil {

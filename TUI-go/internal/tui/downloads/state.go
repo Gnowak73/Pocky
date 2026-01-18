@@ -9,12 +9,14 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/pocky/tui-go/internal/tui/config"
+	"github.com/pocky/tui-go/internal/tui/termemu"
 )
 
 type (
 	Protocol string // the server protocol for download (e.g., Fido and DRMS)
 	Provider string // a string type for the provider
 	Level    string // a string stype for the data level FITs
+	TerminalMode string // how to render download output in the viewport
 )
 
 const (
@@ -24,6 +26,8 @@ const (
 	Level1p5     Level    = "lvl1.5"
 	ProtocolDRMS Protocol = "drms"
 	ProtocolFido Protocol = "fido"
+	TerminalParser   TerminalMode = "parser"
+	TerminalEmulator TerminalMode = "emulator"
 )
 
 type DownloadForm struct {
@@ -46,6 +50,7 @@ type DownloadState struct {
 	Protocol     Protocol
 	Level        Level          // which level of fits data is chosen
 	Form         DownloadForm   // argument information required for python scripts
+	TerminalMode TerminalMode   // parser or emulator for download output
 	Focus        int            // the index of the currently active form field
 	Running      bool           // download in progress?
 	LastOutput   string         // capture stdout/stderr for display
@@ -63,6 +68,8 @@ type DownloadState struct {
 	EventIdx     int                  // index of the event status line in output buffer
 	DonePrompt   bool                 // wait for enter before returning to main menu
 	ConfirmChoice int                 // which confirm option is highlighted (0 yes, 1 no)
+	Emu         *termemu.Emulator     // terminal emulator for exact progress rendering
+	PTYResize   func(int, int)        // resize the PTY when the viewport changes
 }
 
 func DefaultDownloadForm(cfg config.Config, protocol Protocol, level Level) DownloadForm {
@@ -115,7 +122,9 @@ func NewDownloadState(cfg config.Config) DownloadState {
 		MenuSelected: 0,
 		Level:        Level1,
 		Form:         downloadForm,
+		TerminalMode: TerminalParser,
 		ConfirmChoice: 0,
+		Emu:          termemu.New(80),
 		Viewport:     viewport.New(80, 20),
 	}
 }

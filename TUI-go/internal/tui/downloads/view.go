@@ -27,6 +27,11 @@ func formLines(state DownloadState) []FieldLine {
 	if state.Protocol == ProtocolDRMS || form.Provider == ProviderJSOC {
 		lines = append(lines, FieldLine{"Email", form.Email})
 	}
+	modeLabel := "Parser"
+	if state.TerminalMode == TerminalEmulator {
+		modeLabel = "Emulator"
+	}
+	lines = append(lines, FieldLine{"Terminal Mode", modeLabel})
 
 	lines = append(lines,
 		FieldLine{"TSV Path", form.TSVPath},
@@ -54,6 +59,7 @@ func RenderForm(state DownloadState, width int) string {
 		"Pad After":  "Minutes after event start (Blank = to event end)",
 		"Email":      "JSOC Email (env JSOC_EMAIL used if blank)",
 		"Provider":   "Fido provider (space toggles jsoc/vso)",
+		"Terminal Mode": "Output renderer (parser is default)",
 	}
 
 	// given the state and the width of the application window, we will return a
@@ -238,34 +244,36 @@ func AppendFormRunes(state *DownloadState, focus int, runes []rune) {
 }
 
 func FormFieldPtr(state *DownloadState, focus int) *string {
-	fields := []*string{} // slice of pointers to actual string fields
-	// we will return the pointer which our focus is currently on for typing rune inputs
-
-	// Provider is display-only; shift focus if Fido
-	if state.Protocol == ProtocolFido {
-		if focus == 0 {
-			return nil
-		}
-		focus--
-	}
-
-	if state.Protocol == ProtocolDRMS || state.Form.Provider == ProviderJSOC {
-		fields = append(fields, &state.Form.Email)
-	}
-
-	fields = append(fields,
-		&state.Form.TSVPath,
-		&state.Form.OutDir,
-		&state.Form.MaxConn,
-		&state.Form.MaxSplits,
-		&state.Form.Attempts,
-		&state.Form.Cadence,
-		&state.Form.PadBefore,
-		&state.Form.PadAfter,
-	)
-
-	if focus < 0 || focus >= len(fields) {
+	// return the pointer for the focused, editable line in the rendered form.
+	lines := formLines(*state)
+	if focus < 0 || focus >= len(lines) {
 		return nil
 	}
-	return fields[focus]
+	line := lines[focus]
+	switch line.Label {
+	case "Provider":
+		return nil
+	case "Terminal Mode":
+		return nil
+	case "Email":
+		return &state.Form.Email
+	case "TSV Path":
+		return &state.Form.TSVPath
+	case "Output Dir":
+		return &state.Form.OutDir
+	case "Max Conn":
+		return &state.Form.MaxConn
+	case "Max Splits":
+		return &state.Form.MaxSplits
+	case "Attempts":
+		return &state.Form.Attempts
+	case "Cadence":
+		return &state.Form.Cadence
+	case "Pad Before":
+		return &state.Form.PadBefore
+	case "Pad After":
+		return &state.Form.PadAfter
+	default:
+		return nil
+	}
 }

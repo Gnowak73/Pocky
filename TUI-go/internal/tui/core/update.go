@@ -7,11 +7,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/pocky/tui-go/internal/tui/chrome"
 	"github.com/pocky/tui-go/internal/tui/config"
 	"github.com/pocky/tui-go/internal/tui/downloads"
 	"github.com/pocky/tui-go/internal/tui/flares"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/pocky/tui-go/internal/tui/termemu"
 )
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
@@ -68,8 +69,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((msg.Height-12)/2, 8)
 			if m.Mode == ModeDownloadRun {
-				m.Download.Output = nil
-				m.Download.Viewport.SetContent("")
+				if m.Download.TerminalMode == downloads.TerminalEmulator {
+					if m.Download.Emu != nil {
+						m.Download.Emu.Resize(m.Download.Viewport.Width)
+						m.Download.Viewport.SetContent(m.Download.Emu.Render())
+					} else {
+						m.Download.Viewport.SetContent("")
+					}
+					if m.Download.PTYResize != nil {
+						m.Download.PTYResize(m.Download.Viewport.Width, m.Download.Viewport.Height)
+					}
+				} else {
+					m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
+				}
 				m.Download.Viewport.GotoBottom()
 			}
 			if m.Mode == ModeCacheView && m.Cache.Content != "" {
@@ -104,6 +116,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.OutputCh = msg.OutputCh
 		m.Download.DoneCh = msg.DoneCh
 		m.Download.Cancel = msg.Cancel
+		m.Download.PTYResize = msg.Resize
 		if m.Width > 0 && m.Height > 0 {
 			downloadWidth := (m.Width * 3) / 5
 			if m.Width < 160 {
@@ -117,6 +130,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.Download.Viewport.Width = downloadWidth
 			m.Download.Viewport.Height = max((m.Height-12)/2, 8)
+			if m.Mode == ModeDownloadRun && m.Download.PTYResize != nil {
+				m.Download.PTYResize(m.Download.Viewport.Width, m.Download.Viewport.Height)
+			}
 		}
 		m.Download.Cursor = 0
 		m.Download.ProgressIdx = make(map[string]int)
@@ -124,14 +140,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.EventStatus = ""
 		m.Download.EventIdx = -1
 		m.Download.Follow = true
-		m.Download.Viewport.SetContent("")
+		m.Download.Output = nil
+		if m.Download.TerminalMode == downloads.TerminalEmulator {
+			if m.Download.Emu == nil {
+				m.Download.Emu = termemu.New(m.Download.Viewport.Width)
+			} else {
+				m.Download.Emu.Resize(m.Download.Viewport.Width)
+			}
+			m.Download.Emu.Reset()
+			m.Download.Viewport.SetContent("")
+		} else {
+			m.Download.Viewport.SetContent("")
+		}
 		return m, downloads.ListenDownloadCmd(msg.OutputCh, msg.DoneCh)
 	case downloads.DownloadOutputMsg:
 		if !m.Download.Running {
 			return m, nil
 		}
-		applyDownloadOutput(&m.Download, msg, m.Download.Viewport.Width)
-		m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
+		if m.Download.TerminalMode == downloads.TerminalEmulator {
+			if m.Download.Emu == nil {
+				m.Download.Emu = termemu.New(m.Download.Viewport.Width)
+			}
+			m.Download.Emu.AppendSegment(msg.Line, msg.Replace)
+			m.Download.Viewport.SetContent(m.Download.Emu.Render())
+		} else {
+			applyDownloadOutput(&m.Download, msg, m.Download.Viewport.Width)
+			m.Download.Viewport.SetContent(strings.Join(m.Download.Output, "\n"))
+		}
 		if m.Download.Follow {
 			m.Download.Viewport.GotoBottom()
 		}
@@ -142,6 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Download.OutputCh = nil
 		m.Download.DoneCh = nil
 		m.Download.Cancel = nil
+		m.Download.PTYResize = nil
 		m.Download.ProgressIdx = nil
 		m.Download.ProgressTime = nil
 		m.Download.EventStatus = ""

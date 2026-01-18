@@ -113,7 +113,7 @@ func LoadFlaresCmd(cfg config.Config) tea.Cmd {
 	}
 }
 
-func SaveFlareSelection(entries []Entry, selected map[int]bool) error {
+func SaveFlareSelection(entries []Entry, selected map[int]bool, header string) error {
 	// we take the parts of FlaresLoadedMsg and input them into this function to save the
 	// current flare entires into flare_cache.tsv
 	if len(selected) == 0 {
@@ -150,6 +150,9 @@ func SaveFlareSelection(entries []Entry, selected map[int]bool) error {
 		}
 	}
 
+	if strings.TrimSpace(existingHeader) == "" {
+		existingHeader = strings.TrimSpace(header)
+	}
 	if strings.TrimSpace(existingHeader) == "" {
 		return fmt.Errorf("flare_cache.tsv missing header")
 	}
