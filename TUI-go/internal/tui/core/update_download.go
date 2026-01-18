@@ -173,12 +173,12 @@ func (m Model) handleDownloadFormKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "backspace", "delete":
 		downloads.DeleteFormChar(&m.Download, m.Download.Focus)
-	case " ", "left", "h", "right", "l":
+	case " ", "left", "right":
 		if isTerminalMode {
 			switch msg.String() {
-			case "left", "h":
+			case "left":
 				m.Download.TerminalMode = downloads.TerminalParser
-			case "right", "l":
+			case "right":
 				m.Download.TerminalMode = downloads.TerminalEmulator
 			default:
 				if m.Download.TerminalMode == downloads.TerminalEmulator {
