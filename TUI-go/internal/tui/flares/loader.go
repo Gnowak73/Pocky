@@ -154,7 +154,7 @@ func SaveFlareSelection(entries []Entry, selected map[int]bool, header string) e
 		existingHeader = strings.TrimSpace(header)
 	}
 	if strings.TrimSpace(existingHeader) == "" {
-		return fmt.Errorf("flare_cache.tsv missing header")
+		return fmt.Errorf("flare_cache.tsv missing header") // if passed python header is empty
 	}
 
 	// we would like a way to build string without repeated allocations. Hence, we need

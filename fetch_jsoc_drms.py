@@ -11,6 +11,7 @@ import csv
 import datetime as dt
 import logging
 import os
+import re
 import sys
 import time
 import shutil
@@ -113,17 +114,38 @@ def stage_urls(client: drms.Client, record: str, process: dict | None, attempts:
   for attempt in range(1, attempts + 1):
     try:
       req = client.export(record, method="url", protocol="fits", process=process)
-      ok = req.wait(timeout=None, sleep=15, retries_notfound=5)
+      ok = req.wait(timeout=None, sleep=8, retries_notfound=3)
       if ok and req.urls is not None and not req.urls.empty:
         urls = [r.url for r in req.urls.itertuples(index=False)]
         break
     except Exception as e:
       logging.warning("Export error attempt %s: %s", attempt, e)
     # mild backoff between staging attempts
-    delay = min(10, 2 * attempt)
+    delay = min(8, 2 * attempt)
     if attempt < attempts:
       time.sleep(delay)
   return urls
+
+
+def wave_from_url(url: str, waves: set[int]) -> int | None:
+  fname = url.rsplit("/", 1)[-1]
+  m = re.search(r"\.(\d{2,3})\.image", fname)
+  if m:
+    try:
+      w = int(m.group(1))
+      if w in waves:
+        return w
+    except ValueError:
+      pass
+  for part in fname.split("."):
+    if part.isdigit():
+      try:
+        w = int(part)
+      except ValueError:
+        continue
+      if w in waves:
+        return w
+  return None
 
 
 def main() -> None:
@@ -139,6 +161,8 @@ def main() -> None:
   client = drms.Client(email=args.email)
   out_root = Path(args.out)
   out_root.mkdir(parents=True, exist_ok=True)
+  stage_attempts = 3
+  restage_attempts = 1
 
   base_fits = count_all_fits(out_root)
   total_files = 0          # new files this run
@@ -188,14 +212,35 @@ def main() -> None:
     win_downloaded = 0
     win_failed = []
     process = {"aia_scale_aialev1": {None: None}} if args.aia_scale else None
+    wave_set = {int(w) for w in waves}
+    combined_urls = []
+    if wave_set:
+      wave_clause = ",".join(str(w) for w in sorted(wave_set))
+      record = f'{args.series}[{time_range(start_padded, end_padded, args.cadence)}][? WAVELNTH in ({wave_clause}) ?]{{image}}'
+      combined_urls = stage_urls(client, record, process, attempts=stage_attempts)
+    staged_by_wave = None
+    if combined_urls:
+      staged_by_wave = {w: [] for w in wave_set}
+      unmatched = 0
+      for u in combined_urls:
+        w = wave_from_url(u, wave_set)
+        if w is None:
+          unmatched += 1
+          continue
+        staged_by_wave[w].append(u)
+      if unmatched:
+        staged_by_wave = None
 
     for w in waves:
-      record = f'{args.series}[{time_range(start_padded, end_padded, args.cadence)}][? WAVELNTH={w} ?]{{image}}'
       dest_dir = out_root / win_id / str(w)
       dest_dir.mkdir(parents=True, exist_ok=True)
       pre_count = count_fits(dest_dir)
 
-      staged_urls = stage_urls(client, record, process, attempts=3)
+      if staged_by_wave is not None:
+        staged_urls = staged_by_wave.get(int(w), [])
+      else:
+        record = f'{args.series}[{time_range(start_padded, end_padded, args.cadence)}][? WAVELNTH={w} ?]{{image}}'
+        staged_urls = stage_urls(client, record, process, attempts=stage_attempts)
       if not staged_urls:
         print(f"  [{win_id}] {w}A export returned no URLs.")
         render_status(idx - 1, total_events, win_id)
@@ -231,20 +276,15 @@ def main() -> None:
         win_downloaded += len(files)
         render_status(idx - 1, total_events, win_id)
 
-        # If errors persist and we used https, fall back to new export once mid-way
+        # If errors persist, fall back to new export after all attempts
         pending_urls = errors
-        if pending_urls and attempt == (args.attempts // 2):
-          restaged = stage_urls(client, record, process, attempts=2)
-          if restaged:
-            pending_urls, skipped = filter_existing(restaged, dest_dir)
-            skipped_existing.update(skipped)
 
         if pending_urls:
           backoff = min(30, 4 * attempt)
           time.sleep(backoff)
       if pending_urls:
         # Final serial try with fresh staging and HTTP
-        restaged = stage_urls(client, record, process, attempts=1)
+        restaged = stage_urls(client, record, process, attempts=restage_attempts)
         if restaged:
           pending_urls, skipped = filter_existing(restaged, dest_dir)
           skipped_existing.update(skipped)
