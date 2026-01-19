@@ -23,11 +23,29 @@ TIME_RE = re.compile(r"\.(\d{4}-\d{2}-\d{2}T\d{6})Z\.")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Build DEM weighted maps from AIA FITS downloads.")
-    p.add_argument("--input", default="data_aia_lvl1", help="Root AIA download directory.")
-    p.add_argument("--output", default="dem_maps", help="Output directory for DEM maps.")
-    p.add_argument("--tolerance", type=float, default=12.0, help="Max time delta in seconds.")
-    p.add_argument("--ref", type=int, default=171, help="Reference wavelength for timestamps.")
+    base = Path(__file__).resolve().parent.parent
+    p = argparse.ArgumentParser(
+        description="Build DEM weighted maps from AIA FITS downloads."
+    )
+    p.add_argument(
+        "--input", default=str(base / "data_aia_lvl1"), help="Root AIA download directory."
+    )
+    p.add_argument(
+        "--output", default=str(base / "dem_maps"), help="Output directory for DEM maps."
+    )
+    p.add_argument("--event", default="", help="Process a single event directory name.")
+    p.add_argument(
+        "--index",
+        type=int,
+        default=-1,
+        help="Process only one reference frame index (0-based).",
+    )
+    p.add_argument(
+        "--tolerance", type=float, default=12.0, help="Max time delta in seconds."
+    )
+    p.add_argument(
+        "--ref", type=int, default=171, help="Reference wavelength for timestamps."
+    )
     p.add_argument(
         "--wavelengths",
         default="94,131,171,193,211",
@@ -38,7 +56,9 @@ def parse_args() -> argparse.Namespace:
         default="1.20196640e-04,2.12817313e-05,-7.33613022e-07,1.83818002e-07,-1.90719161e-06",
         help="Comma list of weights aligned with wavelengths.",
     )
-    p.add_argument("--format", choices=["fits", "npy"], default="fits", help="Output format.")
+    p.add_argument(
+        "--format", choices=["fits", "npy"], default="fits", help="Output format."
+    )
     return p.parse_args()
 
 
@@ -60,18 +80,25 @@ def list_wave_files(path: Path) -> List[Tuple[dt.datetime, Path]]:
     return items
 
 
-def nearest_file(
-    target: dt.datetime, items: List[Tuple[dt.datetime, Path]]
-) -> Tuple[dt.datetime, Path] | None:
-    if not items:
-        return None
+def split_times(
+    items: List[Tuple[dt.datetime, Path]],
+) -> Tuple[List[dt.datetime], List[Path]]:
     times = [t for t, _ in items]
+    paths = [p for _, p in items]
+    return times, paths
+
+
+def nearest_file(
+    target: dt.datetime, times: List[dt.datetime], paths: List[Path]
+) -> Tuple[dt.datetime, Path] | None:
+    if not times:
+        return None
     idx = bisect_left(times, target)
     candidates: List[Tuple[dt.datetime, Path]] = []
-    if idx < len(items):
-        candidates.append(items[idx])
+    if idx < len(times):
+        candidates.append((times[idx], paths[idx]))
     if idx > 0:
-        candidates.append(items[idx - 1])
+        candidates.append((times[idx - 1], paths[idx - 1]))
     return min(candidates, key=lambda x: abs((x[0] - target).total_seconds()))
 
 
@@ -92,24 +119,37 @@ def build_dem_for_event(
     ref_wave: int,
     tolerance: float,
     fmt: str,
+    ref_index: int,
 ) -> None:
     wave_files = {}
     for w in wavelengths:
         wave_path = event_dir / str(w)
         if not wave_path.is_dir():
             continue
-        wave_files[w] = list_wave_files(wave_path)
+        items = list_wave_files(wave_path)
+        times, paths = split_times(items)
+        wave_files[w] = (times, paths)
 
     if ref_wave not in wave_files:
         return
 
     ensure_dir(out_dir)
-    ref_items = wave_files[ref_wave]
-    for ref_time, ref_path in ref_items:
+    ref_times, ref_paths = wave_files[ref_wave]
+    if ref_index >= 0:
+        if ref_index >= len(ref_times):
+            return
+        ref_times = [ref_times[ref_index]]
+        ref_paths = [ref_paths[ref_index]]
+
+    for ref_time, ref_path in zip(ref_times, ref_paths):
         matched = {}
         for w in wavelengths:
-            items = wave_files.get(w, [])
-            nearest = nearest_file(ref_time, items)
+            pair = wave_files.get(w)
+            if pair is None:
+                matched = {}
+                break
+            times, paths = pair
+            nearest = nearest_file(ref_time, times, paths)
             if nearest is None:
                 matched = {}
                 break
@@ -138,7 +178,9 @@ def build_dem_for_event(
                 del header["BLANK"]
             hdu = fits.PrimaryHDU(dem, header=header)
             hdu.header["HISTORY"] = "DEM weighted sum from Pocky"
-            hdu.header["HISTORY"] = f"WAVELENGTHS={','.join(str(w) for w in wavelengths)}"
+            hdu.header["HISTORY"] = (
+                f"WAVELENGTHS={','.join(str(w) for w in wavelengths)}"
+            )
             hdu.header["HISTORY"] = f"WEIGHTS={','.join(f'{w:.8e}' for w in weights)}"
             hdu.writeto(out_dir / f"{out_name}.fits", overwrite=True)
 
@@ -157,6 +199,8 @@ def main() -> None:
         raise SystemExit("Wavelengths and weights must have the same length.")
 
     for event_dir in sorted(p for p in in_root.iterdir() if p.is_dir()):
+        if args.event and event_dir.name != args.event:
+            continue
         out_dir = out_root / event_dir.name
         build_dem_for_event(
             event_dir,
@@ -166,6 +210,7 @@ def main() -> None:
             args.ref,
             args.tolerance,
             args.format,
+            args.index,
         )
 
 
