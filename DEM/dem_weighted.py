@@ -28,10 +28,14 @@ def parse_args() -> argparse.Namespace:
         description="Build DEM weighted maps from AIA FITS downloads."
     )
     p.add_argument(
-        "--input", default=str(base / "data_aia_lvl1"), help="Root AIA download directory."
+        "--input",
+        default=str(base / "data_aia_lvl1"),
+        help="Root AIA download directory.",
     )
     p.add_argument(
-        "--output", default=str(base / "dem_maps"), help="Output directory for DEM maps."
+        "--output",
+        default=str(base / "dem_maps"),
+        help="Output directory for DEM maps.",
     )
     p.add_argument("--event", default="", help="Process a single event directory name.")
     p.add_argument(
@@ -57,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         help="Comma list of weights aligned with wavelengths.",
     )
     p.add_argument(
-        "--format", choices=["fits", "npy"], default="fits", help="Output format."
+        "--format", choices=["fits", "npy"], default="npy", help="Output format."
     )
     return p.parse_args()
 
