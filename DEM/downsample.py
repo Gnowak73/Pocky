@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Output root (default: <input>_64x64).",
     )
-    p.add_argument("--size", type=int, default=64, help="Output grid size.")
+    p.add_argument("--size", type=int, default=512, help="Output grid size.")
     p.add_argument("--fft", action="store_true", help="Use Fourier-domain crop.")
     p.add_argument(
         "--fft-mode",
@@ -38,6 +38,8 @@ def parse_args() -> argparse.Namespace:
         default="npy",
         help="Output file format.",
     )
+    p.add_argument("--workers", type=int, default=0, help="Parallel workers (0 = serial).")
+    p.add_argument("--chunk", type=int, default=10, help="Files per task when using workers.")
     return p.parse_args()
 
 
@@ -100,8 +102,31 @@ def write_output(path: Path, data: np.ndarray, header, fmt: str) -> None:
     if header is not None and "BLANK" in header:
         del header["BLANK"]
     hdu = fits.PrimaryHDU(data, header=header)
-    hdu.header["HISTORY"] = "Downsampled to 64x64 by Pocky"
+    hdu.header["HISTORY"] = "Downsampled by Pocky"
     hdu.writeto(path.with_suffix(".fits"), overwrite=True)
+
+
+def process_file(args: Tuple[Path, Path, Path | None, Path | None, int, bool, str, str]) -> None:
+    fpath, out_wave, out_re, out_im, size, use_fft, fft_mode, fmt = args
+    header = None
+    if fmt == "fits":
+        data, header = fits.getdata(fpath, header=True, memmap=True)
+    else:
+        data = fits.getdata(fpath, memmap=True)
+    data = np.asarray(data, dtype=float)
+    real_part, imag_part = process_array(data, size, use_fft, fft_mode)
+    stem = fpath.stem
+    if use_fft and fft_mode == "complex":
+        write_output(out_re / stem, real_part, header, fmt)
+        write_output(out_im / stem, imag_part, header, fmt)
+    else:
+        write_output(out_wave / stem, real_part, header, fmt)
+
+
+def process_chunk(args: Tuple[list[Path], Path, Path | None, Path | None, int, bool, str, str]) -> None:
+    paths, out_wave, out_re, out_im, size, use_fft, fft_mode, fmt = args
+    for fpath in paths:
+        process_file((fpath, out_wave, out_re, out_im, size, use_fft, fft_mode, fmt))
 
 
 def iter_events(root: Path) -> Iterable[Path]:
@@ -111,8 +136,8 @@ def iter_events(root: Path) -> Iterable[Path]:
 def main() -> None:
     args = parse_args()
     in_root = Path(args.input)
-    out_root = Path(args.output) if args.output else in_root.parent / f"{in_root.name}_{size}x{size}"
     size = args.size
+    out_root = Path(args.output) if args.output else in_root.parent / f"{in_root.name}_{size}x{size}"
 
     for event_dir in iter_events(in_root):
         for wave_dir in sorted(p for p in event_dir.iterdir() if p.is_dir()):
@@ -128,18 +153,40 @@ def main() -> None:
                 out_wave = out_root / event_dir.name / wave_dir.name
                 ensure_dir(out_wave)
 
-            for fpath in fits_files:
-                data, header = fits.getdata(fpath, header=True)
-                data = np.asarray(data, dtype=float)
-                real_part, imag_part = process_array(
-                    data, size, args.fft, args.fft_mode
-                )
-                stem = fpath.stem
-                if args.fft and args.fft_mode == "complex":
-                    write_output(out_event_re / stem, real_part, header, args.format)
-                    write_output(out_event_im / stem, imag_part, header, args.format)
-                else:
-                    write_output(out_wave / stem, real_part, header, args.format)
+            if args.workers and args.workers > 1:
+                from concurrent.futures import ProcessPoolExecutor
+
+                chunk = max(1, args.chunk)
+                chunks = [fits_files[i : i + chunk] for i in range(0, len(fits_files), chunk)]
+                tasks = [
+                    (
+                        paths,
+                        out_wave,
+                        out_event_re if args.fft and args.fft_mode == "complex" else None,
+                        out_event_im if args.fft and args.fft_mode == "complex" else None,
+                        size,
+                        args.fft,
+                        args.fft_mode,
+                        args.format,
+                    )
+                    for paths in chunks
+                ]
+                with ProcessPoolExecutor(max_workers=args.workers) as ex:
+                    list(ex.map(process_chunk, tasks))
+            else:
+                for fpath in fits_files:
+                    process_file(
+                        (
+                            fpath,
+                            out_wave,
+                            out_event_re if args.fft and args.fft_mode == "complex" else None,
+                            out_event_im if args.fft and args.fft_mode == "complex" else None,
+                            size,
+                            args.fft,
+                            args.fft_mode,
+                            args.format,
+                        )
+                    )
 
 
 if __name__ == "__main__":
