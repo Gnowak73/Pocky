@@ -82,10 +82,10 @@ def parse_time_from_name(name: str) -> dt.datetime | None:
     return dt.datetime.strptime(m.group(1), "%Y-%m-%dT%H%M%S")
 
 
-def list_wave_files(path: Path) -> List[Tuple[dt.datetime, Path]]:
+def list_wave_files(path: Path, exts: Tuple[str, ...]) -> List[Tuple[dt.datetime, Path]]:
     items: List[Tuple[dt.datetime, Path]] = []
     for p in path.iterdir():
-        if p.is_file() and p.suffix.lower() == ".fits":
+        if p.is_file() and p.suffix.lower() in exts:
             t = parse_time_from_name(p.name)
             if t is not None:
                 items.append((t, p))
@@ -115,7 +115,10 @@ def nearest_file(
     return min(candidates, key=lambda x: abs((x[0] - target).total_seconds()))
 
 
-def read_fits(path: Path) -> Tuple[np.ndarray, fits.Header]:
+def read_array(path: Path) -> Tuple[np.ndarray, fits.Header | None]:
+    if path.suffix.lower() == ".npy":
+        data = np.load(path)
+        return np.asarray(data, dtype=float), None
     data, header = fits.getdata(path, header=True)
     return np.asarray(data, dtype=float), header
 
@@ -135,11 +138,12 @@ def build_dem_for_event(
     ref_index: int,
 ) -> None:
     wave_files = {}
+    exts = (".fits", ".npy")
     for w in wavelengths:
         wave_path = event_dir / str(w)
         if not wave_path.is_dir():
             continue
-        items = list_wave_files(wave_path)
+        items = list_wave_files(wave_path, exts)
         times, paths = split_times(items)
         wave_files[w] = (times, paths)
 
@@ -177,7 +181,7 @@ def build_dem_for_event(
         arrays = []
         header = None
         for w, weight in zip(wavelengths, weights):
-            data, hdr = read_fits(matched[w])
+            data, hdr = read_array(matched[w])
             arrays.append(weight * data)
             if header is None:
                 header = hdr
