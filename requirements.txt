@@ -3,7 +3,7 @@ sunpy>=5.0        # query.py (HEK)
 astropy>=6.0      # query.py (HEK tables)
 drms>=0.6         # fetch_jsoc_drms.py (JSOC client)
 parfive>=2.0      # fetch_jsoc_drms.py (downloader)
-
+numpy
 
 [bash]
 # CLI tools used by pocky.sh (install separately, not via pip):

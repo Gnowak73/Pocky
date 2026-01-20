@@ -20,21 +20,30 @@ from astropy.io import fits
 
 
 TIME_RE = re.compile(r"\.(\d{4}-\d{2}-\d{2}T\d{6})Z\.")
+DEFAULT_WEIGHTS = "1.20196640e-04,2.12817313e-05,-7.33613022e-07,1.83818002e-07,-1.90719161e-06"
 
 
 def parse_args() -> argparse.Namespace:
     base = Path(__file__).resolve().parent.parent
+
+    class _HelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+        def _get_help_string(self, action):  # type: ignore[override]
+            if action.dest == "weights":
+                return f"{action.help} (default: Paolo's Weights)"
+            return super()._get_help_string(action)
+
     p = argparse.ArgumentParser(
-        description="Build DEM weighted maps from AIA FITS downloads."
+        description="Build DEM weighted maps from AIA FITS downloads.",
+        formatter_class=_HelpFormatter,
     )
     p.add_argument(
         "--input",
-        default=str(base / "data_aia_lvl1"),
+        default=str(base / "data_aia_lvl1_512x512"),
         help="Root AIA download directory.",
     )
     p.add_argument(
         "--output",
-        default=str(base / "dem_maps"),
+        default=str(base / "dem_maps_512x512"),
         help="Output directory for DEM maps.",
     )
     p.add_argument("--event", default="", help="Process a single event directory name.")
@@ -57,8 +66,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--weights",
-        default="1.20196640e-04,2.12817313e-05,-7.33613022e-07,1.83818002e-07,-1.90719161e-06",
-        help="Comma list of weights aligned with wavelengths.",
+        default=DEFAULT_WEIGHTS,
+        help="Paolo's Weights",
     )
     p.add_argument(
         "--format", choices=["fits", "npy"], default="npy", help="Output format."

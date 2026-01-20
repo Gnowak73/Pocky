@@ -113,6 +113,7 @@ Once you have made a conda env, you need these packages:
 - `drms`
 - `parfive`
 - `sunpy`
+- `numpy`
 
 Install them with `conda install`, or use `conda install pip` and then `pip install`.
 
