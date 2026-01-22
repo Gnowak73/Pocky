@@ -4,7 +4,11 @@ flare_cache.tsv
 data_aia_lvl1/
 data_aia_lvl1.5/
 __pycache__/
+.sunpy/
+.mplconfig/
 .DS_Store
 dem_maps_*x*/
+em_maps_*x*/
 data_aia_lvl1_*x*/
 data_aia_lvl1.5_*x*/
+Trials/

@@ -1,0 +1,32 @@
+EM calculation (quick flare approximation)
+
+Definitions
+- DEM proxy (from weighted AIA response): cm^-5 per pixel at a representative logT
+- Column EM: cm^-5 = integral of DEM(T) over temperature
+- Volume EM per pixel: cm^-3 pixel^-1 = column EM * pixel area
+
+Conceptual picture
+- The weighted AIA method produces a single-temperature DEM proxy, not a full DEM(T).
+- Treat that proxy as a column quantity (cm^-5) tied to a representative flare temperature.
+- EM is obtained by assuming a temperature width and integrating over that range.
+- Volume EM per pixel is a geometric conversion from column EM using pixel area.
+
+Flare-bin approximation
+- Temperature range: log10(T/K) = 6.6 to 7.2 (T >= 10^6.6 K)
+- Bin width: dlogT = 0.1
+- Representative temperature: T = 10 MK (1.0e7 K)
+- DeltaT = ln(10) * T * dlogT
+- Column EM = DEM * DeltaT
+
+Volume EM per pixel
+- Pixel area uses arcsec per pixel and 1 AU distance
+- A_pix = (arcsec_per_pix * AU_cm * arcsec_to_rad)^2
+- EM_vol,pix = EM_col * A_pix
+
+Workflow summary
+1) Build DEM proxy maps using fixed weights, EXPTIME, and response normalization.
+2) Convert DEM proxy to column EM with DeltaT (flare-bin approximation).
+3) Optionally convert column EM to volume EM per pixel using pixel area.
+
+We will get the precalculated temperature response functions at https://hesperia.gsfc.nasa.gov/ssw/sdo/aia/response/
+along with the emissivity tables.
