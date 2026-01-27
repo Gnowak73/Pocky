@@ -1,0 +1,12 @@
+logt=6.6
+delta_logt=0.1
+dem_per_logt=False
+ridge=0.001
+nonneg=True
+scale=9.16675636e+05
+channels,weights
+94,9.45227913e+20
+131,6.35411673e+18
+171,0.00000000e+00
+193,0.00000000e+00
+211,2.28001037e+18
