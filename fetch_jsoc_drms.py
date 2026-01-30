@@ -30,7 +30,6 @@ except ImportError:
 logging.getLogger("drms").setLevel(logging.WARNING)
 logging.getLogger("parfive").setLevel(logging.WARNING)
 
-
 def parse_args() -> argparse.Namespace:
   p = argparse.ArgumentParser(description="Download AIA FITS from JSOC using a flare cache TSV.")
   p.add_argument("--tsv", default="flare_cache.tsv", help="Path to TSV produced by Pocky.")
@@ -58,11 +57,58 @@ def time_range(a: dt.datetime, b: dt.datetime, cadence: str | None = None) -> st
   return f"{s}@{cadence}" if cadence else s
 
 
+def parse_cadence_seconds(cadence: str | None) -> float | None:
+  if not cadence:
+    return None
+  m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)([smhd])\s*", cadence)
+  if not m:
+    return None
+  value = float(m.group(1))
+  unit = m.group(2)
+  if unit == "s":
+    return value
+  if unit == "m":
+    return value * 60.0
+  if unit == "h":
+    return value * 3600.0
+  if unit == "d":
+    return value * 86400.0
+  return None
+
+
+def expected_fits_count(start: dt.datetime, end: dt.datetime, cadence_s: float) -> int:
+  if cadence_s <= 0:
+    return 0
+  if end < start:
+    return 0
+  total = (end - start).total_seconds()
+  return int(total // cadence_s) + 1
+
+
+def prune_incomplete_event_dirs(out_root: Path, events: list[dict]) -> int:
+  removed = 0
+  for row in events:
+    if row.get("complete_event"):
+      continue
+    start = row["start"]
+    win_id = f"{row['class'] or 'flare'}_{start:%Y%m%d_%H%M%S}"
+    edir = out_root / win_id
+    if edir.exists():
+      shutil.rmtree(edir)
+      removed += 1
+  return removed
+
+
+def clean_event_dir(out_root: Path, win_id: str) -> None:
+  edir = out_root / win_id
+  if edir.exists():
+    shutil.rmtree(edir)
+
+
 def load_rows(tsv_path: Path) -> list[dict]:
   if not tsv_path.exists():
     sys.exit(f"TSV not found: {tsv_path}")
   rows = []
-  seen = set()
   with tsv_path.open("r", encoding="utf-8") as f:
     reader = csv.DictReader(f, delimiter="\t")
     for r in reader:
@@ -71,16 +117,15 @@ def load_rows(tsv_path: Path) -> list[dict]:
       if not start or not end:
         continue
       waves = [int(w) for w in r.get("wavelength", "").split(",") if w.strip().isdigit()]
-      key = (start, end, tuple(sorted(waves)), r.get("flare_class", "").strip(), r.get("description", "").strip())
-      if key in seen:
-        continue
-      seen.add(key)
+      desc = " ".join(r.get("description", "").split())
+      fclass = " ".join(r.get("flare_class", "").split())
+      coords = " ".join(r.get("coordinates", "").split())
       rows.append({
         "start": start,
         "end": end,
-        "class": r.get("flare_class", "").strip(),
+        "class": fclass,
         "waves": waves or [],
-        "desc": r.get("description", "").strip(),
+        "desc": desc,
       })
   return rows
 
@@ -90,11 +135,38 @@ def filter_existing(urls: list[str], dest_dir: Path) -> tuple[list[str], list[st
   skipped: list[str] = []
   for u in urls:
     fname = u.rsplit("/", 1)[-1]
-    if (dest_dir / fname).exists():
-      skipped.append(str(dest_dir / fname))
+    fpath = dest_dir / fname
+    if fpath.exists():
+      skipped.append(str(fpath))
       continue
     pending.append(u)
   return pending, skipped
+
+
+def inspect_download(
+  files: list[Path],
+  urls: list[str],
+  dest_dir: Path,
+) -> tuple[int, int, int, set[str]]:
+  downloaded_files = 0
+  downloaded_bytes = 0
+  empty_files = 0
+  empty_urls: set[str] = set()
+  url_by_name = {u.rsplit("/", 1)[-1]: u for u in urls}
+  if not files:
+    files = [dest_dir / u.rsplit("/", 1)[-1] for u in urls]
+  for fpath in files:
+    if not isinstance(fpath, Path):
+      fpath = Path(fpath)
+    try:
+      size = fpath.stat().st_size
+    except OSError:
+      size = 0
+    if size == 0:
+      empty_files += 1
+    downloaded_files += 1
+    downloaded_bytes += size
+  return downloaded_files, downloaded_bytes, empty_files, empty_urls
 
 
 def count_fits(dest_dir: Path) -> int:
@@ -168,7 +240,29 @@ def main() -> None:
   total_files = 0          # new files this run
   skipped_existing = set() # file paths seen as already present
   event_results: List[Dict] = []
+  download_tsv = Path("download_tries.tsv")
+  download_fh = download_tsv.open("a", encoding="utf-8", newline="")
+  download_writer = csv.DictWriter(
+    download_fh,
+    fieldnames=[
+      "event_id",
+      "flare_class",
+      "start",
+      "end",
+      "wavelengths",
+      "attempted_urls",
+      "downloaded_files",
+      "downloaded_bytes",
+      "empty_files",
+      "failed_files",
+    ],
+    delimiter="\t",
+  )
+  if download_tsv.stat().st_size == 0:
+    download_writer.writeheader()
   total_events = len(events)
+  total_events_all = total_events
+  complete_events = 0
 
   def status_line(cur: int, total: int, current_id: str = "") -> str:
     term_width = shutil.get_terminal_size((80, 20)).columns
@@ -189,28 +283,101 @@ def main() -> None:
     sys.stdout.write("\r\033[2K" + line)
     sys.stdout.flush()
 
-  for idx, row in enumerate(events, 1):
-    render_status(idx - 1, total_events)
+  # Seed skipped count from existing files on disk.
+  if out_root.exists():
+    skipped_existing.update(str(p) for p in out_root.rglob("*.fits") if p.is_file())
+
+  cadence_s = parse_cadence_seconds(args.cadence)
+  if cadence_s is None:
+    print(f"Precheck disabled: unrecognized cadence '{args.cadence}'.")
+    for row in events:
+      row["complete_event"] = False
+  else:
+    for row in events:
+      start, end = row["start"], row["end"]
+      start_padded = start - dt.timedelta(minutes=args.pad_before)
+      if args.pad_after is None:
+        end_padded = end
+      else:
+        end_padded = start + dt.timedelta(minutes=args.pad_after)
+      row["start_padded"] = start_padded
+      row["end_padded"] = end_padded
+
+      waves = row["waves"] or []
+      row["expected_counts"] = {}
+      row["complete_event"] = False
+      if not waves or start_padded >= end_padded:
+        continue
+
+      win_id = f"{row['class'] or 'flare'}_{start:%Y%m%d_%H%M%S}"
+      total_expected = 0
+      total_have = 0
+      all_complete = True
+      for w in waves:
+        expected = expected_fits_count(start_padded, end_padded, cadence_s)
+        row["expected_counts"][w] = expected
+        total_expected += expected
+        dest_dir = out_root / win_id / str(w)
+        have = count_fits(dest_dir)
+        total_have += have
+        if expected <= 0 or have < expected:
+          all_complete = False
+      missing_total = max(0, total_expected - total_have)
+      if all_complete or missing_total <= 10:
+        row["complete_event"] = True
+        complete_events += 1
+      render_status(complete_events, total_events, "precheck")
+    render_status(complete_events, total_events, "precheck")
+    print()
+    print(f"Precheck: {complete_events}/{total_events} events complete.")
+    removed = prune_incomplete_event_dirs(out_root, events)
+    print(f"Precheck cleanup: removed {removed} incomplete event folder(s).")
+
+  pending_events = [row for row in events if not row.get("complete_event")]
+  print(f"Starting downloads for {len(pending_events)}/{total_events_all} incomplete events.")
+  total_events = len(pending_events)
+
+  for idx, row in enumerate(pending_events, 1):
+    cur_base = complete_events + idx - 1
+    cur_done = complete_events + idx
+    render_status(cur_base, total_events_all)
     start, end, cls, desc = row["start"], row["end"], row["class"], row["desc"]
-    start_padded = start - dt.timedelta(minutes=args.pad_before)
-    if args.pad_after is None:
+    start_padded = row.get("start_padded") or (start - dt.timedelta(minutes=args.pad_before))
+    if "end_padded" in row:
+      end_padded = row["end_padded"]
+    elif args.pad_after is None:
       end_padded = end
     else:
       end_padded = start + dt.timedelta(minutes=args.pad_after)
     waves = row["waves"] or []
     if start_padded >= end_padded:
       print(f"\n[{idx}] Skip invalid window: {start_padded} >= {end_padded}")
-      render_status(idx, total_events)
+      render_status(cur_done, total_events_all)
       continue
     if not waves:
       print(f"\n[{idx}] No wavelengths listed; skipping window {start}–{end}")
-      render_status(idx, total_events)
+      render_status(cur_done, total_events_all)
       continue
 
     win_id = f"{cls or 'flare'}_{start:%Y%m%d_%H%M%S}"
     print(f"\n[{idx}] {desc or win_id}")
+    expected_counts = row.get("expected_counts", {})
+    if row.get("complete_event"):
+      counts = []
+      for ww in sorted(waves):
+        wdir = out_root / win_id / str(ww)
+        counts.append(f"{ww}A={count_fits(wdir)}/{expected_counts.get(ww, 0)}")
+      print(f"  [{win_id}] already complete ({', '.join(counts)}).")
+      render_status(cur_done, total_events_all, win_id)
+      event_results.append({"id": win_id, "downloaded": 0, "failed": []})
+      continue
+    clean_event_dir(out_root, win_id)
     win_downloaded = 0
     win_failed = []
+    event_attempted = 0
+    event_downloaded_files = 0
+    event_downloaded_bytes = 0
+    event_empty_files = 0
     process = {"aia_scale_aialev1": {None: None}} if args.aia_scale else None
     wave_set = {int(w) for w in waves}
     combined_urls = []
@@ -243,17 +410,11 @@ def main() -> None:
         staged_urls = stage_urls(client, record, process, attempts=stage_attempts)
       if not staged_urls:
         print(f"  [{win_id}] {w}A export returned no URLs.")
-        render_status(idx - 1, total_events, win_id)
+        render_status(cur_base, total_events_all, win_id)
         continue
 
       attempt = 0
-      pending_urls, skipped = filter_existing(staged_urls, dest_dir)
-      skipped_existing.update(skipped)
-      if not pending_urls:
-        if skipped:
-          print(f"  [{win_id}] {w}A already downloaded ({len(skipped)} file(s) present).")
-        render_status(idx - 1, total_events, win_id)
-        continue
+      pending_urls = list(staged_urls)
 
       while pending_urls and attempt < args.attempts:
         attempt += 1
@@ -271,13 +432,22 @@ def main() -> None:
 
         errors = [e.url for e in getattr(res, "errors", [])] if res else urls_to_fetch
         files = list(getattr(res, "files", [])) if res else []
+        event_attempted += len(urls_to_fetch)
+        got_files, got_bytes, empty_files, empty_urls = inspect_download(
+          files,
+          urls_to_fetch,
+          dest_dir,
+        )
+        event_downloaded_files += got_files
+        event_downloaded_bytes += got_bytes
+        event_empty_files += empty_files
 
         total_files += len(files)
         win_downloaded += len(files)
-        render_status(idx - 1, total_events, win_id)
+        render_status(cur_base, total_events_all, win_id)
 
         # If errors persist, fall back to new export after all attempts
-        pending_urls = errors
+        pending_urls = list(errors)
 
         if pending_urls:
           backoff = min(30, 4 * attempt)
@@ -286,8 +456,7 @@ def main() -> None:
         # Final serial try with fresh staging and HTTP
         restaged = stage_urls(client, record, process, attempts=restage_attempts)
         if restaged:
-          pending_urls, skipped = filter_existing(restaged, dest_dir)
-          skipped_existing.update(skipped)
+          pending_urls = list(restaged)
           if pending_urls:
             dl = Downloader(max_conn=1, max_splits=1)
             for u in pending_urls:
@@ -295,18 +464,40 @@ def main() -> None:
             res = dl.download()
             errors = [e.url for e in getattr(res, "errors", [])] if res else pending_urls
             files = list(getattr(res, "files", [])) if res else []
+            event_attempted += len(pending_urls)
+            got_files, got_bytes, empty_files, empty_urls = inspect_download(
+              files,
+              pending_urls,
+              dest_dir,
+            )
+            event_downloaded_files += got_files
+            event_downloaded_bytes += got_bytes
+            event_empty_files += empty_files
 
             total_files += len(files)
             win_downloaded += len(files)
-            pending_urls = errors
-            render_status(idx - 1, total_events, win_id)
+            pending_urls = list(errors)
+            render_status(cur_base, total_events_all, win_id)
 
-        if pending_urls:
-          print(f"  [{win_id}] {w}A — failed to fetch {len(pending_urls)} file(s) after all retries")
-          win_failed.append((w, len(pending_urls)))
-      render_status(idx - 1, total_events, win_id)
+      if pending_urls:
+        print(f"  [{win_id}] {w}A — failed to fetch {len(pending_urls)} file(s) after all retries")
+        win_failed.append((w, len(pending_urls)))
+      render_status(cur_base, total_events_all, win_id)
     event_results.append({"id": win_id, "downloaded": win_downloaded, "failed": win_failed})
-    render_status(idx, total_events, win_id)
+    render_status(cur_done, total_events_all, win_id)
+    download_writer.writerow({
+      "event_id": win_id,
+      "flare_class": cls,
+      "start": start.isoformat(),
+      "end": end.isoformat(),
+      "wavelengths": ",".join(str(w) for w in waves),
+      "attempted_urls": event_attempted,
+      "downloaded_files": event_downloaded_files,
+      "downloaded_bytes": event_downloaded_bytes,
+      "empty_files": event_empty_files,
+      "failed_files": sum(n for _, n in win_failed),
+    })
+    download_fh.flush()
 
   print()  # newline after progress bar
   for res in event_results:
@@ -316,6 +507,7 @@ def main() -> None:
       msg += f" (failed {fails})"
     print(msg)
 
+  download_fh.close()
   print(f"Done. New FITS files: {total_files}. Skipped existing: {len(skipped_existing)}.")
 
 

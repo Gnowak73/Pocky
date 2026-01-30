@@ -472,9 +472,19 @@ run_jsoc_download() {
     _pause "Returning to menu"; return
   fi
 
-  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1"); then
+  local args
+  if ! mapfile -t args < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1"); then
     _pause "Returning to menu"; return
   fi
+  email=${args[0]}
+  tsv=${args[1]}
+  outdir=${args[2]}
+  max_conn=${args[3]}
+  max_splits=${args[4]}
+  attempts=${args[5]}
+  cadence=${args[6]}
+  pad_before=${args[7]}
+  pad_after=${args[8]}
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
@@ -488,6 +498,8 @@ run_jsoc_download() {
   attempts=${attempts:-5}
   cadence=${cadence:-12s}
   series="aia.lev1_euv_12s"
+  pad_before=$(echo "$pad_before" | xargs)
+  pad_after=$(echo "$pad_after" | xargs)
   pad_before=${pad_before:-0}
   pad_after=${pad_after:-}
 
@@ -529,9 +541,19 @@ run_jsoc_download_lvl15() {
     _pause "Returning to menu"; return
   fi
 
-  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
+  local args
+  if ! mapfile -t args < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
     _pause "Returning to menu"; return
   fi
+  email=${args[0]}
+  tsv=${args[1]}
+  outdir=${args[2]}
+  max_conn=${args[3]}
+  max_splits=${args[4]}
+  attempts=${args[5]}
+  cadence=${args[6]}
+  pad_before=${args[7]}
+  pad_after=${args[8]}
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
@@ -545,6 +567,8 @@ run_jsoc_download_lvl15() {
   attempts=${attempts:-5}
   cadence=${cadence:-12s}
   series="aia.lev1_euv_12s"
+  pad_before=$(echo "$pad_before" | xargs)
+  pad_after=$(echo "$pad_after" | xargs)
   pad_before=${pad_before:-0}
   pad_after=${pad_after:-}
 
@@ -614,6 +638,8 @@ run_jsoc_fido_lvl1() {
   tsv=${tsv:-$script_dir/flare_cache.tsv}
   outdir=${outdir:-$script_dir/data_aia_lvl1}
   cadence=${cadence:-12}
+  pad_before=$(echo "$pad_before" | xargs)
+  pad_after=$(echo "$pad_after" | xargs)
   pad_before=${pad_before:-0}
   pad_after=${pad_after:-}
 
@@ -659,9 +685,19 @@ run_jsoc_fido_lvl15() {
     _pause "Returning to menu"; return
   fi
 
-  if ! IFS=$'\n' read -r email tsv outdir max_conn max_splits attempts cadence pad_before pad_after < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
+  local args
+  if ! mapfile -t args < <(_prompt_dl_args_jsoc "$script_dir/data_aia_lvl1.5"); then
     _pause "Returning to menu"; return
   fi
+  email=${args[0]}
+  tsv=${args[1]}
+  outdir=${args[2]}
+  max_conn=${args[3]}
+  max_splits=${args[4]}
+  attempts=${args[5]}
+  cadence=${args[6]}
+  pad_before=${args[7]}
+  pad_after=${args[8]}
 
   # Fallbacks when user leaves entries blank
   email=$(echo "$email" | xargs)
@@ -671,6 +707,8 @@ run_jsoc_fido_lvl15() {
   tsv=${tsv:-$script_dir/flare_cache.tsv}
   outdir=${outdir:-$script_dir/data_aia_lvl1.5}
   cadence=${cadence:-12}
+  pad_before=$(echo "$pad_before" | xargs)
+  pad_after=$(echo "$pad_after" | xargs)
   pad_before=${pad_before:-0}
   pad_after=${pad_after:-}
 

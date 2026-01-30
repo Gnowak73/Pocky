@@ -12,12 +12,10 @@ em_maps_*x*/
 data_aia_lvl1_*x*/
 data_aia_lvl1.5_*x*/
 Trials/
-runs/
-vis_cache/
+ML_FFT/vis_cache/
+ML_FFT/runs/
+ML_FFT/vis_index.npz
 dem_maps*/
 em_maps*/
 vis_maps*/
-DEM/dem_weights.txt
-DEM/test_ratios.txt
 Vis/uv_grid.npz
-ML_FFT/vis_index.npz
