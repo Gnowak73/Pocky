@@ -1,8 +1,8 @@
 .env
 .vars.env
 flare_cache.tsv
-data_aia_lvl1/
-data_aia_lvl1.5/
+download_tries.tsv
+data_aia_*/
 __pycache__/
 .sunpy/
 .mplconfig/
@@ -12,3 +12,12 @@ em_maps_*x*/
 data_aia_lvl1_*x*/
 data_aia_lvl1.5_*x*/
 Trials/
+runs/
+vis_cache/
+dem_maps*/
+em_maps*/
+vis_maps*/
+DEM/dem_weights.txt
+DEM/test_ratios.txt
+Vis/uv_grid.npz
+ML_FFT/vis_index.npz
