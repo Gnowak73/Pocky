@@ -20,3 +20,5 @@ em_maps*/
 vis_maps*/
 Vis/uv_grid.npz
 flare_coords_picked.tsv
+DEM/dem_weights.txt
+DEM/test_ratios.txt

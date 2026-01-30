@@ -40,6 +40,12 @@ What to trust
 Only trust results when:
   - index built with --preflare-only
   - evaluation is on held-out events (not windows)
+  - note: confusion metrics are currently computed per-window, even though splits are per-event
+
+Evaluation details
+- Splits are performed by EVENT (train/val/test), so windows from the same event do not mix.
+- Metrics/confusion matrix are computed per WINDOW by default.
+- If you want event-level metrics, aggregate window predictions (e.g., last window or max).
 
 Commands (typical)
   python ML_FFT/cache_vis_events.py
