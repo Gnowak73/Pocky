@@ -63,6 +63,30 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Clip negative or non-finite input pixels to 0 before weighting.",
     )
+    p.add_argument(
+        "--suppress-dem-below",
+        type=float,
+        default=0.0,
+        help="Suppress DEM values at or below this threshold (0 disables).",
+    )
+    p.add_argument(
+        "--suppress-dem-factor",
+        type=float,
+        default=1.0,
+        help="Factor to apply to suppressed DEM values.",
+    )
+    p.add_argument(
+        "--suppress-dem-above",
+        type=float,
+        default=0.0,
+        help="Suppress DEM values at or above this threshold (0 disables).",
+    )
+    p.add_argument(
+        "--suppress-dem-factor-hi",
+        type=float,
+        default=1.0,
+        help="Multiplier to apply to high DEM values when suppressed.",
+    )
     p.add_argument("--workers", type=int, default=0, help="Parallel workers (0 = serial).")
     p.add_argument("--chunk", type=int, default=10, help="Tasks per worker chunk.")
     return p.parse_args()
@@ -193,6 +217,11 @@ def build_dem_for_event(
     use_fits_input: bool,
     use_exptime: bool,
     scale: float,
+    clip_input: bool,
+    suppress_below: float,
+    suppress_factor: float,
+    suppress_above: float,
+    suppress_factor_hi: float,
     workers: int,
     chunk: int,
 ) -> None:
@@ -254,7 +283,11 @@ def build_dem_for_event(
                 use_exptime,
                 fmt,
                 scale,
-                args.clip_input,
+                clip_input,
+                suppress_below,
+                suppress_factor,
+                suppress_above,
+                suppress_factor_hi,
             )
         )
 
@@ -288,6 +321,10 @@ def process_frame(task: Tuple) -> None:
         fmt,
         scale,
         clip_input,
+        suppress_below,
+        suppress_factor,
+        suppress_above,
+        suppress_factor_hi,
     ) = task
     arrays = []
     header = None
@@ -326,6 +363,10 @@ def process_frame(task: Tuple) -> None:
     dem = np.tensordot(weights, stack, axes=(0, 0))
     if scale != 1.0:
         dem = dem * scale
+    if suppress_below > 0 and suppress_factor != 1.0:
+        dem = np.where(dem <= suppress_below, dem / suppress_factor, dem)
+    if suppress_above > 0 and suppress_factor_hi != 1.0:
+        dem = np.where(dem >= suppress_above, dem * suppress_factor_hi, dem)
     out_name = f"dem_{stamp}"
     if fmt == "npy":
         np.save(out_dir / f"{out_name}.npy", dem)
@@ -378,6 +419,11 @@ def main() -> None:
             args.use_fits_input,
             not args.no_exptime,
             args.scale,
+            args.clip_input,
+            args.suppress_dem_below,
+            args.suppress_dem_factor,
+            args.suppress_dem_above,
+            args.suppress_dem_factor_hi,
             args.workers,
             args.chunk,
         )

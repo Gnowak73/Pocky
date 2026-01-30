@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
         "path",
         nargs="?",
         default=None,
-        help="Path to DEM map (.npy/.fits) or a folder to pick from.",
+        help="Path to DEM map (.npy or .fits). If omitted, pick a random map.",
     )
     p.add_argument(
         "--vmin-percentile",
@@ -44,12 +44,6 @@ def parse_args() -> argparse.Namespace:
         default=1e25,
         help="Upper bound for linear color scale.",
     )
-    p.add_argument(
-        "--pick",
-        choices=["random", "last-in-event"],
-        default="last-in-event",
-        help="How to choose a file when no path is given.",
-    )
     return p.parse_args()
 
 
@@ -60,14 +54,6 @@ def load_data(path: Path) -> np.ndarray:
 
     return fits.getdata(path)
 
-def pick_random_dem(root: Path) -> Path | None:
-    candidates = sorted(root.rglob("dem_*.npy")) + sorted(root.rglob("dem_*.fits"))
-    if not candidates:
-        candidates = sorted(root.rglob("*.npy")) + sorted(root.rglob("*.fits"))
-    if not candidates:
-        return None
-    return Path(np.random.default_rng().choice(candidates))
-
 
 def main() -> int:
     args = parse_args()
@@ -76,58 +62,13 @@ def main() -> int:
         if not path.exists():
             print(f"File not found: {path}")
             return 1
-        if path.is_dir():
-            root = path
-            if args.pick == "last-in-event":
-                event_dirs = [p for p in root.iterdir() if p.is_dir()]
-                event_dirs = [
-                    p
-                    for p in event_dirs
-                    if list(p.glob("dem_*.npy")) or list(p.glob("dem_*.fits"))
-                ]
-                if not event_dirs:
-                    path = pick_random_dem(root)
-                    if path is None:
-                        print(f"No DEM maps found under {root}")
-                        return 1
-                else:
-                    event_dir = Path(np.random.default_rng().choice(event_dirs))
-                    candidates = sorted(event_dir.glob("dem_*.npy")) + sorted(
-                        event_dir.glob("dem_*.fits")
-                    )
-                    if not candidates:
-                        print(f"No DEM maps found under {event_dir}")
-                        return 1
-                    path = candidates[-1]
-            else:
-                path = pick_random_dem(root)
-                if path is None:
-                    print(f"No DEM maps found under {root}")
-                    return 1
-            print(f"Selected {path}")
     else:
-        root = Path(__file__).resolve().parent.parent / "dem_maps"
-        if args.pick == "last-in-event":
-            event_dirs = [p for p in root.iterdir() if p.is_dir()]
-            event_dirs = [
-                p for p in event_dirs
-                if list(p.glob("dem_*.npy")) or list(p.glob("dem_*.fits"))
-            ]
-            if not event_dirs:
-                print(f"No DEM maps found under {root}")
-                return 1
-            event_dir = Path(np.random.default_rng().choice(event_dirs))
-            candidates = sorted(event_dir.glob("dem_*.npy")) + sorted(event_dir.glob("dem_*.fits"))
-            if not candidates:
-                print(f"No DEM maps found under {event_dir}")
-                return 1
-            path = candidates[-1]
-        else:
-            candidates = sorted(root.rglob("dem_*.npy")) + sorted(root.rglob("dem_*.fits"))
-            if not candidates:
-                print(f"No DEM maps found under {root}")
-                return 1
-            path = np.random.default_rng().choice(candidates)
+        root = Path(__file__).resolve().parent.parent / "dem_maps_512x512"
+        candidates = sorted(root.rglob("dem_*.npy")) + sorted(root.rglob("dem_*.fits"))
+        if not candidates:
+            print(f"No DEM maps found under {root}")
+            return 1
+        path = np.random.default_rng().choice(candidates)
         print(f"Selected {path}")
 
     data = np.asarray(load_data(path), dtype=float)
