@@ -316,6 +316,7 @@ def _interactive_pick(
     size_arcsec: float,
     ext: str,
     wave_hint: str,
+    force_pixels: int,
 ) -> Tuple[float, float] | None:
     try:
         import matplotlib.pyplot as plt
@@ -348,9 +349,9 @@ def _interactive_pick(
         cdelt1 *= 3600.0
     if "deg" in str(header.get("CUNIT2", "")).lower():
         cdelt2 *= 3600.0
-    if args.force_pixels and args.force_pixels > 0:
-        half_x = args.force_pixels / 2.0
-        half_y = args.force_pixels / 2.0
+    if force_pixels and force_pixels > 0:
+        half_x = force_pixels / 2.0
+        half_y = force_pixels / 2.0
     else:
         half_x = (size_arcsec / 2.0) / abs(cdelt1)
         half_y = (size_arcsec / 2.0) / abs(cdelt2)
@@ -375,8 +376,8 @@ def _interactive_pick(
     pts = plt.ginput(1, timeout=0)
     plt.close(fig)
     if not pts:
-        print(f"Interactive skip {event_dir.name}: no click.")
-        return None
+        # Accept the current center if user presses Enter with no click.
+        return (x_arc, y_arc)
     px, py = pts[0]
     # Convert pixel back to arcsec using header WCS
     crpix1 = float(header.get("CRPIX1", 0.0))
@@ -397,6 +398,9 @@ def _interactive_pick(
 
 def main() -> int:
     args = parse_args()
+    if args.interactive and args.workers and args.workers > 1:
+        print("Interactive mode forces serial processing (workers=0).")
+        args.workers = 0
     in_root = Path(args.input)
     out_root = Path(args.output)
     if not in_root.exists():
@@ -446,6 +450,7 @@ def main() -> int:
                 args.size_arcsec,
                 args.ext,
                 args.interactive_wave,
+                args.force_pixels,
             )
             if picked is None:
                 continue
@@ -464,13 +469,13 @@ def main() -> int:
         out.write_text(header + "\n" + "\n".join(picked_rows) + "\n", encoding="utf-8")
         print(f"Saved picked coords to {out}")
 
+    if args.interactive:
+        return 0
+
     if args.dry_run or args.preview:
         return 0
 
     if args.workers and args.workers > 1:
-        if args.interactive:
-            print("Interactive mode forces serial processing.")
-            return 1
         from concurrent.futures import ProcessPoolExecutor
 
         chunk = max(1, args.chunk)
