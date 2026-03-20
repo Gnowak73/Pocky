@@ -113,6 +113,9 @@ if __name__ == "__main__":
     auto_start_local_web = True
     local_web_host = "127.0.0.1"
     local_web_port = 8000
+    # Performance diagnostics + calibration parallelism
+    print_phase_timing = True
+    worker_count = 10
 
     # DRMS query mode:
     # - "nrt2"   -> near-real-time series used on WKU environment
@@ -190,6 +193,8 @@ if __name__ == "__main__":
             query_start_ut=query_start_ut,
             latency=10,
             time_step_minutes=3,
+            worker_count=worker_count,
+            print_phase_timing=print_phase_timing,
             suvi_top_wavelength=suvi_top_wavelength,
             suvi_use_realtime=suvi_use_realtime,
         )
