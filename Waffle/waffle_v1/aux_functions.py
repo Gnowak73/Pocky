@@ -1,4 +1,5 @@
 import drms
+from drms import ServerConfig
 from urllib.request import urlretrieve
 from urllib.error import URLError, HTTPError
 import os
@@ -89,7 +90,7 @@ def normalize_exposure(aia_map):
 # **********************************************************
 
 
-def configure_jsoc_server():
+def configure_jsoc_server(use_nrt2_server=True):
     """
     Function configuring a JSOC server (to be used for quering AIA data throgh drms)
 
@@ -98,8 +99,22 @@ def configure_jsoc_server():
         client: drms client server
     """
 
-    # Use current default DRMS server configuration.
-    client = drms.Client()
+    if use_nrt2_server:
+        server = ServerConfig(
+            name="JSOC",
+            cgi_baseurl="http://jsoc2.stanford.edu/cgi-bin/ajax/",
+            cgi_show_series="show_series",
+            cgi_jsoc_info="jsoc_info",
+            cgi_jsoc_fetch="jsoc_fetch",
+            cgi_check_address="checkAddress.sh",
+            cgi_show_series_wrapper="showextseries",
+            show_series_wrapper_dbhost="hmidb2",
+            http_download_baseurl="http://jsoc2.stanford.edu/",
+        )
+        client = drms.Client(server=server)
+    else:
+        # Public JSOC path for archive/public series.
+        client = drms.Client()
 
     return client
 
@@ -271,6 +286,7 @@ def calibrate_full_disk_maps(aia_maps, workers=1, executor=None):
 
 # **********************************************************
 
+
 def normalize_full_disk_maps(aia_maps, workers=1, executor=None):
     """
     Apply exposure normalization (DN -> DN/s) on full-disk maps once per cycle.
@@ -291,6 +307,7 @@ def normalize_full_disk_maps(aia_maps, workers=1, executor=None):
 
 
 # **********************************************************
+
 
 def precompute_em_calibrated_full_maps(
     aia_maps, correction_table, workers=1, executor=None, already_normalized=False
@@ -447,6 +464,7 @@ def crop_full_disk_maps(
 
 # **********************************************************
 
+
 def fast_crop_em_cube(aia_maps, ar_lon, ar_lat, n_pix_x=1000, n_pix_y=1000):
     """
     Faster crop path for EM computation.
@@ -456,7 +474,9 @@ def fast_crop_em_cube(aia_maps, ar_lon, ar_lat, n_pix_x=1000, n_pix_y=1000):
         return np.empty((0, 0, 0)), None
 
     ref = aia_maps[0]
-    this_coord = SkyCoord(ar_lon * u.deg, ar_lat * u.deg, frame=frames.HeliographicStonyhurst)
+    this_coord = SkyCoord(
+        ar_lon * u.deg, ar_lat * u.deg, frame=frames.HeliographicStonyhurst
+    )
     pix_x = int(np.round(ref.world_to_pixel(this_coord).x.value))
     pix_y = int(np.round(ref.world_to_pixel(this_coord).y.value))
 
@@ -583,15 +603,31 @@ def append_em_cache(
 
     cached = em_cache.get(file_name_em_csv)
     if cached is None or cached.get("timezone") != timezone:
-        em_cache[file_name_em_csv] = {
-            "timezone": timezone,
-            "time_em_array": np.array([dt_local]),
-            "total_em": np.array([total_em_val], dtype=float),
-        }
+        # Hydrate cache from existing CSV so restarts preserve prior series.
+        try:
+            time_em_array, total_em_array = load_em_series(
+                file_name_em_csv, timezone=timezone, em_cache=None
+            )
+            em_cache[file_name_em_csv] = {
+                "timezone": timezone,
+                "time_em_array": np.array(time_em_array),
+                "total_em": np.array(total_em_array, dtype=float),
+            }
+            cached = em_cache[file_name_em_csv]
+        except Exception:
+            em_cache[file_name_em_csv] = {
+                "timezone": timezone,
+                "time_em_array": np.array([dt_local]),
+                "total_em": np.array([total_em_val], dtype=float),
+            }
         return
 
-    cached["time_em_array"] = np.append(cached["time_em_array"], dt_local)
-    cached["total_em"] = np.append(cached["total_em"], total_em_val)
+    # Avoid duplicate timestamp insertion on restart/retry loops.
+    if len(cached["time_em_array"]) > 0 and cached["time_em_array"][-1] == dt_local:
+        cached["total_em"][-1] = total_em_val
+    else:
+        cached["time_em_array"] = np.append(cached["time_em_array"], dt_local)
+        cached["total_em"] = np.append(cached["total_em"], total_em_val)
 
 
 # **********************************************************
@@ -665,8 +701,8 @@ def define_ssh_client():
     """
 
     ssh_host = "physics.wku.edu"
-    ssh_user = "massa"
-    ssh_password = "FF_Proj"  #'waffle!'
+    ssh_user = "emslie"  # massa"
+    ssh_password = "waffle"  #'waffle!' FF_Proj
 
     ssh_client = SSHClient()
     ssh_client.load_system_host_keys()
@@ -707,7 +743,37 @@ def ssh_scp_files(ssh_client, source_volume, destination_volume):
 
 
 def _suvi_wav_path(wav):
-    return "094" if int(wav) == 94 else "131"
+    suvi_wav = int(wav)
+    if suvi_wav not in (94, 131):
+        raise ValueError(
+            f"Unsupported SUVI wavelength: {suvi_wav}. Allowed values are 94 or 131."
+        )
+    return "094" if suvi_wav == 94 else "131"
+
+
+def _parse_suvi_obs_time_from_src(suvi_src):
+    """
+    Parse SUVI observation time from URL/filename when encoded.
+    Returns UTC-aware datetime or None.
+    """
+    if not suvi_src:
+        return None
+    name = os.path.basename(str(suvi_src))
+    # Primary SWPC SUVI flare product pattern:
+    # ..._sYYYYMMDDTHHMMSSZ_... (start time token)
+    m = re.search(r"_s(\d{8})T(\d{6})Z", name, flags=re.IGNORECASE)
+    if not m:
+        # Fallback for older/alternate naming:
+        # YYYYMMDDTHHMMSS, YYYYMMDD_HHMMSS, YYYYMMDD-HHMMSS, or YYYYMMDDHHMMSS.
+        m = re.search(r"(\d{8})[T_-]?(\d{6})", name)
+    if not m:
+        return None
+    try:
+        return datetime.datetime.strptime(
+            m.group(1) + m.group(2), "%Y%m%d%H%M%S"
+        ).replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
 
 
 def resolve_suvi_day_url(day_utc, wavelength=131, spacecraft="primary"):
@@ -738,21 +804,27 @@ def resolve_suvi_day_url(day_utc, wavelength=131, spacecraft="primary"):
     try:
         with urlopen(base, timeout=8) as r:
             html = r.read().decode("utf-8", errors="ignore")
-        # Keep pngs with parseable YYYYMMDD token and pick nearest <= target day.
-        hrefs = re.findall(r'href="([^"]+\.png)"', html)
+        # Support both href/src and single/double quotes.
+        refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
+        refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
+        # Also capture bare .png tokens from directory listings.
+        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        seen = set()
+        refs = [x for x in refs if not (x in seen or seen.add(x))]
         dated = []
-        for h in hrefs:
-            if not h.lower().endswith(".png"):
+        for h in refs:
+            name = h.split("/")[-1].lower()
+            if "latest.png" in name:
                 continue
-            m = re.search(r"(\d{8})", h)
-            if not m:
+            ts = _parse_suvi_obs_time_from_src(name)
+            if ts is None:
                 continue
-            d = m.group(1)
+            d = ts.strftime("%Y%m%d")
             if d <= target_day:
-                dated.append((d, h))
+                dated.append((ts, h))
         if dated:
             # latest available at or before requested day
-            pick = sorted(dated, key=lambda x: (x[0], x[1]))[-1][1]
+            pick = sorted(dated, key=lambda x: x[0])[-1][1]
             if pick.startswith("http"):
                 resolved = pick
             else:
@@ -769,6 +841,61 @@ def resolve_suvi_day_url(day_utc, wavelength=131, spacecraft="primary"):
 # **********************************************************
 
 
+def resolve_suvi_latest_dated_url(wavelength=131, spacecraft="primary"):
+    """
+    Resolve most recent dated SUVI PNG from SWPC listing using directory order.
+    Practical behavior: pick the latest listed dated file (typically the entry
+    immediately before latest.png). Returns None if no dated file is found.
+    """
+    wav_dir = _suvi_wav_path(wavelength)
+    base = f"https://services.swpc.noaa.gov/images/flares/hgs/{spacecraft}/{wav_dir}/"
+    try:
+        with urlopen(base, timeout=8) as r:
+            html = r.read().decode("utf-8", errors="ignore")
+        refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
+        refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
+        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        seen = set()
+        refs = [x for x in refs if not (x in seen or seen.add(x))]
+        # Prefer the dated entry immediately before latest.png in listing order.
+        latest_idx = -1
+        for i, h in enumerate(refs):
+            if "latest.png" in h.split("/")[-1].lower():
+                latest_idx = i
+                break
+        if latest_idx > 0:
+            for j in range(latest_idx - 1, -1, -1):
+                h = refs[j]
+                name = h.split("/")[-1].lower()
+                if "latest.png" in name:
+                    continue
+                if _parse_suvi_obs_time_from_src(name) is None:
+                    continue
+                if h.startswith("http"):
+                    return h
+                return base + h.lstrip("./")
+        dated = []
+        for h in refs:
+            name = h.split("/")[-1].lower()
+            if "latest.png" in name:
+                continue
+            ts = _parse_suvi_obs_time_from_src(name)
+            if ts is None:
+                continue
+            dated.append((ts, h))
+        if not dated:
+            return None
+        pick = sorted(dated, key=lambda x: x[0])[-1][1]
+        if pick.startswith("http"):
+            return pick
+        return base + pick.lstrip("./")
+    except Exception:
+        return None
+
+
+# **********************************************************
+
+
 def fetch_suvi_image_for_panel(
     suvi_top_wavelength=131,
     suvi_day_utc=None,
@@ -776,13 +903,17 @@ def fetch_suvi_image_for_panel(
 ):
     """
     Fetch SUVI flare-location image for embedding in the full-disk panel figure.
-    Returns (image_array_or_none, title_string).
+    Returns (image_array_or_none, title_string, suvi_obs_time_utc_or_none).
+    In realtime mode, uses latest dated SUVI file (not latest.png) so the
+    timestamp is tied to that specific file.
     """
-    suvi_wav = 94 if int(suvi_top_wavelength) == 94 else 131
+    suvi_wav = int(suvi_top_wavelength)
     wav_dir = _suvi_wav_path(suvi_wav)
 
     if suvi_use_realtime:
-        suvi_src = f"https://services.swpc.noaa.gov/images/flares/hgs/primary/{wav_dir}/latest.png"
+        suvi_src = resolve_suvi_latest_dated_url(
+            wavelength=suvi_wav, spacecraft="primary"
+        )
         title = f"SUVI {suvi_wav}Å"
     else:
         suvi_src = resolve_suvi_day_url(
@@ -793,22 +924,26 @@ def fetch_suvi_image_for_panel(
         title = f"SUVI {suvi_wav}Å"
 
     if not suvi_src:
-        return None, title + " - not available"
+        return None, title + " - not available", None
 
     cached = _SUVI_IMAGE_CACHE.get(suvi_src)
     if cached is not None:
-        return cached, title
+        return cached["image"], title, cached.get("obs_time_utc")
 
     try:
         with urlopen(suvi_src, timeout=12) as r:
             img_bytes = r.read()
         with Image.open(io.BytesIO(img_bytes)) as im:
             arr = np.asarray(im.convert("RGB"))
+        obs_time_utc = _parse_suvi_obs_time_from_src(suvi_src)
         _SUVI_IMAGE_CACHE.clear()
-        _SUVI_IMAGE_CACHE[suvi_src] = arr
-        return arr, title
+        _SUVI_IMAGE_CACHE[suvi_src] = {
+            "image": arr,
+            "obs_time_utc": obs_time_utc,
+        }
+        return arr, title, obs_time_utc
     except Exception:
-        return None, title + " - unavailable"
+        return None, title + " - unavailable", None
 
 
 # **********************************************************
@@ -858,6 +993,21 @@ def publish_local_files(
                 continue
             shutil.copy2(src, dst)
 
+    index_html = build_waffle_v1_index_html(
+        suvi_top_wavelength=suvi_top_wavelength,
+        suvi_day_utc=suvi_day_utc,
+        suvi_use_realtime=suvi_use_realtime,
+    )
+
+    with open(
+        os.path.join(destination_volume, "index.html"), "w", encoding="utf-8"
+    ) as f:
+        f.write(index_html)
+
+
+def build_waffle_v1_index_html(
+    suvi_top_wavelength=131, suvi_day_utc=None, suvi_use_realtime=False
+):
     index_html = ""
     template_path = os.path.join(os.getcwd(), "wku_template.html")
     if os.path.exists(template_path):
@@ -866,10 +1016,12 @@ def publish_local_files(
     else:
         index_html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><title>WAFFLE v1</title></head><body><center><img id="image0" src="./latest_plots/full_disk_maps.gif" style="max-width:100%;height:auto;"><br><img id="image1" src="./latest_plots/em_goes_plot.png" style="max-width:100%;height:auto;"><script>setInterval(function(){var t=new Date().getTime();document.getElementById("image0").src="./latest_plots/full_disk_maps.gif?t="+t;document.getElementById("image1").src="./latest_plots/em_goes_plot.png?t="+t;},15000);</script></center></body></html>"""
 
-    suvi_wav = 94 if int(suvi_top_wavelength) == 94 else 131
+    suvi_wav = int(suvi_top_wavelength)
     wav_dir = _suvi_wav_path(suvi_wav)
     if suvi_use_realtime:
-        suvi_src = f"https://services.swpc.noaa.gov/images/flares/hgs/primary/{wav_dir}/latest.png"
+        suvi_src = resolve_suvi_latest_dated_url(
+            wavelength=suvi_wav, spacecraft="primary"
+        )
     else:
         suvi_src = resolve_suvi_day_url(
             suvi_day_utc,
@@ -878,20 +1030,41 @@ def publish_local_files(
         )
         if not suvi_src:
             suvi_src = ""
+    if suvi_src is None:
+        suvi_src = ""
     index_html = index_html.replace("__SUVI_TOP_WAVELENGTH__", str(suvi_wav))
     index_html = index_html.replace("__SUVI_TOP_SRC__", suvi_src)
+    return index_html
 
-    with open(
-        os.path.join(destination_volume, "index.html"), "w", encoding="utf-8"
-    ) as f:
-        f.write(index_html)
+
+def publish_remote_index_html(
+    ssh_client,
+    destination_volume,
+    suvi_top_wavelength=131,
+    suvi_day_utc=None,
+    suvi_use_realtime=False,
+):
+    index_html = build_waffle_v1_index_html(
+        suvi_top_wavelength=suvi_top_wavelength,
+        suvi_day_utc=suvi_day_utc,
+        suvi_use_realtime=suvi_use_realtime,
+    )
+    with SCPClient(ssh_client.get_transport()) as scp:
+        scp.putfo(
+            io.BytesIO(index_html.encode("utf-8")),
+            remote_path=os.path.join(destination_volume, "index.html"),
+        )
 
 
 # **********************************************************
 
 
 def select_data_to_download(
-    start_time_series, grouped_wav, current_time_ut, wavelengths_needed
+    start_time_series,
+    grouped_wav,
+    current_time_ut,
+    wavelengths_needed,
+    prefer_latest=True,
 ):
     """
 
@@ -922,8 +1095,14 @@ def select_data_to_download(
     if len(start_time_series) == 0:
         return -1
 
-    # Pick the earliest valid cycle strictly after the current reference time.
-    for idx in range(len(start_time_series)):
+    # Realtime mode: pick latest valid cycle in window.
+    # Archive mode: pick earliest valid cycle after cursor (step-following replay).
+    if prefer_latest:
+        idx_iter = range(len(start_time_series) - 1, -1, -1)
+    else:
+        idx_iter = range(len(start_time_series))
+
+    for idx in idx_iter:
         this_start_time = start_time_series[idx]
         this_grouped_wav = grouped_wav[idx]
         cond = (this_start_time > current_time_ut) and np.all(
@@ -1233,6 +1412,87 @@ def load_realtime_XRS(reference_time_ut=None):
     ].reset_index(drop=True)
 
 
+def _empty_xrs_frames():
+    cols = ["time_tag", "flux", "energy"]
+    return pd.DataFrame(columns=cols), pd.DataFrame(columns=cols)
+
+
+def load_archive_XRS(reference_time_ut, goes_folder, lookback_hours=6):
+    """
+    Load historical GOES XRS data for archive/replay mode.
+
+    Uses SunPy/Fido retrieval for XRS over a bounded window ending at reference_time_ut.
+    Returns same dataframe structure as load_realtime_XRS.
+    """
+    if reference_time_ut is None:
+        return _empty_xrs_frames()
+
+    try:
+        from sunpy.net import Fido, attrs as a
+        from sunpy.timeseries import TimeSeries
+    except Exception:
+        return _empty_xrs_frames()
+
+    try:
+        end_time = reference_time_ut.astimezone(datetime.timezone.utc)
+        start_time = end_time - timedelta(hours=float(lookback_hours))
+        cache_dir = os.path.join(goes_folder, "archive_cache")
+        mkdir(cache_dir)
+
+        result = Fido.search(a.Time(start_time, end_time), a.Instrument("XRS"))
+        if len(result) == 0:
+            return _empty_xrs_frames()
+
+        files = Fido.fetch(result, path=os.path.join(cache_dir, "{file}"))
+        if len(files) == 0:
+            return _empty_xrs_frames()
+
+        ts = TimeSeries(files, concatenate=True)
+        df = ts.to_dataframe()
+        if df is None or len(df) == 0:
+            return _empty_xrs_frames()
+
+        # Handle common XRS column naming variants.
+        cols = {str(c).lower(): c for c in df.columns}
+        col_a = cols.get("xrsa")
+        col_b = cols.get("xrsb")
+        if col_a is None or col_b is None:
+            return _empty_xrs_frames()
+
+        # Ensure UTC-aware index for consistency.
+        idx = pd.to_datetime(df.index, utc=True, errors="coerce")
+        good = ~idx.isna()
+        idx = idx[good]
+        dfa = pd.to_numeric(df.loc[good, col_a], errors="coerce")
+        dfb = pd.to_numeric(df.loc[good, col_b], errors="coerce")
+        ok = ~(dfa.isna() | dfb.isna())
+        idx = idx[ok]
+        dfa = dfa[ok]
+        dfb = dfb[ok]
+        if len(idx) == 0:
+            return _empty_xrs_frames()
+
+        xrsa_current = pd.DataFrame(
+            {
+                "time_tag": idx.to_pydatetime(),
+                "flux": np.asarray(dfa, dtype=float),
+                "energy": "0.05-0.4nm",
+            }
+        )
+        xrsb_current = pd.DataFrame(
+            {
+                "time_tag": idx.to_pydatetime(),
+                "flux": np.asarray(dfb, dtype=float),
+                "energy": "0.1-0.8nm",
+            }
+        )
+        return xrsa_current.iloc[-100:].reset_index(drop=True), xrsb_current.iloc[
+            -100:
+        ].reset_index(drop=True)
+    except Exception:
+        return _empty_xrs_frames()
+
+
 # **********************************************************
 def plot_em_maps_and_curves(
     em_maps,
@@ -1374,14 +1634,18 @@ def plot_em_maps_and_curves(
         em_cache=em_cache,
     )
 
-    # Original-style hourly view anchored to the latest EM point.
-    min_time = time_em_array[-1] - timedelta(minutes=60)
-    max_time = time_em_array[-1]
+    # Match original WAFFLE behavior:
+    # - x-max follows latest GOES time (realtime)
+    # - x-min is one hour before latest AIA, but not before earliest GOES shown
     if len(goes_time_array) > 0:
-        goes_mask = (goes_time_array >= min_time) & (goes_time_array <= max_time)
-        goes_time_array = goes_time_array[goes_mask]
-        goes_xrsa_flux = np.array(goes_xrsa_flux)[goes_mask]
-        goes_xrsb_flux = np.array(goes_xrsb_flux)[goes_mask]
+        min_time = max(
+            time_em_array[-1] - timedelta(minutes=60),
+            np.min(goes_time_array),
+        )
+        max_time = np.max(goes_time_array)
+    else:
+        min_time = time_em_array[-1] - timedelta(minutes=60)
+        max_time = time_em_array[-1]
 
     if len(goes_time_array) > 0:
         ax7.plot(
@@ -1472,6 +1736,7 @@ def plot_full_disk_images(
     n_pix_y=1000,
     suvi_image=None,
     suvi_title="SUVI",
+    suvi_obs_time_utc=None,
 ):
     # def plot_full_disk_images(calibrated_aia_maps, plots_folder, t_rec, arnum, ar_lon, ar_lat, color_arr,
     #                        timezone='US/Central', n_pix_x=1400, n_pix_y=1400): #### new suggested version to make boxes bigger
@@ -1554,7 +1819,9 @@ def plot_full_disk_images(
 
     # Reuse SkyCoord objects across channels.
     ar_coords = [
-        SkyCoord(ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst)
+        SkyCoord(
+            ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst
+        )
         for ii in range(len(ar_lon))
     ]
     for jj in range(5):
@@ -1608,10 +1875,11 @@ def plot_full_disk_images(
         t_rec[0], "%Y-%m-%dT%H:%M:%SZ"
     ).replace(tzinfo=datetime.timezone.utc)
     current_time_local = convert_utc_to_timezone(current_time_utc, timezone=timezone)
-    suvi_panel_title = (
-        f"{suvi_title} | {current_time_local.strftime('%H:%M:%S')} {timezone}"
-    )
-    ax6.set_title(suvi_panel_title, fontsize=16, pad=6)
+    if suvi_obs_time_utc is not None:
+        suvi_panel_title = f"{suvi_title} | {suvi_obs_time_utc.strftime('%Y-%m-%d %H:%M:%S')}"
+    else:
+        suvi_panel_title = suvi_title
+    ax6.set_title(suvi_panel_title, fontsize=20, pad=6, color="r")
     if suvi_image is None:
         ax6.text(
             0.5, 0.5, "SUVI data not available", ha="center", va="center", fontsize=10
@@ -1780,8 +2048,9 @@ def stream_aia_data(
     # Define colors that will be used for plotting the boxes and the corresponding curves
     color_arr = ["red", "gold", "blue", "lime", "cyan", "magenta"]
 
-    # Define JSOC server client
-    client = configure_jsoc_server()
+    # Define JSOC server client.
+    use_nrt2_server = str(drms_series).lower().startswith("aia.lev1_nrt2")
+    client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
 
     # Plots folder
     plots_folder = os.path.join(data_folder, "all_plots")
@@ -1807,14 +2076,13 @@ def stream_aia_data(
 
     # Cache to avoid repeated CSV reads/parsing in plotting calls.
     em_cache = {}
-    # Cache GOES data per UTC day to avoid repeated network fetches in the loop.
-    goes_cache = {}
     # v1: no ML/scores/PSF diagnostics in runtime path.
 
     # Array containing the wavelengths needed to compute the high temperature EM maps
     wavelengths_needed = np.array([94, 131, 171, 193, 211])
 
     # Initialize start time, current time and difference between start time and current time (zero at the beginning of the stream)
+    realtime_mode = query_start_ut is None
     if query_start_ut is None:
         query_start_ut = datetime.datetime.now(datetime.timezone.utc)
     start_time_ut = query_start_ut - timedelta(minutes=latency)
@@ -1830,7 +2098,7 @@ def stream_aia_data(
         time_step_minutes = latency
 
     # Define publishing destination.
-    destination_volume = "/server/html/waffle/"
+    destination_volume = "/server/html/waffle_1/"
     ssh_client = None
     if publish_mode == "scp":
         ssh_client = define_ssh_client()
@@ -1854,44 +2122,88 @@ def stream_aia_data(
             phase_times = {}
             cycle_start = time.time()
             t_phase = time.time()
-            # Query data
-            query, segments = client.query(
+            # Query data (retry transient/partial DRMS responses before skipping cycle).
+            ds_query = (
                 drms_series
                 + "["
                 + current_time_ut.strftime("%Y.%m.%d_%H:%M:%S")
                 + "_UT/"
                 + str(latency)
-                + "m]",
-                key="T_REC, WAVELNTH",
-                seg=drms_segment,
+                + "m]"
             )
+            query = None
+            segments = None
+            query_cols = set()
+            query_ready = False
+            for attempt in range(3):
+                try:
+                    query, segments = client.query(
+                        ds_query,
+                        key="T_REC, WAVELNTH",
+                        seg=drms_segment,
+                    )
+                except Exception as err:
+                    query = None
+                    segments = None
+                    if attempt < 2:
+                        print("awaiting new data...")
+                        time.sleep(2)
+                        client = configure_jsoc_server(
+                            use_nrt2_server=use_nrt2_server
+                        )
+                        continue
+                    print("awaiting new data...")
+                    break
+
+                if query is not None and len(query) > 0:
+                    query_cols = set(getattr(query, "columns", []))
+                    if ("WAVELNTH" in query_cols) and ("T_REC" in query_cols):
+                        query_ready = True
+                        break
+
+                if attempt < 2:
+                    print("awaiting new data...")
+                    time.sleep(2)
+                    client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
+                else:
+                    print("awaiting new data...")
             if print_phase_timing:
                 phase_times["query"] = time.time() - t_phase
-    
+
+            if not query_ready:
+                time.sleep(15)
+                time_diff = (
+                    datetime.datetime.now(datetime.timezone.utc)
+                    - start_time_ut_time_diff
+                )
+                time_diff = time_diff.seconds / 60
+                continue
+
             # Extract wavelengths, time of the measurement, segment link
             wavelnth = np.array(query["WAVELNTH"])
             t_rec = np.array(query["T_REC"])
             segments = np.squeeze(np.array(segments))
-    
+
             # Check if reference wavelength is present in the set of data that have been queried
             idx = np.where(wavelnth == reference_wav)
             idx = idx[0]
-    
+
             if len(idx) == 0:
                 print("Reference wavelength not found. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (
-                    datetime.datetime.now(datetime.timezone.utc) - start_time_ut_time_diff
+                    datetime.datetime.now(datetime.timezone.utc)
+                    - start_time_ut_time_diff
                 )
                 time_diff = time_diff.seconds / 60
                 continue
-    
+
             # Divide data into cycles
             grouped_wav = []
             grouped_t_rec = []
             grouped_segments = []
             start_time_series = []
-    
+
             # Divide data into 12s cycles
             for start, end in zip(idx, idx[1:]):
                 this_wav = wavelnth[start:end]
@@ -1901,7 +2213,7 @@ def stream_aia_data(
                     this_t_rec[0], "%Y-%m-%dT%H:%M:%SZ"
                 )
                 start_time_series.append(utc.localize(this_start_time))
-    
+
                 # Remove 335 A, 304 A, 1600 A, 1700 A and 4500 A
                 idx_remove = np.where(
                     (this_wav == 304)
@@ -1915,28 +2227,29 @@ def stream_aia_data(
                     this_wav = np.delete(this_wav, idx_remove)
                     this_t_rec = np.delete(this_t_rec, idx_remove)
                     this_segments = np.delete(this_segments, idx_remove)
-    
+
                 grouped_wav.append(this_wav)
                 grouped_t_rec.append(this_t_rec)
                 grouped_segments.append(this_segments)
-    
+
             start_time_series = np.array(start_time_series)
-    
+
             # Select latest complete 12s cycle to be downloaded
             idx = select_data_to_download(
                 start_time_series,
                 grouped_wav,
                 current_time_ut,
                 wavelengths_needed,
+                prefer_latest=realtime_mode,
             )
-    
+
             if idx >= 0:
                 # Take the last 12s AIA data cycle
                 grouped_wav = grouped_wav[idx]
                 grouped_t_rec = grouped_t_rec[idx]
                 grouped_segments = grouped_segments[idx]
                 start_time_series = start_time_series[idx]
-    
+
                 # Keep one sample for each required wavelength in a fixed order.
                 selected_wav = []
                 selected_t_rec = []
@@ -1950,7 +2263,7 @@ def stream_aia_data(
                     selected_wav.append(grouped_wav[j])
                     selected_t_rec.append(grouped_t_rec[j])
                     selected_segments.append(grouped_segments[j])
-    
+
                 if len(selected_wav) != len(wavelengths_needed):
                     print("Selected cycle missing required wavelengths. Wait 15 s.")
                     time.sleep(15)
@@ -1960,14 +2273,14 @@ def stream_aia_data(
                     )
                     time_diff = time_diff.seconds / 60
                     continue
-    
+
                 grouped_wav = np.array(selected_wav)
                 grouped_t_rec = np.array(selected_t_rec)
                 grouped_segments = np.array(selected_segments)
-    
+
                 # Keep track of the elapsed time
                 t = time.time()
-    
+
                 # Download and calibrate full-disk near real time AIA maps
                 t_phase = time.time()
                 aia_maps, dowloaded_data_folder, error = download_aia_data(
@@ -1981,7 +2294,7 @@ def stream_aia_data(
                 )
                 if print_phase_timing:
                     phase_times["download"] = time.time() - t_phase
-    
+
                 t_phase = time.time()
                 calibrated_aia_maps = calibrate_full_disk_maps(
                     aia_maps,
@@ -2004,23 +2317,23 @@ def stream_aia_data(
                 )
                 if print_phase_timing:
                     phase_times["calibrate"] = time.time() - t_phase
-    
+
                 if error:
                     print("Error in downloading data. Continue..")
                     time.sleep(30)
                     continue
-    
+
                 # Crop images around ARs and compute EM of the "hottest region"
                 cropped_maps_folder = dowloaded_data_folder + "_crop"
                 if save_maps:
                     mkdir(cropped_maps_folder)
-    
+
                 # Plot full-disk maps
                 t_phase = time.time()
-                suvi_day_key = start_time_series.astimezone(datetime.timezone.utc).strftime(
-                    "%Y-%m-%d"
-                )
-                suvi_img, suvi_title = fetch_suvi_image_for_panel(
+                suvi_day_key = start_time_series.astimezone(
+                    datetime.timezone.utc
+                ).strftime("%Y-%m-%d")
+                suvi_img, suvi_title, suvi_obs_time_utc = fetch_suvi_image_for_panel(
                     suvi_top_wavelength=suvi_top_wavelength,
                     suvi_day_utc=suvi_day_key,
                     suvi_use_realtime=suvi_use_realtime,
@@ -2038,6 +2351,7 @@ def stream_aia_data(
                     n_pix_y=n_pix_y,
                     suvi_image=suvi_img,
                     suvi_title=suvi_title,
+                    suvi_obs_time_utc=suvi_obs_time_utc,
                 )
                 if print_phase_timing:
                     phase_times["full_disk_render"] = time.time() - t_phase
@@ -2056,29 +2370,26 @@ def stream_aia_data(
                     phase_times["full_disk_plot"] = (
                         phase_times["full_disk_render"] + phase_times["full_disk_gif"]
                     )
-    
-                # Download latest GOES data
+
+                # Download GOES data
                 t_phase = time.time()
-                goes_day_key = start_time_series.astimezone(datetime.timezone.utc).strftime(
-                    "%Y-%m-%d"
-                )
-                if goes_day_key in goes_cache:
-                    xrsa_current, xrsb_current = goes_cache[goes_day_key]
-                else:
+                if realtime_mode:
                     xrsa_current, xrsb_current = load_realtime_XRS(
                         reference_time_ut=start_time_series
                     )
-                    goes_cache[goes_day_key] = (xrsa_current, xrsb_current)
+                else:
+                    # Archive mode: skip GOES retrieval entirely.
+                    xrsa_current, xrsb_current = _empty_xrs_frames()
                 goes_plot_data = prepare_goes_plot_arrays(
                     xrsa_current, xrsb_current, timezone=timezone
                 )
                 if print_phase_timing:
                     phase_times["goes"] = time.time() - t_phase
-    
+
                 t_phase = time.time()
                 em_maps = [None] * n_ar
                 em_totals = [0.0] * n_ar
-    
+
                 def _compute_ar(i):
                     aia_img, metadata = fast_crop_em_cube(
                         em_calibrated_full_maps,
@@ -2090,8 +2401,10 @@ def stream_aia_data(
                     em_map_raw = compute_em_map(aia_img, metadata, weights)
                     em_map_th = em_map_raw.data.copy()
                     em_map_th[em_map_th < th_tot_em] = 0
-                    return i, em_map_raw, float(np.sum(em_map_th))
-    
+                    # Match legacy WAFFLE scaling used in CSV totals.
+                    total_em_current = float(np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y))
+                    return i, em_map_raw, total_em_current
+
                 n_workers = max(1, min(int(worker_count), n_ar))
                 if n_workers == 1:
                     for i in range(n_ar):
@@ -2117,7 +2430,7 @@ def stream_aia_data(
                             i_out, em_map_raw, total_em_current = fut.result()
                             em_maps[i_out] = em_map_raw
                             em_totals[i_out] = total_em_current
-    
+
                 # Optional FITS exports remain single-threaded I/O.
                 if save_maps:
                     for i in range(n_ar):
@@ -2144,7 +2457,7 @@ def stream_aia_data(
                         )
                 if print_phase_timing:
                     phase_times["em_compute"] = time.time() - t_phase
-    
+
                 for i in range(n_ar):
                     file_name_em_csv = os.path.join(
                         total_em_folder, "total_em_" + str(arnum[i]) + ".csv"
@@ -2157,9 +2470,9 @@ def stream_aia_data(
                         timezone=timezone,
                         em_cache=em_cache,
                     )
-    
+
                     # v1: no detailed-analysis plot generation.
-    
+
                 # Plot GOES and AIA curves
                 t_phase = time.time()
                 plot_em_maps_and_curves(
@@ -2179,11 +2492,20 @@ def stream_aia_data(
                 )
                 if print_phase_timing:
                     phase_times["em_goes_plot"] = time.time() - t_phase
-    
+
                 print("Publish data...")
                 t_phase = time.time()
                 if publish_mode == "scp":
                     ssh_scp_files(ssh_client, latest_plots_folder, destination_volume)
+                    publish_remote_index_html(
+                        ssh_client,
+                        destination_volume,
+                        suvi_top_wavelength=suvi_top_wavelength,
+                        suvi_day_utc=start_time_series.astimezone(
+                            datetime.timezone.utc
+                        ).strftime("%Y-%m-%d"),
+                        suvi_use_realtime=suvi_use_realtime,
+                    )
                 else:
                     publish_local_files(
                         latest_plots_folder,
@@ -2197,16 +2519,16 @@ def stream_aia_data(
                 print("Publish completed!")
                 if print_phase_timing:
                     phase_times["publish"] = time.time() - t_phase
-    
+
                 if not save_maps:
                     t_phase = time.time()
                     shutil.rmtree(dowloaded_data_folder)
                     if print_phase_timing:
                         phase_times["cleanup"] = time.time() - t_phase
-    
+
                 # Ensure no matplotlib figures accumulate across loop iterations.
                 plt.close("all")
-    
+
                 elapsed = time.time() - t
                 if print_phase_timing:
                     phase_times["total_cycle"] = time.time() - cycle_start
@@ -2214,16 +2536,16 @@ def stream_aia_data(
                         "Phase times (s): "
                         + ", ".join(
                             f"{k}={phase_times[k]:.2f}"
-                        for k in [
-                            "query",
-                            "download",
-                            "calibrate",
-                            "full_disk_render",
-                            "full_disk_gif",
-                            "full_disk_plot",
-                            "goes",
-                            "em_compute",
-                            "em_goes_plot",
+                            for k in [
+                                "query",
+                                "download",
+                                "calibrate",
+                                "full_disk_render",
+                                "full_disk_gif",
+                                "full_disk_plot",
+                                "goes",
+                                "em_compute",
+                                "em_goes_plot",
                                 "publish",
                                 "cleanup",
                                 "total_cycle",
@@ -2233,20 +2555,32 @@ def stream_aia_data(
                     )
                 print("Elapsed time: " + str(round(elapsed)) + " s")
                 time_diff = (
-                    datetime.datetime.now(datetime.timezone.utc) - start_time_ut_time_diff
+                    datetime.datetime.now(datetime.timezone.utc)
+                    - start_time_ut_time_diff
                 )
                 time_diff = time_diff.seconds / 60
-                # Advance by the configured cursor step to control cadence.
-                current_time_ut = start_time_series + timedelta(minutes=time_step_minutes)
-    
+                # Follow original stream behavior: advance cursor after each accepted cycle.
+                # In replay mode this uses configured step; in realtime we follow the selected
+                # cycle directly so the same cycle is not reprocessed.
+                if realtime_mode:
+                    current_time_ut = start_time_series
+                else:
+                    current_time_ut = start_time_series + timedelta(
+                        minutes=time_step_minutes
+                    )
+
             else:
                 print("No new data series. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (
-                    datetime.datetime.now(datetime.timezone.utc) - start_time_ut_time_diff
+                    datetime.datetime.now(datetime.timezone.utc)
+                    - start_time_ut_time_diff
                 )
                 time_diff = time_diff.seconds / 60
                 continue
     finally:
         if shared_executor is not None:
             shared_executor.shutdown(wait=True)
+    # GOES folder
+    goes_folder = os.path.join(data_folder, "goes_data_folder")
+    mkdir(goes_folder)

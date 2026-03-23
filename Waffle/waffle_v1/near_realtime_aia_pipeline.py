@@ -15,24 +15,29 @@ from aiapy.calibrate.utils import get_correction_table as get_correction_table
 
 if __name__ == "__main__":
     # Define folder where to save the data.
-    # - today=None -> realtime mode (start from current UTC time)
-    # - today="YYYYMonDD" with query_start_time_utc=None -> midnight UTC of that day
-    today = "2026Mar4"
+    # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
+    # - today="YYYYMonDD" -> replay mode for that day
+    today = "2026Feb4"
     # Optional exact UTC start time for the JSOC query cursor.
-    # Sentinel: None -> keep default behavior (UTC midnight of `today`).
+    # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = None  # "2026-02-04T12:00:00Z"
+    query_start_time_utc = "2026-02-04T12:00:00Z"
     # Separate controls:
-    # 1) today decides folder naming + default day anchor
-    # 2) query_start_time_utc decides exact cursor start when provided
-    if today is None:
+    # 1) today selects realtime vs replay mode and folder naming
+    # 2) query_start_time_utc optionally overrides the cursor start
+    realtime_mode = today is None
+    if realtime_mode:
         today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%b%d")
 
     if query_start_time_utc is None:
-        # Default cursor at UTC midnight of `today`.
-        query_start_ut = datetime.datetime.strptime(today, "%Y%b%d").replace(
-            tzinfo=datetime.timezone.utc
-        )
+        if realtime_mode:
+            # Realtime cursor: let stream_aia_data anchor to current UTC now.
+            query_start_ut = None
+        else:
+            # Replay cursor: UTC midnight of the selected day.
+            query_start_ut = datetime.datetime.strptime(today, "%Y%b%d").replace(
+                tzinfo=datetime.timezone.utc
+            )
     else:
         # Exact cursor override.
         query_start_ut = datetime.datetime.strptime(
@@ -45,10 +50,10 @@ if __name__ == "__main__":
     rsun = 1000  # radius of solar disk in arcsec
     label_top = ["A", "B", "C"]
 
-    arnum_top = [4367, 4366, 4358]  # active region numbers
+    arnum_top = [4397, 4396, 4389]  # active region numbers
 
-    x_top = np.array([-200, 450, 800])  # heliographic X
-    y_top = np.array([300, 250, 300])  # heliographic Y
+    x_top = np.array([-425, -50, 800])  # heliographic X
+    y_top = np.array([300, 300, 250])  # heliographic Y
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
@@ -62,7 +67,7 @@ if __name__ == "__main__":
     # These positions are for the southern region
     label_bottom = ["D", "E", "F"]
 
-    arnum_bottom = [4371, 4369, 4362]  # active region numbers
+    arnum_bottom = [1, 4391, 4362]  # active region numbers
 
     x_bottom = np.array([-550, -400, 200])  # heliographic X
     y_bottom = np.array([-400, 0, -400])  # heliographic Y
