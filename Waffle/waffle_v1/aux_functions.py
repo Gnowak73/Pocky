@@ -1367,10 +1367,21 @@ def load_realtime_XRS(reference_time_ut=None):
 
     # SWPC-only mode: use the same corrected `flux` values as the original method.
     # reference_time_ut is intentionally ignored in this mode.
-    json_url = "https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json"
-    with urlopen(json_url, timeout=15) as r:
-        payload = r.read().decode("utf-8", errors="strict")
-    df = pd.DataFrame(json.loads(payload))
+    json_url = "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"
+    df = None
+    # Fail-safe, lightweight retry: keep stream alive on transient SWPC issues.
+    for attempt in range(2):
+        try:
+            with urlopen(json_url, timeout=10) as r:
+                payload = r.read().decode("utf-8", errors="strict")
+            parsed = json.loads(payload)
+            df = pd.DataFrame(parsed)
+            break
+        except Exception:
+            if attempt == 0:
+                time.sleep(0.8)
+            else:
+                return _empty_xrs_frames()
 
     xrsa_current = df[df.energy == "0.05-0.4nm"][["time_tag", "flux", "energy"]].copy()
     xrsb_current = df[df.energy == "0.1-0.8nm"][["time_tag", "flux", "energy"]].copy()
