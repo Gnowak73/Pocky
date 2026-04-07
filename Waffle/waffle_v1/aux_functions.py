@@ -1887,7 +1887,10 @@ def plot_full_disk_images(
     ).replace(tzinfo=datetime.timezone.utc)
     current_time_local = convert_utc_to_timezone(current_time_utc, timezone=timezone)
     if suvi_obs_time_utc is not None:
-        suvi_panel_title = f"{suvi_title} | {suvi_obs_time_utc.strftime('%Y-%m-%d %H:%M:%S')}"
+        suvi_time_local = convert_utc_to_timezone(suvi_obs_time_utc, timezone=timezone)
+        suvi_panel_title = (
+            f"{suvi_title} | {suvi_time_local.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
     else:
         suvi_panel_title = suvi_title
     ax6.set_title(suvi_panel_title, fontsize=20, pad=6, color="r")
