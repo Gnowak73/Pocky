@@ -43,6 +43,7 @@ import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+from matplotlib.patches import Rectangle
 
 import shutil
 
@@ -505,6 +506,25 @@ def fast_crop_em_cube(aia_maps, ar_lon, ar_lat, n_pix_x=1000, n_pix_y=1000):
     cube = np.stack(arrs, axis=0)
     cube = np.transpose(cube, (1, 2, 0))
     return cube, metadata
+
+
+# **********************************************************
+
+
+def submaps_to_em_cube(aia_submaps):
+    """
+    Convert channel submaps into an EM cube with shape (ny, nx, nchannels).
+    """
+    if len(aia_submaps) == 0:
+        return np.empty((0, 0, 0)), None
+
+    arrs = [this_map.data for this_map in aia_submaps]
+    min_ny = min(a.shape[0] for a in arrs)
+    min_nx = min(a.shape[1] for a in arrs)
+    arrs = [a[:min_ny, :min_nx] for a in arrs]
+    cube = np.stack(arrs, axis=0)
+    cube = np.transpose(cube, (1, 2, 0))
+    return cube, aia_submaps[0].meta
 
 
 # **********************************************************
@@ -1873,13 +1893,28 @@ def plot_full_disk_images(
                 top_right.Tx, top_right.Ty, frame=this_map.coordinate_frame
             )
 
-            this_map.draw_quadrangle(
-                new_bl,
-                axes=ax[jj],
-                top_right=new_tr,
-                color=color_arr[ii],
-                linewidth=2,
-            )
+            try:
+                this_map.draw_quadrangle(
+                    new_bl,
+                    axes=ax[jj],
+                    top_right=new_tr,
+                    color=color_arr[ii],
+                    linewidth=2,
+                )
+            except Exception:
+                # Fallback for occasional WCS transform failures on some realtime frames.
+                x0 = pix_x - n_pix_x // 2
+                y0 = pix_y - n_pix_y // 2
+                rect = Rectangle(
+                    (x0, y0),
+                    n_pix_x,
+                    n_pix_y,
+                    fill=False,
+                    edgecolor=color_arr[ii],
+                    linewidth=2,
+                    transform=ax[jj].get_transform("pixel"),
+                )
+                ax[jj].add_patch(rect)
 
     # SUVI panel integrated in the same top block (no HTML overlay positioning).
     current_time_utc = datetime.datetime.strptime(
@@ -1967,6 +2002,7 @@ def stream_aia_data(
     time_step_minutes=None,
     worker_count=4,
     print_phase_timing=False,
+    em_processing_mode=0,
     suvi_top_wavelength=131,
     suvi_use_realtime=False,
 ):
@@ -2036,6 +2072,11 @@ def stream_aia_data(
 
         print_phase_timing: bool. If True, print per-phase timing diagnostics each cycle.
 
+        em_processing_mode: int. EM crop/calibration strategy:
+                            0 -> optimized (full-disk EM calibration + fast NumPy crop)
+                            1 -> middle ground (full-disk EM calibration + WCS submaps)
+                            2 -> WCS submaps first, then normalize/degradation per channel submap
+
         suvi_top_wavelength: int. SUVI wavelength used for the top-row remote image in generated website (94 or 131).
 
         suvi_use_realtime: bool. If True, force SUVI top image to use realtime latest.png;
@@ -2058,6 +2099,8 @@ def stream_aia_data(
 
     if len(arnum) < n_ar:
         raise Exception("The number of elements in arnum is less than " + str(n_ar))
+    if em_processing_mode not in (0, 1, 2):
+        raise ValueError("em_processing_mode must be 0, 1, or 2")
 
     # Define colors that will be used for plotting the boxes and the corresponding curves
     color_arr = ["red", "gold", "blue", "lime", "cyan", "magenta"]
@@ -2405,13 +2448,47 @@ def stream_aia_data(
                 em_totals = [0.0] * n_ar
 
                 def _compute_ar(i):
-                    aia_img, metadata = fast_crop_em_cube(
-                        em_calibrated_full_maps,
-                        ar_lon[i],
-                        ar_lat[i],
-                        n_pix_x=n_pix_x,
-                        n_pix_y=n_pix_y,
-                    )
+                    if em_processing_mode == 0:
+                        aia_img, metadata = fast_crop_em_cube(
+                            em_calibrated_full_maps,
+                            ar_lon[i],
+                            ar_lat[i],
+                            n_pix_x=n_pix_x,
+                            n_pix_y=n_pix_y,
+                        )
+                    elif em_processing_mode == 1:
+                        aia_submaps = crop_full_disk_maps(
+                            em_calibrated_full_maps,
+                            ar_lon[i],
+                            ar_lat[i],
+                            arnum[i],
+                            cropped_maps_folder,
+                            n_pix_x=n_pix_x,
+                            n_pix_y=n_pix_y,
+                            save_submaps=False,
+                        )
+                        aia_img, metadata = submaps_to_em_cube(aia_submaps)
+                    else:
+                        aia_submaps_raw = crop_full_disk_maps(
+                            calibrated_aia_maps,
+                            ar_lon[i],
+                            ar_lat[i],
+                            arnum[i],
+                            cropped_maps_folder,
+                            n_pix_x=n_pix_x,
+                            n_pix_y=n_pix_y,
+                            save_submaps=False,
+                        )
+                        aia_submaps_em = []
+                        for this_submap in aia_submaps_raw:
+                            this_submap_norm = normalize_exposure(this_submap)
+                            this_submap_em = correct_degradation(
+                                this_submap_norm,
+                                correction_table=correction_table,
+                            )
+                            aia_submaps_em.append(this_submap_em)
+                        aia_img, metadata = submaps_to_em_cube(aia_submaps_em)
+
                     em_map_raw = compute_em_map(aia_img, metadata, weights)
                     em_map_th = em_map_raw.data.copy()
                     em_map_th[em_map_th < th_tot_em] = 0
