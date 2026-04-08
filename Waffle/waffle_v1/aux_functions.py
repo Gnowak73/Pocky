@@ -478,10 +478,22 @@ def fast_crop_em_cube(aia_maps, ar_lon, ar_lat, n_pix_x=1000, n_pix_y=1000):
     this_coord = SkyCoord(
         ar_lon * u.deg, ar_lat * u.deg, frame=frames.HeliographicStonyhurst
     )
-    pix_x = int(np.round(ref.world_to_pixel(this_coord).x.value))
-    pix_y = int(np.round(ref.world_to_pixel(this_coord).y.value))
+    wpx = ref.world_to_pixel(this_coord)
+    pix_x_f = float(wpx.x.value)
+    pix_y_f = float(wpx.y.value)
 
     ny_ref, nx_ref = ref.data.shape
+    if np.isfinite(pix_x_f) and np.isfinite(pix_y_f):
+        pix_x = int(np.round(pix_x_f))
+        pix_y = int(np.round(pix_y_f))
+    else:
+        # Simple fallback for invalid WCS transform on occasional frames.
+        print(
+            "Warning: invalid WCS world_to_pixel transform; using center crop fallback."
+        )
+        pix_x = nx_ref // 2
+        pix_y = ny_ref // 2
+
     x0 = max(0, pix_x - n_pix_x // 2)
     y0 = max(0, pix_y - n_pix_y // 2)
     x1 = min(nx_ref, x0 + n_pix_x)
@@ -490,10 +502,14 @@ def fast_crop_em_cube(aia_maps, ar_lon, ar_lat, n_pix_x=1000, n_pix_y=1000):
     y0 = max(0, y1 - n_pix_y)
 
     # Build metadata once from a true SunPy submap on reference channel.
-    bl = ref.pixel_to_world(x0 * u.pix, y0 * u.pix)
-    tr = ref.pixel_to_world((x1 - 1) * u.pix, (y1 - 1) * u.pix)
-    ref_sub = ref.submap(bl, top_right=tr)
-    metadata = ref_sub.meta
+    try:
+        bl = ref.pixel_to_world(x0 * u.pix, y0 * u.pix)
+        tr = ref.pixel_to_world((x1 - 1) * u.pix, (y1 - 1) * u.pix)
+        ref_sub = ref.submap(bl, top_right=tr)
+        metadata = ref_sub.meta
+    except Exception:
+        print("Warning: WCS submap metadata fallback to reference map metadata.")
+        metadata = ref.meta
 
     # Slice all channels directly.
     arrs = []
