@@ -72,6 +72,10 @@ def mkdir(a_dir):
         os.makedirs(a_dir)
 
 
+def _safe_timestamp_for_path(timestamp):
+    return str(timestamp).replace(":", "")
+
+
 def _repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -274,7 +278,7 @@ def _save_box_visibility_frame(
     risk=np.nan,
     prob=None,
 ):
-    stamp_dir = os.path.join(output_root, timestamp_utc.replace(":", ""))
+    stamp_dir = os.path.join(output_root, _safe_timestamp_for_path(timestamp_utc))
     mkdir(stamp_dir)
     box_dir = os.path.join(stamp_dir, str(box_label))
     mkdir(box_dir)
@@ -805,9 +809,8 @@ def crop_full_disk_maps(
 
         if save_submaps:
             if save_submaps_timestamp:
-                stamp_dir = os.path.join(
-                    cropped_maps_folder, save_submaps_timestamp.replace(":", "")
-                )
+                safe_stamp = _safe_timestamp_for_path(save_submaps_timestamp)
+                stamp_dir = os.path.join(cropped_maps_folder, safe_stamp)
                 box_dir = os.path.join(
                     stamp_dir,
                     str(save_submaps_label)
@@ -820,7 +823,7 @@ def crop_full_disk_maps(
                 mkdir(wav_dir)
                 fitsname = os.path.join(
                     wav_dir,
-                    f"aia.lev1_euv_12s.{save_submaps_timestamp}.{wav}.image_lev1.fits",
+                    f"aia.lev1_euv_12s.{safe_stamp}.{wav}.image_lev1.fits",
                 )
             else:
                 fitsname = os.path.join(
@@ -921,7 +924,7 @@ def save_box_crop_bundle(
     Save timestamped cropped AIA wavelength FITS plus the EM map for one box.
 
     Output layout:
-        <output_root>/<timestamp-no-colons>/<box_label>/<wavelength>/aia.lev1_euv_12s.<timestamp>.<wavelength>.image_lev1.fits
+        <output_root>/<timestamp-no-colons>/<box_label>/<wavelength>/aia.lev1_euv_12s.<timestamp-no-colons>.<wavelength>.image_lev1.fits
         <output_root>/<timestamp-no-colons>/<box_label>/em/em_map.fits
     """
     aia_submaps = crop_full_disk_maps(
@@ -936,7 +939,7 @@ def save_box_crop_bundle(
         save_submaps_timestamp=record_time_utc,
         save_submaps_label=box_label,
     )
-    stamp_dir = os.path.join(output_root, record_time_utc.replace(":", ""))
+    stamp_dir = os.path.join(output_root, _safe_timestamp_for_path(record_time_utc))
     box_dir = os.path.join(stamp_dir, str(box_label))
     em_dir = os.path.join(box_dir, "em")
     mkdir(stamp_dir)
