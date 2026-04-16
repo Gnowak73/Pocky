@@ -1,5 +1,6 @@
 name: Waffle
 channels:
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
@@ -17,3 +18,7 @@ dependencies:
   - matplotlib
   - scp
   - opencv
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly

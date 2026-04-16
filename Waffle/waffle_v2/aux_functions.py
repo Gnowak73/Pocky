@@ -2623,7 +2623,7 @@ def stream_aia_data(
         time_step_minutes = latency
 
     # Define publishing destination.
-    destination_volume = "/server/html/waffle_1/"
+    destination_volume = "/server/html/waffle_2/"
     ssh_client = None
     if publish_mode == "scp":
         ssh_client = define_ssh_client()
