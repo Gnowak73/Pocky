@@ -25,7 +25,7 @@ func main() {
 	if !fileExists(envYML) || !fileExists(pipeline) {
 		fmt.Printf("Missing required files in %s\n", root)
 		fmt.Println("Expected: waffle_env.yml and near_realtime_aia_pipeline.py")
-		os.Exit(1)
+		exitWithPause(1)
 	}
 
 	conda, err := findConda()
@@ -34,13 +34,13 @@ func main() {
 		if err := installMiniforge(); err != nil {
 			fmt.Printf("Auto-install failed: %v\n", err)
 			fmt.Println("Install Miniforge manually, then rerun this launcher.")
-			os.Exit(1)
+			exitWithPause(1)
 		}
 		conda, err = findConda()
 		if err != nil {
 			fmt.Println("Miniforge installed, but conda is not yet on PATH.")
 			fmt.Println("Restart terminal/session and run again.")
-			os.Exit(1)
+			exitWithPause(1)
 		}
 	}
 
@@ -53,13 +53,13 @@ func main() {
 		fmt.Printf("Creating conda env %q...\n", envName)
 		if err := runCmd(conda, []string{"env", "create", "-n", envName, "-f", envYML}, root); err != nil {
 			fmt.Printf("Failed to create env: %v\n", err)
-			os.Exit(1)
+			exitWithPause(1)
 		}
 	} else if os.Getenv("WAFFLE_FORCE_UPDATE") == "1" {
 		fmt.Printf("Updating conda env %q...\n", envName)
 		if err := runCmd(conda, []string{"env", "update", "-n", envName, "-f", envYML, "--prune"}, root); err != nil {
 			fmt.Printf("Failed to update env: %v\n", err)
-			os.Exit(1)
+			exitWithPause(1)
 		}
 	} else {
 		fmt.Printf("Conda env %q already exists.\n", envName)
@@ -68,7 +68,7 @@ func main() {
 	fmt.Println("Starting WAFFLE...")
 	if err := runCmd(conda, []string{"run", "--no-capture-output", "-n", envName, "python", pipeline}, root); err != nil {
 		fmt.Printf("WAFFLE run failed: %v\n", err)
-		os.Exit(1)
+		exitWithPause(1)
 	}
 }
 
@@ -76,7 +76,7 @@ func mustWaffleRoot() string {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Println("Unable to resolve executable path.")
-		os.Exit(1)
+		exitWithPause(1)
 	}
 	// Hardcoded contract:
 	// - Launcher runs from waffle_v1/launcher_go/dist
@@ -89,9 +89,18 @@ func mustWaffleRoot() string {
 		fmt.Println("Expected files:")
 		fmt.Println(" - waffle_env.yml")
 		fmt.Println(" - near_realtime_aia_pipeline.py")
-		os.Exit(1)
+		exitWithPause(1)
 	}
 	return root
+}
+
+func exitWithPause(code int) {
+	if os.Getenv("WAFFLE_NO_PAUSE") != "1" {
+		fmt.Println()
+		fmt.Println("Launcher failed. Press Enter to close this window.")
+		_, _ = fmt.Scanln()
+	}
+	os.Exit(code)
 }
 
 func fileExists(path string) bool {
