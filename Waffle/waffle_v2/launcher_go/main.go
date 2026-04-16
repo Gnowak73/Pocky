@@ -114,20 +114,23 @@ func findConda() (string, error) {
 		localAppData := os.Getenv("LOCALAPPDATA")
 		userProfile := os.Getenv("USERPROFILE")
 		cands = append(cands,
+			filepath.Join(userProfile, "miniconda3", "condabin", "conda.bat"),
+			filepath.Join(localAppData, "miniconda3", "condabin", "conda.bat"),
+			`C:\ProgramData\miniconda3\condabin\conda.bat`,
+			filepath.Join(userProfile, "miniforge3", "condabin", "conda.bat"),
+			filepath.Join(localAppData, "miniforge3", "condabin", "conda.bat"),
+			`C:\ProgramData\miniforge3\condabin\conda.bat`,
 			filepath.Join(localAppData, "anaconda3", "condabin", "conda.bat"),
 			filepath.Join(userProfile, "anaconda3", "condabin", "conda.bat"),
 			`C:\ProgramData\anaconda3\condabin\conda.bat`,
 			"conda",
-			`C:\ProgramData\miniforge3\condabin\conda.bat`,
-			filepath.Join(userProfile, "miniforge3", "condabin", "conda.bat"),
-			filepath.Join(userProfile, "miniconda3", "condabin", "conda.bat"),
 		)
 	} else {
 		cands = append(cands,
-			"conda",
-			filepath.Join(os.Getenv("HOME"), "anaconda3", "bin", "conda"),
-			filepath.Join(os.Getenv("HOME"), "miniforge3", "bin", "conda"),
 			filepath.Join(os.Getenv("HOME"), "miniconda3", "bin", "conda"),
+			filepath.Join(os.Getenv("HOME"), "miniforge3", "bin", "conda"),
+			filepath.Join(os.Getenv("HOME"), "anaconda3", "bin", "conda"),
+			"conda",
 		)
 	}
 	for _, c := range cands {
