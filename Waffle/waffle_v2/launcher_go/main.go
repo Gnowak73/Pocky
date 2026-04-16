@@ -43,6 +43,7 @@ func main() {
 			exitWithPause(1)
 		}
 	}
+	fmt.Printf("Using conda: %s\n", conda)
 
 	envName := "Waffle"
 	if v := os.Getenv("WAFFLE_ENV_NAME"); strings.TrimSpace(v) != "" {
