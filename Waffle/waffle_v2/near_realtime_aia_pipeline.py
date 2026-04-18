@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # Output publishing mode:
     # - 'local': publish latest outputs into a local folder (safe for local testing)
     # - 'scp': publish to remote WKU server using SCP
-    publish_mode = "local"
+    publish_mode = "scp"
     local_publish_dir = os.path.join(data_folder, "local_web")
     imminence_model_path = os.path.join(
         "..", "..", "ML_FFT", "runs", "empeak_c5_pre30_b51020.pt"

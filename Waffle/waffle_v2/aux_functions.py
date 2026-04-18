@@ -1459,12 +1459,15 @@ def build_waffle_v2_index_html(
     suvi_top_wavelength=131, suvi_day_utc=None, suvi_use_realtime=False
 ):
     index_html = ""
-    template_path = os.path.join(os.getcwd(), "wku_template.html")
-    if os.path.exists(template_path):
+    # Use the template next to near_realtime_aia_pipeline.py / aux_functions.py.
+    template_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "wku_template.html"
+    )
+    if not os.path.exists(template_path):
+        index_html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><title>WAFFLE v2</title></head><body><center><img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image1" src="./latest_plots/em_goes_plot.png" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;"><script>setInterval(function(){var t=new Date().getTime();document.getElementById("image0").src="./latest_plots/full_disk_maps.gif?t="+t;document.getElementById("image1").src="./latest_plots/em_goes_plot.png?t="+t;document.getElementById("image2").src="./latest_plots/imminence_risk.png?t="+t;},15000);</script></center></body></html>"""
+    else:
         with open(template_path, "r", encoding="utf-8") as f:
             index_html = f.read()
-    else:
-        index_html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><title>WAFFLE v2</title></head><body><center><img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image1" src="./latest_plots/em_goes_plot.png" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;"><script>setInterval(function(){var t=new Date().getTime();document.getElementById("image0").src="./latest_plots/full_disk_maps.gif?t="+t;document.getElementById("image1").src="./latest_plots/em_goes_plot.png?t="+t;document.getElementById("image2").src="./latest_plots/imminence_risk.png?t="+t;},15000);</script></center></body></html>"""
 
     suvi_wav = int(suvi_top_wavelength)
     wav_dir = _suvi_wav_path(suvi_wav)
