@@ -17,11 +17,11 @@ if __name__ == "__main__":
     # Define folder where to save the data.
     # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
     # - today="YYYYMonDD" -> replay mode for that day
-    today = "2026Mar16"
+    today = "2026Apr7"
     # Optional exact UTC start time for the JSOC query cursor.
     # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = "2026-03-16T11:35:00Z"
+    query_start_time_utc = "2026-04-07T13:00:00Z"
     # Separate controls:
     # 1) today selects realtime vs replay mode and folder naming
     # 2) query_start_time_utc optionally overrides the cursor start
@@ -50,14 +50,19 @@ if __name__ == "__main__":
     rsun = 1000  # radius of solar disk in arcsec
     label_top = ["A", "B", "C"]
 
-    arnum_top = [4397, 4396, 4389]  # active region numbers
+    arnum_top = [4046, 4044, 4043]  # active region numbers
 
-    x_top = np.array([-425, -50, 800])  # heliographic X
-    y_top = np.array([300, 300, 250])  # heliographic Y
+    x_top = np.array([-850, 66, 830])  # heliographic X
+    y_top = np.array([200, 240, 120])  # heliographic Y
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
     )
+
+    # Direct Heliographic Stonyhurst degrees for the same regions.
+    # Kept here for reference; WAFFLE currently uses the projected X/Y path above.
+    # lat_top = np.array([5, 20, 14], dtype=float)
+    # long_top = np.array([-31, 4, 27], dtype=float)
 
     # lat_top=[23, -15, 21]# active region latitude in degrees - original line
     # long_top=[29, 15, 53]# active region longitude in degrees - orginal line
@@ -67,14 +72,19 @@ if __name__ == "__main__":
     # These positions are for the southern region
     label_bottom = ["D", "E", "F"]
 
-    arnum_bottom = [4325, 4391, 4362]  # active region numbers
+    arnum_bottom = [4048, 4045, 4049]  # active region numbers
 
-    x_bottom = np.array([611, -400, 180])  # heliographic X
-    y_bottom = np.array([-139, -300, -139])  # heliographic Y
+    x_bottom = np.array([-100, 200, 750])  # heliographic X
+    y_bottom = np.array([-276, -180, -515])  # heliographic Y
     lat_bottom = (180 / np.pi) * np.arcsin(y_bottom / rsun)
     long_bottom = (180 / np.pi) * np.arcsin(
         x_bottom / (rsun * np.cos((np.pi / 180) * lat_bottom))
     )
+
+    # Direct Heliographic Stonyhurst degrees for the same regions.
+    # Kept here for reference; WAFFLE currently uses the projected X/Y path above.
+    # lat_bottom = np.array([-16, -15, -31], dtype=float)
+    # long_bottom = np.array([-53, -23, -27], dtype=float)
 
     # lat_bottom=[2, -28, -10]# active region latitude in degrees - BA
     # long_bottom=[0, 15, 75]# active region longitude in degrees - BA
@@ -130,6 +140,7 @@ if __name__ == "__main__":
     imminence_alert_delta_threshold = None
     imminence_alert_baseline_count = 5
     imminence_em_nondecrease_tolerance = None
+    imminence_alert_cooldown_frames = 10
     # Local website auto-server controls (used only when publish_mode == "local").
     auto_start_local_web = True
     local_web_host = "127.0.0.1"
@@ -230,6 +241,7 @@ if __name__ == "__main__":
             imminence_alert_delta_threshold=imminence_alert_delta_threshold,
             imminence_alert_baseline_count=imminence_alert_baseline_count,
             imminence_em_nondecrease_tolerance=imminence_em_nondecrease_tolerance,
+            imminence_alert_cooldown_frames=imminence_alert_cooldown_frames,
             imminence_bin_factor=4,
             imminence_recenter=True,
         )

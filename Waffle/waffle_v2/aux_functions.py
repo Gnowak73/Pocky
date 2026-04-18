@@ -1443,7 +1443,7 @@ def publish_local_files(
                 continue
             shutil.copy2(src, dst)
 
-    index_html = build_waffle_v1_index_html(
+    index_html = build_waffle_v2_index_html(
         suvi_top_wavelength=suvi_top_wavelength,
         suvi_day_utc=suvi_day_utc,
         suvi_use_realtime=suvi_use_realtime,
@@ -1455,7 +1455,7 @@ def publish_local_files(
         f.write(index_html)
 
 
-def build_waffle_v1_index_html(
+def build_waffle_v2_index_html(
     suvi_top_wavelength=131, suvi_day_utc=None, suvi_use_realtime=False
 ):
     index_html = ""
@@ -1464,7 +1464,7 @@ def build_waffle_v1_index_html(
         with open(template_path, "r", encoding="utf-8") as f:
             index_html = f.read()
     else:
-        index_html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><title>WAFFLE v1</title></head><body><center><img id="image0" src="./latest_plots/full_disk_maps.gif" style="max-width:100%;height:auto;"><br><img id="image1" src="./latest_plots/em_goes_plot.png" style="max-width:100%;height:auto;"><br><img id="image2" src="./latest_plots/imminence_risk.png" style="max-width:100%;height:auto;"><script>setInterval(function(){var t=new Date().getTime();document.getElementById("image0").src="./latest_plots/full_disk_maps.gif?t="+t;document.getElementById("image1").src="./latest_plots/em_goes_plot.png?t="+t;document.getElementById("image2").src="./latest_plots/imminence_risk.png?t="+t;},15000);</script></center></body></html>"""
+        index_html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><title>WAFFLE v2</title></head><body><center><img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image1" src="./latest_plots/em_goes_plot.png" style="width:97.5%;max-width:100%;height:auto;"><br><img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;"><script>setInterval(function(){var t=new Date().getTime();document.getElementById("image0").src="./latest_plots/full_disk_maps.gif?t="+t;document.getElementById("image1").src="./latest_plots/em_goes_plot.png?t="+t;document.getElementById("image2").src="./latest_plots/imminence_risk.png?t="+t;},15000);</script></center></body></html>"""
 
     suvi_wav = int(suvi_top_wavelength)
     wav_dir = _suvi_wav_path(suvi_wav)
@@ -1494,7 +1494,7 @@ def publish_remote_index_html(
     suvi_day_utc=None,
     suvi_use_realtime=False,
 ):
-    index_html = build_waffle_v1_index_html(
+    index_html = build_waffle_v2_index_html(
         suvi_top_wavelength=suvi_top_wavelength,
         suvi_day_utc=suvi_day_utc,
         suvi_use_realtime=suvi_use_realtime,
@@ -1811,7 +1811,7 @@ def load_realtime_XRS(reference_time_ut=None):
     Parameters
         ----------
         reference_time_ut: datetime or None
-            Unused in v1 (kept for call-site compatibility).
+            Unused in v2 (kept for call-site compatibility).
 
     """
 
@@ -1970,6 +1970,7 @@ def plot_em_maps_and_curves(
     em_cache=None,
     goes_plot_data=None,
     trigger_states=None,
+    trigger_times=None,
 ):
     """
 
@@ -2160,6 +2161,18 @@ def plot_em_maps_and_curves(
             label="EM " + label[i] + " " + str(arnum[i]),
         )
 
+    if trigger_times is not None:
+        for trigger_time in trigger_times:
+            if min_time <= trigger_time <= max_time:
+                ax8.axvline(
+                    trigger_time,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.5,
+                    alpha=0.9,
+                    zorder=30,
+                )
+
     ax8.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz.gettz(timezone)))
     ax8.set_yscale("log")
     ax8.set_ylim(1e46, 1e50)
@@ -2180,30 +2193,56 @@ def plot_em_maps_and_curves(
         trigger_states = []
     any_trigger = any(bool(x) for x in trigger_states)
     face_color = "#2ca02c" if any_trigger else "#d62728"
-    face_text = ":)" if any_trigger else ":("
-    face_center = (0.39, 0.09)
-    face_radius = 0.035
-    face = matplotlib.patches.Circle(
-        face_center,
-        face_radius,
-        transform=fig.transFigure,
-        facecolor=face_color,
-        edgecolor="black",
-        linewidth=2,
-        zorder=20,
+
+    # Place the alert icon under the EM/GOES panel, away from the DEM panels.
+    ax7_pos = ax7.get_position()
+    face_size = 0.085
+    face_ax = fig.add_axes(
+        [
+            ax7_pos.x1 - (3 * face_size) - 0.015,
+            max(0.005, ax7_pos.y0 - (2 * face_size) - 0.04),
+            face_size,
+            face_size,
+        ]
     )
-    fig.add_artist(face)
-    fig.text(
-        face_center[0],
-        face_center[1],
-        face_text,
-        transform=fig.transFigure,
-        ha="center",
-        va="center",
-        fontsize=18,
-        color="white",
-        fontweight="bold",
-        zorder=21,
+    face_ax.set_xlim(0, 1)
+    face_ax.set_ylim(0, 1)
+    face_ax.set_aspect("equal")
+    face_ax.axis("off")
+    face_ax.add_patch(
+        matplotlib.patches.Circle(
+            (0.5, 0.5),
+            0.46,
+            facecolor=face_color,
+            edgecolor="black",
+            linewidth=2,
+            zorder=20,
+        )
+    )
+    for eye_x in (0.35, 0.65):
+        face_ax.add_patch(
+            matplotlib.patches.Circle(
+                (eye_x, 0.62),
+                0.055,
+                facecolor="white",
+                edgecolor="white",
+                linewidth=1,
+                zorder=21,
+            )
+        )
+    mouth_theta = (205, 335) if any_trigger else (25, 155)
+    mouth_y = 0.43 if any_trigger else 0.33
+    face_ax.add_patch(
+        matplotlib.patches.Arc(
+            (0.5, mouth_y),
+            0.42,
+            0.30,
+            theta1=mouth_theta[0],
+            theta2=mouth_theta[1],
+            color="white",
+            linewidth=3,
+            zorder=21,
+        )
     )
 
     # plt.show()
@@ -2463,6 +2502,7 @@ def stream_aia_data(
     imminence_alert_delta_threshold=None,
     imminence_alert_baseline_count=15,
     imminence_em_nondecrease_tolerance=0.05,
+    imminence_alert_cooldown_frames=10,
     imminence_bin_factor=4,
     imminence_recenter=True,
 ):
@@ -2596,6 +2636,8 @@ def stream_aia_data(
     risk_history = {lab: [] for lab in label[:n_ar]}
     vis_history = {lab: [] for lab in label[:n_ar]}
     em_history = {lab: [] for lab in label[:n_ar]}
+    imminence_trigger_times = []
+    imminence_alert_cooldown_remaining = 0
     imminence_runtime = _load_imminence_runtime(imminence_model_path)
     plot_imminence_risk_history(
         latest_plots_folder,
@@ -3082,7 +3124,10 @@ def stream_aia_data(
                 focus_idx = int(np.argmax(np.asarray(em_totals, dtype=np.float64)))
                 focus_label = label[focus_idx]
                 trigger_states = [False] * n_ar
+                cycle_new_trigger = False
                 if imminence_runtime:
+                    if imminence_alert_cooldown_remaining > 0:
+                        imminence_alert_cooldown_remaining -= 1
                     recent_summary = []
                     for i in range(n_ar):
                         risk_val, prob_val = _infer_imminence_risk_from_history(
@@ -3106,6 +3151,7 @@ def stream_aia_data(
                         vals = risk_history[label[i]]
                         recent_vals = vals[-int(imminence_alert_count) :]
                         triggered = False
+                        trigger_txt = "watch"
                         if len(recent_vals) >= int(imminence_alert_count):
                             avg_thr = (
                                 float(imminence_alert_avg_threshold)
@@ -3144,8 +3190,27 @@ def stream_aia_data(
                                     ) * em_prev
                             triggered = avg_ok and peak_ok and delta_ok and em_ok
                             if i == focus_idx:
-                                trigger_states[i] = triggered
-                        trigger_txt = "TRIGGER" if triggered else "watch"
+                                if triggered and imminence_alert_cooldown_remaining == 0:
+                                    trigger_states[i] = True
+                                    cycle_new_trigger = True
+                                    imminence_alert_cooldown_remaining = max(
+                                        0, int(imminence_alert_cooldown_frames)
+                                    )
+                                    trigger_txt = "TRIGGER"
+                                elif triggered and imminence_alert_cooldown_remaining > 0:
+                                    trigger_states[i] = True
+                                    trigger_txt = (
+                                        f"cooldown({imminence_alert_cooldown_remaining})"
+                                    )
+                                elif imminence_alert_cooldown_remaining > 0:
+                                    trigger_states[i] = True
+                                    trigger_txt = (
+                                        f"cooldown({imminence_alert_cooldown_remaining})"
+                                    )
+                                else:
+                                    trigger_txt = "watch"
+                            else:
+                                trigger_txt = "TRIGGER" if triggered else "watch"
                         if vals:
                             recent_txt = ", ".join(
                                 f"{v:.3f}" for v in vals[-int(imminence_alert_count) :]
@@ -3186,6 +3251,18 @@ def stream_aia_data(
                         f"Focus box by EM: {focus_label} "
                         f"(EM={float(em_totals[focus_idx]):.3e})"
                     )
+                    if cycle_new_trigger:
+                        trigger_time_utc = datetime.datetime.strptime(
+                            grouped_t_rec[0], "%Y-%m-%dT%H:%M:%SZ"
+                        ).replace(tzinfo=datetime.timezone.utc)
+                        trigger_time_local = convert_utc_to_timezone(
+                            trigger_time_utc, timezone=timezone
+                        )
+                        if (
+                            not imminence_trigger_times
+                            or imminence_trigger_times[-1] != trigger_time_local
+                        ):
+                            imminence_trigger_times.append(trigger_time_local)
                     plot_imminence_risk_history(
                         latest_plots_folder,
                         risk_history,
@@ -3211,7 +3288,7 @@ def stream_aia_data(
                         em_cache=em_cache,
                     )
 
-                    # v1: no detailed-analysis plot generation.
+                    # v2: no detailed-analysis plot generation.
 
                 # Plot GOES and AIA curves
                 t_phase = time.time()
@@ -3230,6 +3307,7 @@ def stream_aia_data(
                     em_cache=em_cache,
                     goes_plot_data=goes_plot_data,
                     trigger_states=trigger_states,
+                    trigger_times=imminence_trigger_times,
                 )
                 if print_phase_timing:
                     phase_times["em_goes_plot"] = time.time() - t_phase

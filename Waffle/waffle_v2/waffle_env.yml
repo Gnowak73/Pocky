@@ -4,6 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - python=3.14
   - numpy
   - astropy
   - pillow
@@ -19,6 +20,7 @@ dependencies:
   - scp
   - opencv
   - pytorch
+  - pytorch-mutex=*=cpu
   - torchvision
   - torchaudio
   - cpuonly
