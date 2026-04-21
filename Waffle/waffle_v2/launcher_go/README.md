@@ -4,7 +4,9 @@ Cross-platform bootstrap launcher for WAFFLE.
 
 ## What it does
 
-1. Finds `waffle_env.yml` and `near_realtime_aia_pipeline.py` in the WAFFLE folder.
+1. Finds the env yml and `near_realtime_aia_pipeline.py` in the WAFFLE folder.
+   - Windows uses `waffle_env_windows.yml` when present.
+   - macOS/Linux use `waffle_env.yml`.
 2. Detects `conda`.
 3. If missing, attempts Miniforge auto-install.
 4. Creates/updates the `Waffle` conda env.
@@ -13,13 +15,13 @@ Cross-platform bootstrap launcher for WAFFLE.
 ## Build
 
 ```bash
-cd waffle_v1/launcher_go
+cd waffle_v2/launcher_go
 ./build.sh
 ```
 
 ## Run
 
-Place the built binary in `waffle_v1` (or run from `waffle_v1/launcher_go` where parent has WAFFLE files):
+Run the built binary from `waffle_v2/launcher_go/dist`:
 
 ```bash
 ./waffle-launcher-macos-arm64

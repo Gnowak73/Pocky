@@ -66,13 +66,13 @@ If the SSH server uses a nonstandard port, add `--port PORT_NUMBER`. If using an
 python Waffle/remote_start_waffle.py --host REMOTE_HOST_OR_IP --user REMOTE_USERNAME --key PATH_TO_PRIVATE_KEY --remote-root "REMOTE_WAFFLE_V2_PATH" --conda "REMOTE_CONDA_PATH"
 ```
 
-If the remote `Waffle` conda environment already exists but needs to be updated from `waffle_env.yml` before starting, add `--update-env`:
+If the remote `Waffle` conda environment already exists but needs to be updated before starting, add `--update-env`. On Windows, the helper uses `waffle_env_windows.yml` when that file exists; otherwise it falls back to `waffle_env.yml`:
 
 ```bash
 python Waffle/remote_start_waffle.py --host REMOTE_HOST_OR_IP --user REMOTE_USERNAME --password --remote-root "REMOTE_WAFFLE_V2_PATH" --conda "REMOTE_CONDA_PATH" --update-env
 ```
 
-If the remote environment name is not `Waffle`, add `--env ENV_NAME`. The default is `Waffle` because that matches `waffle_env.yml`.
+If the remote environment name is not `Waffle`, add `--env ENV_NAME`. The default is `Waffle`, matching the env yml files.
 
 Only use detached/background mode after attached mode works. Background mode uses PowerShell `Start-Process` on the remote computer, sends the start command, and returns without keeping WAFFLE output attached:
 
@@ -114,3 +114,6 @@ Useful remote Conda checks are:
 ```
 
 The expected workflow is: run `windows_remote_setup_info.ps1` on the remote Windows computer, run the printed `ssh REMOTE_USERNAME@REMOTE_HOST_OR_IP "hostname"` command from the local/control computer, run the printed attached WAFFLE SSH command from the local/control computer, then use `remote_start_waffle.py` for normal remote starts.
+
+
+For the WAFFLE v2 launcher specifically, Windows uses `waffle_env_windows.yml`, which pins `python=3.12`. macOS and Linux continue to use `waffle_env.yml`, so their Python version is unchanged.

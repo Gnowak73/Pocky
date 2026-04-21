@@ -1,0 +1,25 @@
+name: Waffle
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy
+  - astropy
+  - pillow
+  - sunpy
+  - python-dateutil
+  - aiapy
+  - drms
+  - pandas
+  - paramiko
+  - scipy
+  - pytz
+  - matplotlib
+  - scp
+  - pytorch
+  - pytorch-mutex=*=cpu
+  - torchvision
+  - torchaudio
+  - cpuonly

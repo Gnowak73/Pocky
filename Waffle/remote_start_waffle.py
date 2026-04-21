@@ -28,7 +28,13 @@ def ps_single_quote(value: str) -> str:
 def build_attached_command(remote_root: str, conda_path: str, env_name: str, update_env: bool) -> str:
     update = ""
     if update_env:
-        update = f'"{conda_path}" env update -n {env_name} -f waffle_env.yml --prune && '
+        update = (
+            f'if exist "waffle_env_windows.yml" ('
+            f'"{conda_path}" env update -n {env_name} -f waffle_env_windows.yml --prune'
+            f') else ('
+            f'"{conda_path}" env update -n {env_name} -f waffle_env.yml --prune'
+            f') && '
+        )
     return (
         f'cd /d "{remote_root}" && '
         f'{update}'
@@ -42,7 +48,11 @@ def build_background_command(remote_root: str, conda_path: str, env_name: str, u
         # Run update attached first; backgrounding an env update hides too many useful errors.
         update_cmd = (
             f'cd /d "{remote_root}" && '
-            f'"{conda_path}" env update -n {env_name} -f waffle_env.yml --prune && '
+            f'if exist "waffle_env_windows.yml" ('
+            f'"{conda_path}" env update -n {env_name} -f waffle_env_windows.yml --prune'
+            f') else ('
+            f'"{conda_path}" env update -n {env_name} -f waffle_env.yml --prune'
+            f') && '
         )
     else:
         update_cmd = ""
@@ -68,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--key", default=None, help="Optional SSH private key path.")
     parser.add_argument("--port", type=int, default=22, help="SSH port.")
     parser.add_argument("--background", action="store_true", help="Start WAFFLE detached with PowerShell Start-Process.")
-    parser.add_argument("--update-env", action="store_true", help="Update the remote Waffle env from waffle_env.yml before starting.")
+    parser.add_argument("--update-env", action="store_true", help="Update the remote Waffle env before starting.")
     parser.add_argument("--test", action="store_true", help="Only run a lightweight remote hostname test.")
     return parser.parse_args()
 

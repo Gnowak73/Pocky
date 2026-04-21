@@ -19,14 +19,15 @@ type miniforgeTarget struct {
 
 func main() {
 	root := mustWaffleRoot()
-	envYML := filepath.Join(root, "waffle_env.yml")
+	envYML := envFileForPlatform(root)
 	pipeline := filepath.Join(root, "near_realtime_aia_pipeline.py")
 
 	if !fileExists(envYML) || !fileExists(pipeline) {
 		fmt.Printf("Missing required files in %s\n", root)
-		fmt.Println("Expected: waffle_env.yml and near_realtime_aia_pipeline.py")
+		fmt.Printf("Expected: %s and near_realtime_aia_pipeline.py\n", filepath.Base(envYML))
 		exitWithPause(1)
 	}
+	fmt.Printf("Using env file: %s\n", filepath.Base(envYML))
 
 	conda, err := findConda()
 	if err != nil {
@@ -73,6 +74,16 @@ func main() {
 	}
 }
 
+func envFileForPlatform(root string) string {
+	if runtime.GOOS == "windows" {
+		winYML := filepath.Join(root, "waffle_env_windows.yml")
+		if fileExists(winYML) {
+			return winYML
+		}
+	}
+	return filepath.Join(root, "waffle_env.yml")
+}
+
 func mustWaffleRoot() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -80,7 +91,7 @@ func mustWaffleRoot() string {
 		exitWithPause(1)
 	}
 	// Hardcoded contract:
-	// - Launcher runs from waffle_v1/launcher_go/dist
+	// - Launcher runs from waffle_v2/launcher_go/dist
 	// - WAFFLE root is ../../ from the executable.
 	root := filepath.Clean(filepath.Join(filepath.Dir(exe), "..", ".."))
 	if !fileExists(filepath.Join(root, "waffle_env.yml")) ||
