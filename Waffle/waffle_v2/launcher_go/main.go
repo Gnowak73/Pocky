@@ -153,15 +153,54 @@ func legacyWindowsTorchEnvName() string {
 }
 
 func createLegacyWindowsEnv(conda, envName, root string) error {
-	envYML := filepath.Join(root, "waffle_env_windows_legacy_base.yml")
+	fmt.Println("Legacy Windows setup: cleaning Conda package cache before base env install.")
+	if err := cleanLegacyWindowsCondaCache(conda, root); err != nil {
+		return err
+	}
 	fmt.Println("Legacy Windows setup: creating base WAFFLE env without Torch.")
-	return runCmd(conda, []string{"env", "create", "-n", envName, "-f", envYML}, root)
+	if err := runCmd(conda, []string{"create", "-n", envName, "python=3.14", "-y"}, root); err != nil {
+		return err
+	}
+	return installLegacyWindowsBasePackages(conda, envName, root)
 }
 
 func updateLegacyWindowsEnv(conda, envName, root string) error {
-	envYML := filepath.Join(root, "waffle_env_windows_legacy_base.yml")
+	fmt.Println("Legacy Windows setup: cleaning Conda package cache before base env update.")
+	if err := cleanLegacyWindowsCondaCache(conda, root); err != nil {
+		return err
+	}
 	fmt.Println("Legacy Windows setup: updating base WAFFLE env without Torch.")
-	return runCmd(conda, []string{"env", "update", "-n", envName, "-f", envYML, "--prune"}, root)
+	return installLegacyWindowsBasePackages(conda, envName, root)
+}
+
+func cleanLegacyWindowsCondaCache(conda, root string) error {
+	return runCmd(conda, []string{"clean", "--packages", "--tarballs", "-y"}, root)
+}
+
+func installLegacyWindowsBasePackages(conda, envName, root string) error {
+	args := append([]string{
+		"install", "-n", envName, "-c", "conda-forge", "-c", "defaults", "--clobber", "-y",
+	}, legacyWindowsBaseCondaDeps()...)
+	return runCmd(conda, args, root)
+}
+
+func legacyWindowsBaseCondaDeps() []string {
+	return []string{
+		"python=3.14",
+		"numpy",
+		"astropy",
+		"pillow",
+		"sunpy",
+		"python-dateutil",
+		"aiapy",
+		"drms",
+		"pandas",
+		"paramiko",
+		"scipy",
+		"pytz",
+		"matplotlib",
+		"scp",
+	}
 }
 
 func createLegacyWindowsTorchEnv(conda, envName, root string) error {
