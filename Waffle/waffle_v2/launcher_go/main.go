@@ -19,6 +19,7 @@ type miniforgeTarget struct {
 
 func main() {
 	root := mustWaffleRoot()
+	legacyWindows := isLegacyWindowsLauncher()
 	envYML := envFileForPlatform(root)
 	pipeline := filepath.Join(root, "near_realtime_aia_pipeline.py")
 
@@ -50,6 +51,9 @@ func main() {
 	if v := os.Getenv("WAFFLE_ENV_NAME"); strings.TrimSpace(v) != "" {
 		envName = strings.TrimSpace(v)
 	}
+	if legacyWindows {
+		configureLegacyWindowsOpenMP()
+	}
 
 	if !envExists(conda, envName) {
 		fmt.Printf("Creating conda env %q...\n", envName)
@@ -75,13 +79,34 @@ func main() {
 }
 
 func envFileForPlatform(root string) string {
-	if runtime.GOOS == "windows" {
-		winYML := filepath.Join(root, "waffle_env_windows.yml")
-		if fileExists(winYML) {
-			return winYML
+	if isLegacyWindowsLauncher() {
+		legacyYML := filepath.Join(root, "waffle_env_windows_legacy.yml")
+		if fileExists(legacyYML) {
+			return legacyYML
 		}
 	}
 	return filepath.Join(root, "waffle_env.yml")
+}
+
+func isLegacyWindowsLauncher() bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	exe, err := os.Executable()
+	return err == nil && strings.Contains(strings.ToLower(filepath.Base(exe)), "legacy")
+}
+
+func configureLegacyWindowsOpenMP() {
+	// Legacy Windows machines can load multiple OpenMP runtimes through Torch,
+	// NumPy, SciPy, or other scientific DLLs. Keep this workaround scoped to
+	// the legacy launcher so normal platforms keep the stricter default.
+	if os.Getenv("KMP_DUPLICATE_LIB_OK") == "" {
+		_ = os.Setenv("KMP_DUPLICATE_LIB_OK", "TRUE")
+	}
+	if os.Getenv("OMP_NUM_THREADS") == "" {
+		_ = os.Setenv("OMP_NUM_THREADS", "1")
+	}
+	fmt.Println("Legacy Windows OpenMP guard enabled.")
 }
 
 func mustWaffleRoot() string {

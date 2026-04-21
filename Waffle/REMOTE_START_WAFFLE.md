@@ -66,10 +66,12 @@ If the SSH server uses a nonstandard port, add `--port PORT_NUMBER`. If using an
 python Waffle/remote_start_waffle.py --host REMOTE_HOST_OR_IP --user REMOTE_USERNAME --key PATH_TO_PRIVATE_KEY --remote-root "REMOTE_WAFFLE_V2_PATH" --conda "REMOTE_CONDA_PATH"
 ```
 
-If the remote `Waffle` conda environment already exists but needs to be updated before starting, add `--update-env`. On Windows, the helper uses `waffle_env_windows.yml` when that file exists; otherwise it falls back to `waffle_env.yml`:
+If the remote `Waffle` conda environment already exists but needs to be updated before starting, add `--update-env`. The remote helper uses `waffle_env.yml` by default. If the remote Windows machine needs the legacy Python 3.12 / PyTorch CPU wheel setup, add `--legacy-windows-env` too:
 
 ```bash
 python Waffle/remote_start_waffle.py --host REMOTE_HOST_OR_IP --user REMOTE_USERNAME --password --remote-root "REMOTE_WAFFLE_V2_PATH" --conda "REMOTE_CONDA_PATH" --update-env
+
+python Waffle/remote_start_waffle.py --host REMOTE_HOST_OR_IP --user REMOTE_USERNAME --password --remote-root "REMOTE_WAFFLE_V2_PATH" --conda "REMOTE_CONDA_PATH" --update-env --legacy-windows-env
 ```
 
 If the remote environment name is not `Waffle`, add `--env ENV_NAME`. The default is `Waffle`, matching the env yml files.
@@ -116,4 +118,4 @@ Useful remote Conda checks are:
 The expected workflow is: run `windows_remote_setup_info.ps1` on the remote Windows computer, run the printed `ssh REMOTE_USERNAME@REMOTE_HOST_OR_IP "hostname"` command from the local/control computer, run the printed attached WAFFLE SSH command from the local/control computer, then use `remote_start_waffle.py` for normal remote starts.
 
 
-For the WAFFLE v2 launcher specifically, Windows uses `waffle_env_windows.yml`, which pins `python=3.12`. macOS and Linux continue to use `waffle_env.yml`, so their Python version is unchanged.
+For the WAFFLE v2 launcher specifically, the normal Windows launcher now uses the same `waffle_env.yml` as macOS/Linux. The separate legacy Windows launcher, `waffle-launcher-windows-amd64-legacy.exe`, uses `waffle_env_windows_legacy.yml`, which pins `python=3.12` and installs CPU-only Torch from `https://download.pytorch.org/whl/cpu` through pip. The legacy path also sets `KMP_DUPLICATE_LIB_OK=TRUE` and `OMP_NUM_THREADS=1` to avoid duplicate OpenMP runtime crashes such as `libomp.dll` and `libiomp5md.dll` both being initialized. Use the legacy launcher only on Windows machines where the normal Conda PyTorch setup fails.

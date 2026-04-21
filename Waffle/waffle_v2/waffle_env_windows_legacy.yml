@@ -1,8 +1,10 @@
 name: Waffle
 channels:
-  - pytorch
   - conda-forge
   - defaults
+variables:
+  KMP_DUPLICATE_LIB_OK: "TRUE"
+  OMP_NUM_THREADS: "1"
 dependencies:
   - python=3.12
   - numpy
@@ -18,8 +20,9 @@ dependencies:
   - pytz
   - matplotlib
   - scp
-  - pytorch
-  - pytorch-mutex=*=cpu
-  - torchvision
-  - torchaudio
-  - cpuonly
+  - pip
+  - pip:
+      - --index-url https://download.pytorch.org/whl/cpu
+      - torch
+      - torchvision
+      - torchaudio

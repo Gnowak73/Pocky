@@ -21,4 +21,7 @@ GOOS=linux GOARCH=arm64 go build -o "$OUT/waffle-launcher-linux-arm64" .
 echo "Building Windows amd64..."
 GOOS=windows GOARCH=amd64 go build -o "$OUT/waffle-launcher-windows-amd64.exe" .
 
+echo "Building Windows amd64 legacy..."
+GOOS=windows GOARCH=amd64 go build -o "$OUT/waffle-launcher-windows-amd64-legacy.exe" .
+
 echo "Done. Artifacts in: $OUT"

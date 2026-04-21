@@ -5,8 +5,8 @@ Cross-platform bootstrap launcher for WAFFLE.
 ## What it does
 
 1. Finds the env yml and `near_realtime_aia_pipeline.py` in the WAFFLE folder.
-   - Windows uses `waffle_env_windows.yml` when present.
-   - macOS/Linux use `waffle_env.yml`.
+   - Normal Windows/macOS/Linux launchers use `waffle_env.yml`.
+   - Windows launchers with `legacy` in the executable name use `waffle_env_windows_legacy.yml`.
 2. Detects `conda`.
 3. If missing, attempts Miniforge auto-install.
 4. Creates/updates the `Waffle` conda env.
@@ -27,10 +27,16 @@ Run the built binary from `waffle_v2/launcher_go/dist`:
 ./waffle-launcher-macos-arm64
 ```
 
-Windows:
+Windows normal:
 
 ```powershell
 .\waffle-launcher-windows-amd64.exe
+```
+
+Windows legacy:
+
+```powershell
+.\waffle-launcher-windows-amd64-legacy.exe
 ```
 
 ## Notes
