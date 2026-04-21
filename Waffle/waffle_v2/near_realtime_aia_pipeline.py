@@ -131,7 +131,7 @@ if __name__ == "__main__":
     publish_mode = "local"
     local_publish_dir = os.path.join(data_folder, "local_web")
     imminence_model_path = os.path.join(
-        "..", "..", "ML_FFT", "runs", "empeak_c5_pre30_b51020.pt"
+        os.path.dirname(__file__), "models", "empeak_c5_pre30_b51020.pt"
     )
     imminence_alert_threshold = 0.80
     imminence_alert_count = 2
