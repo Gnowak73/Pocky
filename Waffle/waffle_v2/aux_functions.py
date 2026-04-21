@@ -45,6 +45,7 @@ import threading
 from dateutil import tz
 
 import matplotlib
+matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -129,7 +130,15 @@ def _load_imminence_runtime(model_path):
         _IMMINENCE_RUNTIME = False
         return _IMMINENCE_RUNTIME
 
-    uv = np.load(os.path.join(vis_dir, "uv_grid.npz"))
+    uv_grid_path = os.path.join(vis_dir, "uv_grid.npz")
+    if not os.path.exists(uv_grid_path):
+        uv_grid_path = os.path.join(os.path.dirname(__file__), "models", "uv_grid.npz")
+    if not os.path.exists(uv_grid_path):
+        print(f"Imminence UV grid not found: {uv_grid_path}")
+        print("Imminence model disabled for this run.")
+        _IMMINENCE_RUNTIME = False
+        return _IMMINENCE_RUNTIME
+    uv = np.load(uv_grid_path)
     base_runtime = {
         "sample_visibilities": sample_visibilities,
         "u_vals": uv["u_vals"],
