@@ -119,3 +119,5 @@ The expected workflow is: run `windows_remote_setup_info.ps1` on the remote Wind
 
 
 For the WAFFLE v2 launcher specifically, the normal Windows launcher now uses the same `waffle_env.yml` as macOS/Linux. The separate legacy Windows launcher, `waffle-launcher-windows-amd64-legacy.exe`, uses a custom install order: it creates a minimal `python=3.11`/pip env, installs CPU-only Torch `2.2.1` from `https://download.pytorch.org/whl/cpu` first, then installs the remaining WAFFLE dependencies. `waffle_env_windows_legacy.yml` documents the same stack for reference. The legacy path also sets `KMP_DUPLICATE_LIB_OK=TRUE` and `OMP_NUM_THREADS=1` to avoid duplicate OpenMP runtime crashes such as `libomp.dll` and `libiomp5md.dll` both being initialized. Use the legacy launcher only on Windows machines where the normal Conda PyTorch setup fails.
+
+Legacy Windows also pins NumPy to `1.26.4` because the pinned Torch 2.2.1/bqplot stack is not clean with the newest NumPy 2.4 builds.

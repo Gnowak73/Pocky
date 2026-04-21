@@ -37,6 +37,10 @@ import pandas as pd
 
 import json
 import io
+import atexit
+import subprocess
+import tempfile
+import threading
 
 from dateutil import tz
 
@@ -56,6 +60,7 @@ _SUVI_URL_CACHE = {}
 _SUVI_IMAGE_CACHE = {}
 _GIF_FRAME_CACHE = {}
 _IMMINENCE_RUNTIME = None
+_IMMINENCE_WORKER_LOCK = threading.Lock()
 
 
 def mkdir(a_dir):
@@ -110,9 +115,39 @@ def _load_imminence_runtime(model_path):
             sys.path.insert(0, path)
 
     try:
+        from compute_visibilities import sample_visibilities
+    except Exception as exc:
+        print(f"Imminence visibility import failed: {exc}")
+        print("Imminence model disabled for this run.")
+        _IMMINENCE_RUNTIME = False
+        return _IMMINENCE_RUNTIME
+
+    model_path = os.path.abspath(model_path)
+    if not os.path.exists(model_path):
+        print(f"Imminence model not found: {model_path}")
+        print("Imminence model disabled for this run.")
+        _IMMINENCE_RUNTIME = False
+        return _IMMINENCE_RUNTIME
+
+    uv = np.load(os.path.join(vis_dir, "uv_grid.npz"))
+    base_runtime = {
+        "sample_visibilities": sample_visibilities,
+        "u_vals": uv["u_vals"],
+        "v_vals": uv["v_vals"],
+        "pixel_arcsec": 0.6,
+    }
+
+    if os.environ.get("WAFFLE_USE_TORCH_WORKER") == "1":
+        worker_runtime = _start_imminence_worker(model_path, base_runtime)
+        if not worker_runtime:
+            _IMMINENCE_RUNTIME = False
+            return _IMMINENCE_RUNTIME
+        _IMMINENCE_RUNTIME = worker_runtime
+        return _IMMINENCE_RUNTIME
+
+    try:
         import torch
 
-        from compute_visibilities import sample_visibilities
         from scan_vis_features import frame_features
         from train_flare_imminence_classifier import (
             engineer_feature_table,
@@ -121,13 +156,6 @@ def _load_imminence_runtime(model_path):
         )
     except Exception as exc:
         print(f"Imminence imports failed: {exc}")
-        print("Imminence model disabled for this run.")
-        _IMMINENCE_RUNTIME = False
-        return _IMMINENCE_RUNTIME
-
-    model_path = os.path.abspath(model_path)
-    if not os.path.exists(model_path):
-        print(f"Imminence model not found: {model_path}")
         print("Imminence model disabled for this run.")
         _IMMINENCE_RUNTIME = False
         return _IMMINENCE_RUNTIME
@@ -153,18 +181,14 @@ def _load_imminence_runtime(model_path):
     net.load_state_dict(ck["state_dict"])
     net.eval()
 
-    uv = np.load(os.path.join(vis_dir, "uv_grid.npz"))
     _IMMINENCE_RUNTIME = {
+        **base_runtime,
         "torch": torch,
         "device": dev,
         "model": net,
         "frame_features": frame_features,
         "engineer_feature_table": engineer_feature_table,
         "softmax_np": softmax_np,
-        "sample_visibilities": sample_visibilities,
-        "u_vals": uv["u_vals"],
-        "v_vals": uv["v_vals"],
-        "pixel_arcsec": 0.6,
         "warmup": int(args.get("warmup", 10)),
         "feature_mode": str(args.get("feature_mode", "all")),
         "feature_names": feature_names,
@@ -178,6 +202,90 @@ def _load_imminence_runtime(model_path):
         f"{model_path} (warmup={_IMMINENCE_RUNTIME['warmup']}, bins={bins})"
     )
     return _IMMINENCE_RUNTIME
+
+
+def _drain_worker_stderr(proc):
+    try:
+        for line in proc.stderr:
+            text = line.rstrip()
+            if text:
+                print(f"Imminence worker: {text}")
+    except Exception:
+        pass
+
+
+def _stop_imminence_worker(proc):
+    if not proc or proc.poll() is not None:
+        return
+    try:
+        proc.stdin.write(json.dumps({"cmd": "shutdown"}) + "\n")
+        proc.stdin.flush()
+        proc.wait(timeout=3)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+
+def _start_imminence_worker(model_path, base_runtime):
+    conda = os.environ.get("WAFFLE_TORCH_CONDA", "conda")
+    torch_env = os.environ.get("WAFFLE_TORCH_ENV", "Waffle_Torch")
+    worker_path = os.path.join(os.path.dirname(__file__), "imminence_worker.py")
+    if not os.path.exists(worker_path):
+        print(f"Imminence worker not found: {worker_path}")
+        print("Imminence model disabled for this run.")
+        return False
+
+    cmd = [
+        conda,
+        "run",
+        "-n",
+        torch_env,
+        "python",
+        worker_path,
+        "--model",
+        model_path,
+        "--repo-root",
+        _repo_root(),
+    ]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        threading.Thread(target=_drain_worker_stderr, args=(proc,), daemon=True).start()
+        ready_line = proc.stdout.readline()
+        ready = json.loads(ready_line) if ready_line else {}
+        if not ready.get("ok"):
+            raise RuntimeError(ready.get("error", "worker did not report ready"))
+    except Exception as exc:
+        print(f"Imminence worker failed to start: {exc}")
+        print("Imminence model disabled for this run.")
+        try:
+            if proc:
+                proc.terminate()
+        except Exception:
+            pass
+        return False
+
+    runtime = {
+        **base_runtime,
+        "external_worker": True,
+        "worker_proc": proc,
+        "warmup": int(ready.get("warmup", 10)),
+        "bins": [float(x) for x in ready.get("bins", [])],
+    }
+    atexit.register(_stop_imminence_worker, proc)
+    print(
+        "Imminence model enabled through external Torch worker: "
+        f"{model_path} (env={torch_env}, warmup={runtime['warmup']}, bins={runtime['bins']})"
+    )
+    return runtime
 
 
 def _dirty_image_from_vis(v2d_centered):
@@ -360,6 +468,42 @@ def _extract_box_visibility_frame(aia_img, runtime, recenter=True, bin_factor=4)
 def _infer_imminence_risk_from_history(vis_history, runtime):
     if len(vis_history) <= runtime["warmup"]:
         return np.nan, None
+    if runtime.get("external_worker"):
+        proc = runtime.get("worker_proc")
+        if not proc or proc.poll() is not None:
+            return np.nan, None
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                suffix=".npz", prefix="waffle_vis_", delete=False
+            ) as tmp:
+                tmp_path = tmp.name
+            np.savez_compressed(
+                tmp_path, vis=np.asarray(vis_history, dtype=np.float32)
+            )
+            with _IMMINENCE_WORKER_LOCK:
+                proc.stdin.write(json.dumps({"cmd": "infer", "path": tmp_path}) + "\n")
+                proc.stdin.flush()
+                line = proc.stdout.readline()
+            resp = json.loads(line) if line else {}
+            if not resp.get("ok"):
+                return np.nan, None
+            risk = resp.get("risk")
+            prob = resp.get("probabilities")
+            return (
+                float(risk) if risk is not None else np.nan,
+                None if prob is None else np.asarray(prob, dtype=np.float32),
+            )
+        except Exception as exc:
+            print(f"Imminence worker inference failed: {exc}")
+            return np.nan, None
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
     feats_list = []
     prev = None
     re_idx = list(range(5))

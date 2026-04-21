@@ -46,3 +46,5 @@ Windows legacy:
 - Set `WAFFLE_FORCE_UPDATE=1` to force `conda env update` on each run.
 - For macOS/Linux, Miniforge installs to `$HOME/miniforge3`.
 - For Windows, Miniforge installs to `%USERPROFILE%\\miniforge3`.
+
+Legacy Windows also pins NumPy to `1.26.4` because the pinned Torch 2.2.1/bqplot stack is not clean with the newest NumPy 2.4 builds.
