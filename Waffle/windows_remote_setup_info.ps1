@@ -40,9 +40,9 @@ Write-Host ("hostname: {0}" -f $hostName)
 Write-Host ("SSH username to try: {0}" -f $remoteUser)
 
 Write-Section "Candidate IPv4 addresses"
-$ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+$ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } |
-    Select-Object -ExpandProperty IPAddress
+    Select-Object -ExpandProperty IPAddress)
 if (-not $ips) {
     $ips = @("REMOTE_HOST_OR_IP")
     Write-Host "No non-loopback IPv4 address was detected with Get-NetIPAddress. Run ipconfig manually and use the active adapter IPv4 address."
