@@ -108,12 +108,9 @@ def _load_imminence_runtime(model_path):
         _IMMINENCE_RUNTIME = False
         return _IMMINENCE_RUNTIME
 
-    repo_root = _repo_root()
-    ml_fft_dir = os.path.join(repo_root, "ML_FFT")
-    vis_dir = os.path.join(repo_root, "Vis")
-    for path in (ml_fft_dir, vis_dir):
-        if path not in sys.path:
-            sys.path.insert(0, path)
+    worker_lib = os.path.join(os.path.dirname(__file__), "worker_lib")
+    if worker_lib not in sys.path:
+        sys.path.insert(0, worker_lib)
 
     try:
         from compute_visibilities import sample_visibilities
@@ -130,9 +127,7 @@ def _load_imminence_runtime(model_path):
         _IMMINENCE_RUNTIME = False
         return _IMMINENCE_RUNTIME
 
-    uv_grid_path = os.path.join(vis_dir, "uv_grid.npz")
-    if not os.path.exists(uv_grid_path):
-        uv_grid_path = os.path.join(os.path.dirname(__file__), "models", "uv_grid.npz")
+    uv_grid_path = os.path.join(os.path.dirname(__file__), "models", "uv_grid.npz")
     if not os.path.exists(uv_grid_path):
         print(f"Imminence UV grid not found: {uv_grid_path}")
         print("Imminence model disabled for this run.")
@@ -496,9 +491,14 @@ def _infer_imminence_risk_from_history(vis_history, runtime):
                 line = proc.stdout.readline()
             resp = json.loads(line) if line else {}
             if not resp.get("ok"):
+                print(f"Imminence worker inference rejected: {resp.get('error', 'unknown error')}")
                 return np.nan, None
             risk = resp.get("risk")
             prob = resp.get("probabilities")
+            if risk is None:
+                runtime["last_worker_status"] = str(resp.get("status", "no risk"))
+            else:
+                runtime["last_worker_status"] = "ok"
             return (
                 float(risk) if risk is not None else np.nan,
                 None if prob is None else np.asarray(prob, dtype=np.float32),
@@ -3403,6 +3403,19 @@ def stream_aia_data(
                             msg += f"-> {trigger_txt}"
                             print(msg)
                             recent_summary.append((label[i], vals[-1], triggered))
+                        else:
+                            hist_n = len(vis_history[label[i]])
+                            warmup = int(imminence_runtime.get("warmup", 0))
+                            if hist_n <= warmup:
+                                print(
+                                    f"Box {label[i]} risk pending: "
+                                    f"warmup {hist_n}/{warmup + 1}"
+                                )
+                            else:
+                                status = imminence_runtime.get(
+                                    "last_worker_status", "no finite risk"
+                                )
+                                print(f"Box {label[i]} risk unavailable: {status}")
                     print(
                         f"Focus box by EM: {focus_label} "
                         f"(EM={float(em_totals[focus_idx]):.3e})"

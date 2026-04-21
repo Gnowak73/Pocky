@@ -309,7 +309,12 @@ def _make_model(in_dim: int, out_dim: int, model_type: str, hidden: int, dropout
 
 
 def _load_runtime(model_path, repo_root):
-    _ = repo_root
+    worker_lib = os.path.join(os.path.dirname(__file__), "worker_lib")
+    if worker_lib not in sys.path:
+        sys.path.insert(0, worker_lib)
+
+    from scan_vis_features import frame_features
+    from train_flare_imminence_classifier import engineer_feature_table, make_model
 
     ck = torch.load(model_path, map_location="cpu", weights_only=False)
     bins = [float(x) for x in ck["bins"]]
@@ -322,7 +327,7 @@ def _load_runtime(model_path, repo_root):
     x_mean = np.asarray(ck["x_mean"], dtype=np.float32).reshape(-1)
     x_std = np.asarray(ck["x_std"], dtype=np.float32).reshape(-1)
     dev = torch.device("cpu")
-    net = _make_model(
+    net = make_model(
         len(feature_names),
         n_cls,
         str(args.get("model", "mlp")),
@@ -335,8 +340,8 @@ def _load_runtime(model_path, repo_root):
         "torch": torch,
         "device": dev,
         "model": net,
-        "frame_features": _frame_features,
-        "engineer_feature_table": _engineer_feature_table,
+        "frame_features": frame_features,
+        "engineer_feature_table": engineer_feature_table,
         "warmup": int(args.get("warmup", 10)),
         "feature_mode": str(args.get("feature_mode", "all")),
         "feature_names": feature_names,
@@ -349,7 +354,7 @@ def _load_runtime(model_path, repo_root):
 
 def _infer(vis_history, runtime):
     if len(vis_history) <= runtime["warmup"]:
-        return None, None
+        return None, None, f"warmup {len(vis_history)}/{runtime['warmup'] + 1}"
     feats_list = []
     prev = None
     re_idx = list(range(5))
@@ -366,7 +371,12 @@ def _infer(vis_history, runtime):
         feature_mode=runtime["feature_mode"],
     )
     if X.size == 0 or names != runtime["feature_names"]:
-        return None, None
+        if names != runtime["feature_names"]:
+            return None, None, (
+                f"feature mismatch generated={len(names)} "
+                f"expected={len(runtime['feature_names'])}"
+            )
+        return None, None, "empty feature table"
     x = np.asarray(X[-1], dtype=np.float32).reshape(-1)
     x_norm = ((x - runtime["x_mean"]) / runtime["x_std"]).astype(np.float32)
     with torch.no_grad():
@@ -379,7 +389,7 @@ def _infer(vis_history, runtime):
         )
     prob = _softmax_np(logits)[0].astype(np.float32)
     risk = float(np.sum(prob * runtime["risk_weights"]))
-    return risk, prob.tolist()
+    return risk, prob.tolist(), "ok"
 
 
 def main():
@@ -406,8 +416,8 @@ def main():
                 continue
             path = req.get("path")
             data = np.load(path)
-            risk, prob = _infer(np.asarray(data["vis"], dtype=np.float32), runtime)
-            _json_write({"ok": True, "risk": risk, "probabilities": prob})
+            risk, prob, status = _infer(np.asarray(data["vis"], dtype=np.float32), runtime)
+            _json_write({"ok": True, "risk": risk, "probabilities": prob, "status": status})
         except Exception as exc:
             _json_write({"ok": False, "error": str(exc)})
     return 0
