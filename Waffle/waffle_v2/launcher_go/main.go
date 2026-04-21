@@ -124,8 +124,8 @@ func configureLegacyWindowsOpenMP() {
 }
 
 func createLegacyWindowsEnv(conda, envName, root string) error {
-	fmt.Println("Legacy Windows setup: creating minimal Python/pip env first.")
-	if err := runCmd(conda, []string{"create", "-n", envName, "python=3.12", "pip", "-y"}, root); err != nil {
+	fmt.Println("Legacy Windows setup: creating minimal Python 3.11/pip env first.")
+	if err := runCmd(conda, []string{"create", "-n", envName, "python=3.11", "pip", "-y"}, root); err != nil {
 		return err
 	}
 	return installLegacyWindowsPackages(conda, envName, root)
@@ -140,12 +140,12 @@ func installLegacyWindowsPackages(conda, envName, root string) error {
 	// Install Torch before the rest of the scientific stack. This gives the
 	// PyTorch CPU wheel first control of its native DLL layout on older Windows
 	// machines that fail with Conda PyTorch DLL/OpenMP conflicts.
-	fmt.Println("Legacy Windows setup: installing PyTorch CPU wheel first.")
+	fmt.Println("Legacy Windows setup: installing pinned PyTorch 2.2.1 CPU wheels first.")
 	if err := runCmd(conda, []string{
 		"run", "--no-capture-output", "-n", envName,
 		"python", "-m", "pip", "install", "--no-cache-dir",
 		"--index-url", "https://download.pytorch.org/whl/cpu",
-		"torch", "torchvision", "torchaudio",
+		"torch==2.2.1", "torchvision==0.17.1", "torchaudio==2.2.1",
 	}, root); err != nil {
 		return err
 	}
@@ -154,6 +154,14 @@ func installLegacyWindowsPackages(conda, envName, root string) error {
 	if err := runCmd(conda, append([]string{
 		"install", "-n", envName, "-c", "conda-forge", "-c", "defaults", "-y",
 	}, legacyWindowsCondaDeps()...), root); err != nil {
+		return err
+	}
+
+	fmt.Println("Legacy Windows setup: checking Python package consistency.")
+	if err := runCmd(conda, []string{
+		"run", "--no-capture-output", "-n", envName,
+		"python", "-m", "pip", "check",
+	}, root); err != nil {
 		return err
 	}
 
@@ -170,6 +178,7 @@ func installLegacyWindowsPackages(conda, envName, root string) error {
 
 func legacyWindowsCondaDeps() []string {
 	return []string{
+		"python=3.11",
 		"numpy",
 		"astropy",
 		"pillow",

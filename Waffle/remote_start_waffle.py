@@ -97,7 +97,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=22, help="SSH port.")
     parser.add_argument("--background", action="store_true", help="Start WAFFLE detached with PowerShell Start-Process.")
     parser.add_argument("--update-env", action="store_true", help="Update the remote Waffle env before starting.")
-    parser.add_argument("--legacy-windows-env", action="store_true", help="Use waffle_env_windows_legacy.yml for --update-env.")
+    parser.add_argument("--legacy-windows-env", action="store_true", help="Use waffle_env_windows_legacy.yml for --update-env; legacy pins Python 3.11 and Torch 2.2.1.")
     parser.add_argument("--test", action="store_true", help="Only run a lightweight remote hostname test.")
     return parser.parse_args()
 

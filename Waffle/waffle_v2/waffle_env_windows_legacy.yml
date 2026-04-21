@@ -1,5 +1,5 @@
 # Reference env for legacy Windows WAFFLE. The legacy launcher installs this
-# stack in a custom order: Python/pip first, PyTorch CPU wheels second, then
+# stack in a custom order: Python 3.11/pip first, pinned PyTorch 2.2.1 CPU wheels second, then
 # the remaining Conda dependencies. Direct `conda env create -f` is supported
 # as a fallback, but does not preserve that install order.
 name: Waffle
@@ -10,7 +10,7 @@ variables:
   KMP_DUPLICATE_LIB_OK: "TRUE"
   OMP_NUM_THREADS: "1"
 dependencies:
-  - python=3.12
+  - python=3.11
   - numpy
   - astropy
   - pillow
@@ -27,6 +27,6 @@ dependencies:
   - pip
   - pip:
       - --index-url https://download.pytorch.org/whl/cpu
-      - torch
-      - torchvision
-      - torchaudio
+      - torch==2.2.1
+      - torchvision==0.17.1
+      - torchaudio==2.2.1
