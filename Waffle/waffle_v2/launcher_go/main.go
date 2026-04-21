@@ -57,15 +57,29 @@ func main() {
 
 	if !envExists(conda, envName) {
 		fmt.Printf("Creating conda env %q...\n", envName)
-		if err := runCmd(conda, []string{"env", "create", "-n", envName, "-f", envYML}, root); err != nil {
-			fmt.Printf("Failed to create env: %v\n", err)
-			exitWithPause(1)
+		if legacyWindows {
+			if err := createLegacyWindowsEnv(conda, envName, root); err != nil {
+				fmt.Printf("Failed to create legacy Windows env: %v\n", err)
+				exitWithPause(1)
+			}
+		} else {
+			if err := runCmd(conda, []string{"env", "create", "-n", envName, "-f", envYML}, root); err != nil {
+				fmt.Printf("Failed to create env: %v\n", err)
+				exitWithPause(1)
+			}
 		}
 	} else if os.Getenv("WAFFLE_FORCE_UPDATE") == "1" {
 		fmt.Printf("Updating conda env %q...\n", envName)
-		if err := runCmd(conda, []string{"env", "update", "-n", envName, "-f", envYML, "--prune"}, root); err != nil {
-			fmt.Printf("Failed to update env: %v\n", err)
-			exitWithPause(1)
+		if legacyWindows {
+			if err := updateLegacyWindowsEnv(conda, envName, root); err != nil {
+				fmt.Printf("Failed to update legacy Windows env: %v\n", err)
+				exitWithPause(1)
+			}
+		} else {
+			if err := runCmd(conda, []string{"env", "update", "-n", envName, "-f", envYML, "--prune"}, root); err != nil {
+				fmt.Printf("Failed to update env: %v\n", err)
+				exitWithPause(1)
+			}
 		}
 	} else {
 		fmt.Printf("Conda env %q already exists.\n", envName)
@@ -107,6 +121,69 @@ func configureLegacyWindowsOpenMP() {
 		_ = os.Setenv("OMP_NUM_THREADS", "1")
 	}
 	fmt.Println("Legacy Windows OpenMP guard enabled.")
+}
+
+func createLegacyWindowsEnv(conda, envName, root string) error {
+	fmt.Println("Legacy Windows setup: creating minimal Python/pip env first.")
+	if err := runCmd(conda, []string{"create", "-n", envName, "python=3.12", "pip", "-y"}, root); err != nil {
+		return err
+	}
+	return installLegacyWindowsPackages(conda, envName, root)
+}
+
+func updateLegacyWindowsEnv(conda, envName, root string) error {
+	fmt.Println("Legacy Windows setup: installing Torch wheel first, then WAFFLE dependencies.")
+	return installLegacyWindowsPackages(conda, envName, root)
+}
+
+func installLegacyWindowsPackages(conda, envName, root string) error {
+	// Install Torch before the rest of the scientific stack. This gives the
+	// PyTorch CPU wheel first control of its native DLL layout on older Windows
+	// machines that fail with Conda PyTorch DLL/OpenMP conflicts.
+	fmt.Println("Legacy Windows setup: installing PyTorch CPU wheel first.")
+	if err := runCmd(conda, []string{
+		"run", "--no-capture-output", "-n", envName,
+		"python", "-m", "pip", "install", "--no-cache-dir",
+		"--index-url", "https://download.pytorch.org/whl/cpu",
+		"torch", "torchvision", "torchaudio",
+	}, root); err != nil {
+		return err
+	}
+
+	fmt.Println("Legacy Windows setup: installing WAFFLE dependencies.")
+	if err := runCmd(conda, append([]string{
+		"install", "-n", envName, "-c", "conda-forge", "-c", "defaults", "-y",
+	}, legacyWindowsCondaDeps()...), root); err != nil {
+		return err
+	}
+
+	fmt.Println("Legacy Windows setup: storing OpenMP guard variables in env.")
+	if err := runCmd(conda, []string{
+		"env", "config", "vars", "set", "-n", envName,
+		"KMP_DUPLICATE_LIB_OK=TRUE", "OMP_NUM_THREADS=1",
+	}, root); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func legacyWindowsCondaDeps() []string {
+	return []string{
+		"numpy",
+		"astropy",
+		"pillow",
+		"sunpy",
+		"python-dateutil",
+		"aiapy",
+		"drms",
+		"pandas",
+		"paramiko",
+		"scipy",
+		"pytz",
+		"matplotlib",
+		"scp",
+	}
 }
 
 func mustWaffleRoot() string {

@@ -1,3 +1,7 @@
+# Reference env for legacy Windows WAFFLE. The legacy launcher installs this
+# stack in a custom order: Python/pip first, PyTorch CPU wheels second, then
+# the remaining Conda dependencies. Direct `conda env create -f` is supported
+# as a fallback, but does not preserve that install order.
 name: Waffle
 channels:
   - conda-forge
