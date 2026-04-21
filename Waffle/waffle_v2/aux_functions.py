@@ -237,24 +237,28 @@ def _stop_imminence_worker(proc):
 def _start_imminence_worker(model_path, base_runtime):
     conda = os.environ.get("WAFFLE_TORCH_CONDA", "conda")
     torch_env = os.environ.get("WAFFLE_TORCH_ENV", "Waffle_Torch")
+    torch_python = os.environ.get("WAFFLE_TORCH_PYTHON", "").strip()
     worker_path = os.path.join(os.path.dirname(__file__), "imminence_worker.py")
     if not os.path.exists(worker_path):
         print(f"Imminence worker not found: {worker_path}")
         print("Imminence model disabled for this run.")
         return False
 
-    cmd = [
-        conda,
-        "run",
-        "-n",
-        torch_env,
-        "python",
-        worker_path,
-        "--model",
-        model_path,
-        "--repo-root",
-        _repo_root(),
-    ]
+    if torch_python and os.path.exists(torch_python):
+        cmd = [torch_python, worker_path, "--model", model_path, "--repo-root", _repo_root()]
+    else:
+        cmd = [
+            conda,
+            "run",
+            "-n",
+            torch_env,
+            "python",
+            worker_path,
+            "--model",
+            model_path,
+            "--repo-root",
+            _repo_root(),
+        ]
     try:
         proc = subprocess.Popen(
             cmd,

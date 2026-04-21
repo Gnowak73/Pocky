@@ -105,6 +105,10 @@ func main() {
 		_ = os.Setenv("WAFFLE_USE_TORCH_WORKER", "1")
 		_ = os.Setenv("WAFFLE_TORCH_ENV", torchEnvName)
 		_ = os.Setenv("WAFFLE_TORCH_CONDA", conda)
+		if py, ok := envPythonPath(conda, torchEnvName); ok {
+			fmt.Printf("Using Torch worker Python: %s\n", py)
+			_ = os.Setenv("WAFFLE_TORCH_PYTHON", py)
+		}
 	}
 
 	fmt.Println("Starting WAFFLE...")
@@ -150,6 +154,33 @@ func legacyWindowsTorchEnvName() string {
 		return strings.TrimSpace(v)
 	}
 	return "Waffle_Torch"
+}
+
+func envPythonPath(conda, envName string) (string, bool) {
+	if runtime.GOOS == "windows" {
+		root := condaRootFromCondaPath(conda)
+		if root == "" {
+			return "", false
+		}
+		py := filepath.Join(root, "envs", envName, "python.exe")
+		return py, fileExists(py)
+	}
+	root := condaRootFromCondaPath(conda)
+	if root == "" {
+		return "", false
+	}
+	py := filepath.Join(root, "envs", envName, "bin", "python")
+	return py, fileExists(py)
+}
+
+func condaRootFromCondaPath(conda string) string {
+	clean := filepath.Clean(conda)
+	dir := filepath.Dir(clean)
+	base := strings.ToLower(filepath.Base(dir))
+	if base == "condabin" || base == "bin" {
+		return filepath.Dir(dir)
+	}
+	return ""
 }
 
 func createLegacyWindowsEnv(conda, envName, root string) error {
