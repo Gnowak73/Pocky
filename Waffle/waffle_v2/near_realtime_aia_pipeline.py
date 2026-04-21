@@ -17,11 +17,11 @@ if __name__ == "__main__":
     # Define folder where to save the data.
     # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
     # - today="YYYYMonDD" -> replay mode for that day
-    today = "2026Apr7"
+    today = "2026Feb13"
     # Optional exact UTC start time for the JSOC query cursor.
     # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = "2026-04-07T13:00:00Z"
+    query_start_time_utc = "2026-02-13T08:30:00Z"
     # Separate controls:
     # 1) today selects realtime vs replay mode and folder naming
     # 2) query_start_time_utc optionally overrides the cursor start
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     arnum_top = [4046, 4044, 4043]  # active region numbers
 
-    x_top = np.array([-850, 66, 830])  # heliographic X
+    x_top = np.array([-250, 250, 830])  # heliographic X
     y_top = np.array([200, 240, 120])  # heliographic Y
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # Output publishing mode:
     # - 'local': publish latest outputs into a local folder (safe for local testing)
     # - 'scp': publish to remote WKU server using SCP
-    publish_mode = "scp"
+    publish_mode = "local"
     local_publish_dir = os.path.join(data_folder, "local_web")
     imminence_model_path = os.path.join(
         "..", "..", "ML_FFT", "runs", "empeak_c5_pre30_b51020.pt"

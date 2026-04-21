@@ -18,7 +18,6 @@ dependencies:
   - pytz
   - matplotlib
   - scp
-  - opencv
   - pytorch
   - pytorch-mutex=*=cpu
   - torchvision
