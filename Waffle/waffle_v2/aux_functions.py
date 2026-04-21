@@ -142,6 +142,7 @@ def _load_imminence_runtime(model_path):
     }
 
     if os.environ.get("WAFFLE_USE_TORCH_WORKER") == "1":
+        print("Imminence runtime mode: external Torch worker")
         worker_runtime = _start_imminence_worker(model_path, base_runtime)
         if not worker_runtime:
             _IMMINENCE_RUNTIME = False
@@ -149,6 +150,7 @@ def _load_imminence_runtime(model_path):
         _IMMINENCE_RUNTIME = worker_runtime
         return _IMMINENCE_RUNTIME
 
+    print("Imminence runtime mode: direct Torch import")
     try:
         import torch
 
@@ -471,10 +473,18 @@ def _extract_box_visibility_frame(aia_img, runtime, recenter=True, bin_factor=4)
 
 def _infer_imminence_risk_from_history(vis_history, runtime):
     if len(vis_history) <= runtime["warmup"]:
+        runtime["last_worker_status"] = (
+            f"warmup {len(vis_history)}/{int(runtime['warmup']) + 1}"
+        )
         return np.nan, None
     if runtime.get("external_worker"):
         proc = runtime.get("worker_proc")
-        if not proc or proc.poll() is not None:
+        if not proc:
+            runtime["last_worker_status"] = "worker process missing"
+            return np.nan, None
+        returncode = proc.poll()
+        if returncode is not None:
+            runtime["last_worker_status"] = f"worker process exited code {returncode}"
             return np.nan, None
         tmp_path = ""
         try:
@@ -489,9 +499,14 @@ def _infer_imminence_risk_from_history(vis_history, runtime):
                 proc.stdin.write(json.dumps({"cmd": "infer", "path": tmp_path}) + "\n")
                 proc.stdin.flush()
                 line = proc.stdout.readline()
+            if not line:
+                runtime["last_worker_status"] = "worker returned no stdout"
+                return np.nan, None
             resp = json.loads(line) if line else {}
             if not resp.get("ok"):
-                print(f"Imminence worker inference rejected: {resp.get('error', 'unknown error')}")
+                err = resp.get("error", "unknown error")
+                runtime["last_worker_status"] = f"worker rejected inference: {err}"
+                print(f"Imminence worker inference rejected: {err}")
                 return np.nan, None
             risk = resp.get("risk")
             prob = resp.get("probabilities")
@@ -504,6 +519,7 @@ def _infer_imminence_risk_from_history(vis_history, runtime):
                 None if prob is None else np.asarray(prob, dtype=np.float32),
             )
         except Exception as exc:
+            runtime["last_worker_status"] = f"worker inference exception: {exc}"
             print(f"Imminence worker inference failed: {exc}")
             return np.nan, None
         finally:
