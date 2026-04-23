@@ -2898,7 +2898,7 @@ def stream_aia_data(
                             use_nrt2_server=use_nrt2_server
                         )
                         continue
-                    print("awaiting new data...")
+                    print(f"awaiting new data... DRMS query failed for {ds_query}: {err}")
                     break
 
                 if query is not None and len(query) > 0:
@@ -2912,7 +2912,12 @@ def stream_aia_data(
                     time.sleep(2)
                     client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
                 else:
-                    print("awaiting new data...")
+                    cols = list(getattr(query, "columns", [])) if query is not None else []
+                    rows = len(query) if query is not None else 0
+                    print(
+                        f"awaiting new data... no usable DRMS rows for {ds_query} "
+                        f"(rows={rows}, columns={cols})"
+                    )
             if print_phase_timing:
                 phase_times["query"] = time.time() - t_phase
 

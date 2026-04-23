@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type miniforgeTarget struct {
@@ -112,7 +113,7 @@ func main() {
 	}
 
 	fmt.Println("Starting WAFFLE...")
-	if err := runCmd(conda, []string{"run", "--no-capture-output", "-n", envName, "python", pipeline}, root); err != nil {
+	if err := runWaffleCmd(conda, []string{"run", "--no-capture-output", "-n", envName, "python", pipeline}, root); err != nil {
 		fmt.Printf("WAFFLE run failed: %v\n", err)
 		exitWithPause(1)
 	}
@@ -376,6 +377,32 @@ func runCmd(bin string, args []string, dir string) error {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
+func runWaffleCmd(bin string, args []string, dir string) error {
+	logDir := filepath.Join(dir, "launcher_logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Printf("Could not create launcher log folder %s: %v\n", logDir, err)
+		return runCmd(bin, args, dir)
+	}
+	logPath := filepath.Join(logDir, "waffle_"+time.Now().Format("20060102_150405")+".log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		fmt.Printf("Could not create launcher log %s: %v\n", logPath, err)
+		return runCmd(bin, args, dir)
+	}
+	defer logFile.Close()
+
+	fmt.Printf("Writing WAFFLE log: %s\n", logPath)
+	_, _ = fmt.Fprintf(logFile, "WAFFLE launcher log started %s\n", time.Now().Format(time.RFC3339))
+	_, _ = fmt.Fprintf(logFile, "Command: %s %s\n\n", bin, strings.Join(args, " "))
+
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
+	cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
 }
