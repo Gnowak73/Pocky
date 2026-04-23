@@ -22,3 +22,11 @@ Vis/uv_grid.npz
 flare_coords_picked.tsv
 DEM/dem_weights.txt
 DEM/test_ratios.txt
+# WAFFLE runtime output folders/files, in any WAFFLE version.
+**/20[0-9][0-9][A-Z][a-z][a-z][0-9]*/
+**/box_crops/
+**/box_vis/
+**/latest_plots/
+**/local_web/
+**/total_em/
+**/launcher_logs/
