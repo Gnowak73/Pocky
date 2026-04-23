@@ -113,7 +113,7 @@ def _load_imminence_runtime(model_path):
         sys.path.insert(0, worker_lib)
 
     try:
-        from compute_visibilities import sample_visibilities
+        from runtime_visibilities import sample_visibilities
     except Exception as exc:
         print(f"Imminence visibility import failed: {exc}")
         print("Imminence model disabled for this run.")
@@ -154,8 +154,8 @@ def _load_imminence_runtime(model_path):
     try:
         import torch
 
-        from scan_vis_features import frame_features
-        from train_flare_imminence_classifier import (
+        from runtime_vis_features import frame_features
+        from runtime_imminence_model import (
             engineer_feature_table,
             make_model,
             softmax_np,
@@ -238,7 +238,7 @@ def _start_imminence_worker(model_path, base_runtime):
     conda = os.environ.get("WAFFLE_TORCH_CONDA", "conda")
     torch_env = os.environ.get("WAFFLE_TORCH_ENV", "Waffle_Torch")
     torch_python = os.environ.get("WAFFLE_TORCH_PYTHON", "").strip()
-    worker_path = os.path.join(os.path.dirname(__file__), "imminence_worker.py")
+    worker_path = os.path.join(os.path.dirname(__file__), "worker_lib", "imminence_worker.py")
     if not os.path.exists(worker_path):
         print(f"Imminence worker not found: {worker_path}")
         print("Imminence model disabled for this run.")
@@ -603,6 +603,50 @@ def plot_imminence_risk_history(
         bbox_inches="tight",
     )
     plt.close(fig)
+
+
+# **********************************************************
+
+
+def save_flare_trigger_snapshot(
+    data_folder,
+    latest_plots_folder,
+    trigger_time_utc,
+    trigger_time_local,
+    focus_label,
+    focus_em,
+    risk_history,
+):
+    """Copy the current website plots into a timestamped trigger folder."""
+
+    trigger_root = os.path.join(data_folder, "Flare Triggers")
+    mkdir(trigger_root)
+    trigger_stamp = trigger_time_utc.strftime("%Y-%m-%dT%H%M%SZ")
+    trigger_folder = os.path.join(trigger_root, trigger_stamp)
+    suffix = 2
+    while os.path.exists(trigger_folder):
+        trigger_folder = os.path.join(trigger_root, f"{trigger_stamp}_{suffix}")
+        suffix += 1
+    mkdir(trigger_folder)
+
+    for name in os.listdir(latest_plots_folder):
+        src = os.path.join(latest_plots_folder, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(trigger_folder, name))
+
+    info_path = os.path.join(trigger_folder, "trigger_info.txt")
+    with open(info_path, "w", encoding="utf-8") as f:
+        f.write(f"trigger_time_utc={trigger_time_utc.isoformat()}\n")
+        f.write(f"trigger_time_local={trigger_time_local.isoformat()}\n")
+        f.write(f"focus_label={focus_label}\n")
+        f.write(f"focus_em={float(focus_em):.6e}\n")
+        f.write("latest_risks=\n")
+        for lab, vals in risk_history.items():
+            last = vals[-1] if vals else float("nan")
+            f.write(f"  {lab}: {float(last):.6f}\n")
+
+    print(f"Saved flare trigger snapshot: {trigger_folder}")
+    return trigger_folder
 
 
 # **********************************************************
@@ -3306,6 +3350,7 @@ def stream_aia_data(
                 focus_label = label[focus_idx]
                 trigger_states = [False] * n_ar
                 cycle_new_trigger = False
+                cycle_trigger_record = None
                 if imminence_runtime:
                     if imminence_alert_cooldown_remaining > 0:
                         imminence_alert_cooldown_remaining -= 1
@@ -3457,6 +3502,12 @@ def stream_aia_data(
                             or imminence_trigger_times[-1] != trigger_time_local
                         ):
                             imminence_trigger_times.append(trigger_time_local)
+                            cycle_trigger_record = (
+                                trigger_time_utc,
+                                trigger_time_local,
+                                focus_label,
+                                float(em_totals[focus_idx]),
+                            )
                     plot_imminence_risk_history(
                         latest_plots_folder,
                         risk_history,
@@ -3505,6 +3556,23 @@ def stream_aia_data(
                 )
                 if print_phase_timing:
                     phase_times["em_goes_plot"] = time.time() - t_phase
+
+                if cycle_trigger_record is not None:
+                    (
+                        trigger_time_utc,
+                        trigger_time_local,
+                        trigger_focus_label,
+                        trigger_focus_em,
+                    ) = cycle_trigger_record
+                    save_flare_trigger_snapshot(
+                        data_folder,
+                        latest_plots_folder,
+                        trigger_time_utc,
+                        trigger_time_local,
+                        trigger_focus_label,
+                        trigger_focus_em,
+                        risk_history,
+                    )
 
                 print("Publish data...")
                 t_phase = time.time()

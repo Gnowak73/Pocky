@@ -1,0 +1,3 @@
+WAFFLE launcher started 2026-04-22T23:57:29-04:00
+Command: /Users/gabe/miniconda3/bin/conda run --no-capture-output -n Waffle python /Users/gabe/Github/Pocky/Waffle/waffle_v2/near_realtime_aia_pipeline.py
+

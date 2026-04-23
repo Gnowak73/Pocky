@@ -113,6 +113,7 @@ func main() {
 	}
 
 	fmt.Println("Starting WAFFLE...")
+	fmt.Println()
 	if err := runWaffleCmd(conda, []string{"run", "--no-capture-output", "-n", envName, "python", pipeline}, root); err != nil {
 		fmt.Printf("WAFFLE run failed: %v\n", err)
 		exitWithPause(1)
@@ -390,21 +391,27 @@ func runWaffleCmd(bin string, args []string, dir string) error {
 	logPath := filepath.Join(logDir, "waffle_"+time.Now().Format("20060102_150405")+".log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		fmt.Printf("Could not create launcher log %s: %v\n", logPath, err)
+		fmt.Printf("Could not create launcher error log %s: %v\n", logPath, err)
 		return runCmd(bin, args, dir)
 	}
 	defer logFile.Close()
 
-	fmt.Printf("Writing WAFFLE log: %s\n", logPath)
-	_, _ = fmt.Fprintf(logFile, "WAFFLE launcher log started %s\n", time.Now().Format(time.RFC3339))
+	fmt.Printf("Writing WAFFLE error log: %s\n", logPath)
+	_, _ = fmt.Fprintf(logFile, "WAFFLE launcher started %s\n", time.Now().Format(time.RFC3339))
 	_, _ = fmt.Fprintf(logFile, "Command: %s %s\n\n", bin, strings.Join(args, " "))
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
+	// Keep stdout attached directly to the terminal so normal progress output
+	// stays interactive. Only stderr is copied into the error log.
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
 	cmd.Stdin = os.Stdin
-	return cmd.Run()
+	err = cmd.Run()
+	if err != nil {
+		_, _ = fmt.Fprintf(logFile, "\nWAFFLE run failed at %s: %v\n", time.Now().Format(time.RFC3339), err)
+	}
+	return err
 }
 
 func installMiniforge() error {

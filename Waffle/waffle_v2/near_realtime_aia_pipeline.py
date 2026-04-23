@@ -17,11 +17,11 @@ if __name__ == "__main__":
     # Define folder where to save the data.
     # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
     # - today="YYYYMonDD" -> replay mode for that day
-    today = None  # "2026Apr21"
+    today = "2026Apr01"
     # Optional exact UTC start time for the JSOC query cursor.
     # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = None  # "2026-04-21T07:30:00Z"
+    query_start_time_utc = "2026-04-01T07:30:00Z"
     # Separate controls:
     # 1) today selects realtime vs replay mode and folder naming
     # 2) query_start_time_utc optionally overrides the cursor start
@@ -115,10 +115,10 @@ if __name__ == "__main__":
     # Boolean: if True, the fits files of the downloaded AIA maps and of the EM maps that are computed from the AIA data are saved.
     save_maps = False
     # Boolean: if True, save only timestamped cropped box FITS (plus EM) and still clean up full-disk downloads.
-    save_box_crops = True
+    save_box_crops = False
     box_crops_root = os.path.join(data_folder, "box_crops")
     # Boolean: if True, save the exact per-box visibility frame computed for NN inference.
-    save_box_vis = True
+    save_box_vis = False
     box_vis_root = os.path.join(data_folder, "box_vis")
     # SUVI top image wavelength (94 or 131) for generated website.
     suvi_top_wavelength = 131
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     # DRMS query mode:
     # - "nrt2"   -> near-real-time series used on WKU environment
     # - "public" -> public JSOC series
-    drms_mode = "nrt2"
+    drms_mode = "public"
     if drms_mode == "nrt2":
         drms_series = "aia.lev1_nrt2"
         drms_segment = "image_lev1"

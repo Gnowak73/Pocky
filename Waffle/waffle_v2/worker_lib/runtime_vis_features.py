@@ -1,99 +1,15 @@
-#!/usr/bin/env python3
-"""Scan vis_cache features and report AUC for flare prediction."""
+"""Runtime visibility feature extraction for WAFFLE imminence inference.
+
+This module intentionally contains only the feature code needed by
+``imminence_worker.py`` and the direct WAFFLE runtime path. Training, cache
+scanning, AUC reporting, and command-line code live in ``ML_FFT``.
+"""
 
 from __future__ import annotations
 
-import argparse
-import datetime as dt
-from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Scan vis_cache features for flare prediction AUC.")
-    p.add_argument("--cache", default="ML_FFT/vis_cache", help="vis_cache folder")
-    p.add_argument("--flare-cache", default="flare_cache.tsv")
-    p.add_argument("--min-class", default="C3.0")
-    p.add_argument("--horizons", default="2,5,10,15")
-    p.add_argument("--max-events", type=int, default=0, help="Limit events (0 = all)")
-    p.add_argument("--log-scale", action="store_true", help="Apply log1p to positive features")
-    p.add_argument("--print-top", type=int, default=12)
-    p.add_argument("--pre-min", type=float, default=0.0, help="Minutes before flare to include (0 = all)")
-    p.add_argument("--post-min", type=float, default=0.0, help="Minutes after flare to include (0 = none)")
-    return p.parse_args()
-
-
-def goes_to_float(cls: str) -> float:
-    cls = cls.strip().upper()
-    if not cls:
-        return -1.0
-    letter = cls[0]
-    try:
-        magnitude = float(cls[1:])
-    except ValueError:
-        return -1.0
-    mult = {"A": 1e-8, "B": 1e-7, "C": 1e-6, "M": 1e-5, "X": 1e-4}.get(letter)
-    if mult is None:
-        return -1.0
-    return mult * magnitude
-
-
-def load_flare_info(path: Path, min_class: str) -> Dict[str, dt.datetime]:
-    out: Dict[str, dt.datetime] = {}
-    if not path.exists():
-        return out
-    min_val = goes_to_float(min_class)
-    with path.open("r", encoding="utf-8") as f:
-        header = f.readline().strip().split("\t")
-        if "flare_class" not in header or "start" not in header:
-            return out
-        idx_cls = header.index("flare_class")
-        idx_start = header.index("start")
-        for line in f:
-            parts = line.strip().split("\t")
-            if len(parts) <= max(idx_cls, idx_start):
-                continue
-            cls = parts[idx_cls].strip()
-            if goes_to_float(cls) < min_val:
-                continue
-            start = parts[idx_start].strip()
-            if not start:
-                continue
-            try:
-                t0 = dt.datetime.fromisoformat(start.replace("Z", ""))
-            except ValueError:
-                continue
-            ev = f"{cls}_{t0:%Y%m%d_%H%M%S}"
-            out[ev] = t0
-    return out
-
-
-def parse_times(times: np.ndarray) -> List[dt.datetime]:
-    out = []
-    for t in times.astype(str).tolist():
-        try:
-            out.append(dt.datetime.strptime(t, "%Y-%m-%dT%H%M%S"))
-        except ValueError:
-            out.append(dt.datetime.strptime(t, "%Y-%m-%dT%H:%M"))
-    return out
-
-
-def auc_from_scores(scores: np.ndarray, labels: np.ndarray) -> float:
-    labels = labels.astype(np.int64)
-    pos = labels == 1
-    n_pos = int(pos.sum())
-    n_neg = int((labels == 0).sum())
-    if n_pos == 0 or n_neg == 0:
-        return float("nan")
-    # rank-based AUC (Mann–Whitney)
-    order = np.argsort(scores)
-    ranks = np.empty_like(order, dtype=np.float64)
-    ranks[order] = np.arange(1, len(scores) + 1, dtype=np.float64)
-    pos_ranks = ranks[pos]
-    auc = (pos_ranks.sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
-    return float(auc)
 
 
 def spectral_features(x: np.ndarray) -> Tuple[float, float, float, float, float, float]:
@@ -339,100 +255,4 @@ def frame_features(
 
     return feats
 
-
-def maybe_log(feats: Dict[str, float]) -> Dict[str, float]:
-    out = {}
-    for k, v in feats.items():
-        if v >= 0:
-            out[k] = float(np.log1p(v))
-        else:
-            out[k] = v
-    return out
-
-
-def main() -> None:
-    args = parse_args()
-    cache_dir = Path(args.cache)
-    flare_info = load_flare_info(Path(args.flare_cache), args.min_class)
-    horizons = [float(x) for x in args.horizons.split(",") if x.strip()]
-
-    files = sorted(cache_dir.glob("*.npz"))
-    if args.max_events:
-        files = files[: args.max_events]
-
-    # Collect per-feature scores and labels per horizon
-    feat_scores: Dict[str, List[float]] = {}
-    feat_labels: Dict[float, List[int]] = {h: [] for h in horizons}
-    feat_scores_by_h: Dict[float, Dict[str, List[float]]] = {h: {} for h in horizons}
-
-    re_idx: List[int] = []
-    im_idx: List[int] = []
-    mag_idx: List[int] = []
-    ph_idx: List[int] = []
-    for fp in files:
-        ev = fp.stem
-        if ev not in flare_info:
-            continue
-        with np.load(fp) as d:
-            vis = d["vis"]
-            times = parse_times(d["times"])
-            if "channels" in d and not re_idx and not mag_idx:
-                raw = d["channels"]
-                channels = [c.decode() if isinstance(c, (bytes, np.bytes_)) else str(c) for c in raw]
-                re_idx = [i for i, c in enumerate(channels) if c.endswith("_re")]
-                im_idx = [i for i, c in enumerate(channels) if c.endswith("_im")]
-                mag_idx = [i for i, c in enumerate(channels) if c.endswith("_mag")]
-                ph_idx = [i for i, c in enumerate(channels) if c.endswith("_ph")]
-        t0 = flare_info[ev]
-
-        prev = None
-        for i, t in enumerate(times):
-            dt_min = (t0 - t).total_seconds() / 60.0
-            if args.pre_min > 0 and dt_min > args.pre_min:
-                continue
-            if dt_min < 0:
-                if args.post_min <= 0 or (-dt_min) > args.post_min:
-                    continue
-            feats = frame_features(
-                vis[i],
-                prev,
-                re_idx,
-                im_idx,
-                mag_idx,
-                ph_idx,
-            )
-            if args.log_scale:
-                feats = maybe_log(feats)
-            prev = vis[i]
-
-            # init feature buckets
-            for k, v in feats.items():
-                feat_scores.setdefault(k, [])
-
-            # horizons labels
-            for h in horizons:
-                label = 1 if dt_min <= h else 0
-                feat_labels[h].append(label)
-                for k, v in feats.items():
-                    feat_scores_by_h[h].setdefault(k, []).append(v)
-
-    # compute AUCs
-    aucs: Dict[str, List[float]] = {k: [] for k in feat_scores_by_h[horizons[0]].keys()}
-    for h in horizons:
-        labels = np.array(feat_labels[h], dtype=np.int64)
-        for k, vals in feat_scores_by_h[h].items():
-            scores = np.array(vals, dtype=np.float64)
-            aucs[k].append(auc_from_scores(scores, labels))
-
-    # average AUC across horizons
-    avg = {k: float(np.nanmean(v)) for k, v in aucs.items()}
-    ranked = sorted(avg.items(), key=lambda x: (-(x[1] if np.isfinite(x[1]) else -1e9), x[0]))
-
-    print("Feature AUCs (avg across horizons)")
-    for k, v in ranked[: args.print_top]:
-        h_str = ", ".join(f"h{int(h)}={aucs[k][i]:.3f}" for i, h in enumerate(horizons))
-        print(f"{k:16s} avg={v:.3f}  {h_str}")
-
-
-if __name__ == "__main__":
-    main()
+__all__ = ["frame_features"]
