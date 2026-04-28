@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sys
+import importlib.util
 
 import numpy as np
 import torch
@@ -76,13 +77,45 @@ def _append_em_proxy_change_features(feats_list, em_vals):
     return out
 
 
-def _load_runtime(model_path: str, state_model_path: str = "") -> dict:
+def _load_python_module(module_name: str, path: str):
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"unable to load module spec: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_runtime(model_path: str, repo_root: str, state_model_path: str = "") -> dict:
     worker_dir = os.path.dirname(__file__)
     if worker_dir not in sys.path:
         sys.path.insert(0, worker_dir)
 
-    from runtime_vis_features import frame_features
-    from runtime_imminence_model import engineer_feature_table, make_model
+    model_name = os.path.basename(model_path)
+    if model_name == "legacy_main_trigger.pt":
+        vis_mod = _load_python_module(
+            "waffle_v3_worker_legacy_runtime_vis_features",
+            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_vis_features.py"),
+        )
+        model_mod = _load_python_module(
+            "waffle_v3_worker_legacy_runtime_imminence_model",
+            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_imminence_model.py"),
+        )
+    elif model_name == "gru_pretrigger_10m.pt":
+        vis_mod = _load_python_module(
+            "waffle_v3_worker_pretrigger_runtime_vis_features",
+            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_vis_features.py"),
+        )
+        model_mod = _load_python_module(
+            "waffle_v3_worker_pretrigger_runtime_imminence_model",
+            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_imminence_model.py"),
+        )
+    else:
+        raise RuntimeError(f"waffle_v3 worker does not recognize model: {model_name}")
+
+    frame_features = vis_mod.frame_features
+    engineer_feature_table = model_mod.engineer_feature_table
+    make_model = model_mod.make_model
 
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
     args = checkpoint.get("args", {})
@@ -243,7 +276,11 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        runtime = _load_runtime(os.path.abspath(args.model), os.path.abspath(args.state_model) if args.state_model else "")
+        runtime = _load_runtime(
+            os.path.abspath(args.model),
+            os.path.abspath(args.repo_root),
+            os.path.abspath(args.state_model) if args.state_model else "",
+        )
     except Exception as exc:
         _json_write({"ok": False, "error": str(exc)})
         return 1
