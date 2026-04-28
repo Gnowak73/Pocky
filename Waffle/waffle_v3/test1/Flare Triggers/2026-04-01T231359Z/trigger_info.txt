@@ -1,0 +1,45 @@
+trigger_time_utc=2026-04-01T23:13:59+00:00
+trigger_time_local=2026-04-01T18:13:59-05:00
+snapshot_time_utc=2026-04-01T23:13:59+00:00
+snapshot_time_local=2026-04-01T18:13:59-05:00
+snapshot_delay_min=0.00
+focus_label=B
+focus_em=6.494498e+48
+alert_config=
+  alert_count: 2
+  avg_threshold: 0.8
+  baseline_count: 5
+  cooldown_frames: 10
+  delay_min: 10.0
+  delta_threshold: None
+  em_nondecrease_tolerance: 0.03
+  min_active_area_fraction: 0.02
+  peak_threshold: None
+trigger_box_stats=
+  max_em=6.494498e+48
+  max_risk=0.908511
+  box=A ar=4046 lon=-26.796 lat=3.440 em=1.835679e+48 prev_em=1.982370e+48 em_ratio=0.926002 risk=0.575725 avg_recent=0.587371 peak_recent=0.599018 baseline_avg=nan triggered=False status=ok probabilities=0.104908,0.431136,0.422556,0.041401
+  box=B ar=4044 lon=21.680 lat=18.663 em=6.494498e+48 prev_em=6.217189e+48 em_ratio=1.044604 risk=0.908511 avg_recent=0.881757 peak_recent=0.908511 baseline_avg=nan triggered=True status=ok probabilities=0.823794,0.109523,0.020127,0.046556
+  box=C ar=4043 lon=56.724 lat=6.892 em=5.049848e+47 prev_em=4.956154e+47 em_ratio=1.018905 risk=0.635330 avg_recent=0.553486 peak_recent=0.635330 baseline_avg=nan triggered=False status=ok probabilities=0.007245,0.798159,0.173434,0.021162
+  box=D ar=4048 lon=-5.972 lat=-16.022 em=2.754076e+47 prev_em=2.767021e+47 em_ratio=0.995321 risk=0.151933 avg_recent=0.163426 peak_recent=0.174919 baseline_avg=nan triggered=False status=ok probabilities=0.021430,0.010136,0.308521,0.659913
+  box=E ar=4045 lon=11.731 lat=-10.370 em=4.226363e+47 prev_em=4.237205e+47 em_ratio=0.997441 risk=0.214361 avg_recent=0.174448 peak_recent=0.214361 baseline_avg=nan triggered=False status=ok probabilities=0.015666,0.089146,0.340733,0.554456
+  box=F ar=4049 lon=61.039 lat=-30.997 em=3.284869e+47 prev_em=3.308493e+47 em_ratio=0.992860 risk=0.412537 avg_recent=0.408259 peak_recent=0.412537 baseline_avg=nan triggered=False status=ok probabilities=0.010482,0.037588,0.939360,0.012571
+snapshot_box_stats=
+  max_em=6.494498e+48
+  max_risk=0.908511
+  box=A ar=4046 lon=-26.796 lat=3.440 em=1.835679e+48 prev_em=1.982370e+48 em_ratio=0.926002 risk=0.575725 avg_recent=0.587371 peak_recent=0.599018 baseline_avg=nan triggered=False status=ok probabilities=0.104908,0.431136,0.422556,0.041401
+  box=B ar=4044 lon=21.680 lat=18.663 em=6.494498e+48 prev_em=6.217189e+48 em_ratio=1.044604 risk=0.908511 avg_recent=0.881757 peak_recent=0.908511 baseline_avg=nan triggered=True status=ok probabilities=0.823794,0.109523,0.020127,0.046556
+  box=C ar=4043 lon=56.724 lat=6.892 em=5.049848e+47 prev_em=4.956154e+47 em_ratio=1.018905 risk=0.635330 avg_recent=0.553486 peak_recent=0.635330 baseline_avg=nan triggered=False status=ok probabilities=0.007245,0.798159,0.173434,0.021162
+  box=D ar=4048 lon=-5.972 lat=-16.022 em=2.754076e+47 prev_em=2.767021e+47 em_ratio=0.995321 risk=0.151933 avg_recent=0.163426 peak_recent=0.174919 baseline_avg=nan triggered=False status=ok probabilities=0.021430,0.010136,0.308521,0.659913
+  box=E ar=4045 lon=11.731 lat=-10.370 em=4.226363e+47 prev_em=4.237205e+47 em_ratio=0.997441 risk=0.214361 avg_recent=0.174448 peak_recent=0.214361 baseline_avg=nan triggered=False status=ok probabilities=0.015666,0.089146,0.340733,0.554456
+  box=F ar=4049 lon=61.039 lat=-30.997 em=3.284869e+47 prev_em=3.308493e+47 em_ratio=0.992860 risk=0.412537 avg_recent=0.408259 peak_recent=0.412537 baseline_avg=nan triggered=False status=ok probabilities=0.010482,0.037588,0.939360,0.012571
+latest_risks=
+  A: 0.575725
+  B: 0.908511
+  C: 0.635330
+  D: 0.151933
+  E: 0.214361
+  F: 0.412537
+em_goes_snapshot_time_utc=2026-04-01T23:24:47+00:00
+em_goes_snapshot_time_local=2026-04-01T18:24:47-05:00
+em_goes_snapshot_delay_min=10.80
