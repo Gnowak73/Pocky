@@ -159,6 +159,15 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
         "pixel_arcsec": 0.6,
     }
 
+    if os.environ.get("WAFFLE_USE_TORCH_WORKER") == "1":
+        print("Imminence runtime mode: external Torch worker")
+        worker_runtime = _start_imminence_worker(model_path, state_model_path, base_runtime)
+        if not worker_runtime:
+            raise RuntimeError(
+                f"waffle_v3 {cache_slot} worker failed to start."
+            )
+        return _set_runtime(worker_runtime)
+
     print("Imminence runtime mode: direct Torch import")
     import torch
 
