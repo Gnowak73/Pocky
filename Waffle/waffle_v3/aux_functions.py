@@ -64,6 +64,7 @@ _GIF_FRAME_CACHE = {}
 _IMMINENCE_RUNTIME = None
 _PRETRIGGER_IMMINENCE_RUNTIME = None
 _IMMINENCE_WORKER_LOCK = threading.Lock()
+_GENERAL_FEATURE_CACHE = {}
 
 
 def mkdir(a_dir):
@@ -175,39 +176,29 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
 
     ck = torch.load(model_path, map_location="cpu", weights_only=False)
     args = ck.get("args", {})
-    repo_root = _repo_root()
     model_name = os.path.basename(model_path)
     if cache_slot == "main":
         if model_name != "legacy_main_trigger.pt":
             raise RuntimeError(
                 f"waffle_v3 main model must be legacy_main_trigger.pt, got {model_name}"
             )
-        vis_mod = _load_python_module(
-            "waffle_v3_legacy_runtime_vis_features",
-            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_vis_features.py"),
-        )
-        model_mod = _load_python_module(
-            "waffle_v3_legacy_runtime_imminence_model",
-            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_imminence_model.py"),
-        )
         feature_family = "legacy356"
     else:
         if model_name != "gru_pretrigger_10m.pt":
             raise RuntimeError(
                 f"waffle_v3 pretrigger model must be gru_pretrigger_10m.pt, got {model_name}"
             )
-        vis_mod = _load_python_module(
-            "waffle_v3_pretrigger_runtime_vis_features",
-            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_vis_features.py"),
-        )
-        model_mod = _load_python_module(
-            "waffle_v3_pretrigger_runtime_imminence_model",
-            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_imminence_model.py"),
-        )
         feature_family = "pretrigger_gru_860"
 
-    frame_features = vis_mod.frame_features
-    engineer_feature_table = model_mod.engineer_feature_table
+    vis_mod = _load_python_module(
+        "waffle_v3_runtime_vis_features",
+        os.path.join(worker_lib, "runtime_vis_features.py"),
+    )
+    model_mod = _load_python_module(
+        "waffle_v3_runtime_imminence_model",
+        os.path.join(worker_lib, "runtime_imminence_model.py"),
+    )
+
     make_model = model_mod.make_model
     softmax_np = model_mod.softmax_np
     feature_names = list(ck["feature_names"])
@@ -244,16 +235,17 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
         "torch": torch,
         "device": dev,
         "model": net,
-        "frame_features": frame_features,
         "em_active_area_features": em_active_area_features,
-        "engineer_feature_table": engineer_feature_table,
+        "general_frame_features": vis_mod.frame_features,
+        "general_engineer_feature_table": model_mod.engineer_feature_table,
+        "general_feature_mode": "legacy",
         "softmax_np": softmax_np,
         "warmup": int(args.get("warmup", 10)),
         "lookback": int(args.get("lookback", 10)),
         "seq_len": int(args.get("seq_len", 1)),
         "is_binary_horizon": bool(is_binary_horizon),
-        "feature_mode": str(args.get("feature_mode", "all")),
         "feature_names": feature_names,
+        "feature_indices": None,
         "x_mean": x_mean,
         "x_std": x_std,
         "bins": bins,
@@ -593,25 +585,52 @@ def _infer_imminence_risk_from_history(vis_history, runtime, em_history=None):
                 except OSError:
                     pass
 
-    feats_list = []
-    prev = None
-    re_idx = list(range(5))
-    im_idx = list(range(5, 10))
-    mag_idx = []
-    ph_idx = []
-    for vis in vis_history:
-        feats = runtime["frame_features"](vis, prev, re_idx, im_idx, mag_idx, ph_idx)
-        feats_list.append(feats)
-        prev = vis
-    X, names, _ = runtime["engineer_feature_table"](
-        feats_list,
-        warmup=runtime["warmup"],
-        feature_mode=runtime["feature_mode"],
-        lookback=runtime.get("lookback", 10),
+    cache_key = (
+        id(vis_history),
+        len(vis_history),
+        id(vis_history[-1]) if vis_history else 0,
+        int(runtime["warmup"]),
+        int(runtime.get("lookback", 10)),
+        runtime["general_feature_mode"],
     )
-    if X.size == 0 or names != runtime["feature_names"]:
-        runtime["last_worker_status"] = "feature mismatch"
+    cached = _GENERAL_FEATURE_CACHE.get(cache_key)
+    if cached is None:
+        feats_list = []
+        prev = None
+        re_idx = list(range(5))
+        im_idx = list(range(5, 10))
+        mag_idx = []
+        ph_idx = []
+        for vis in vis_history:
+            feats = runtime["general_frame_features"](vis, prev, re_idx, im_idx, mag_idx, ph_idx)
+            feats_list.append(feats)
+            prev = vis
+        X_all, names_all, _ = runtime["general_engineer_feature_table"](
+            feats_list,
+            warmup=runtime["warmup"],
+            feature_mode=runtime["general_feature_mode"],
+            lookback=runtime.get("lookback", 10),
+        )
+        cached = (X_all, names_all)
+        if len(_GENERAL_FEATURE_CACHE) > 128:
+            _GENERAL_FEATURE_CACHE.clear()
+        _GENERAL_FEATURE_CACHE[cache_key] = cached
+    else:
+        X_all, names_all = cached
+
+    if X_all.size == 0:
+        runtime["last_worker_status"] = "empty feature table"
         return np.nan, None
+    feature_indices = runtime.get("feature_indices")
+    if feature_indices is None:
+        index_by_name = {name: i for i, name in enumerate(names_all)}
+        try:
+            feature_indices = [index_by_name[name] for name in runtime["feature_names"]]
+        except KeyError as exc:
+            runtime["last_worker_status"] = f"feature missing: {exc}"
+            return np.nan, None
+        runtime["feature_indices"] = feature_indices
+    X = X_all[:, feature_indices]
     torch = runtime["torch"]
     if runtime.get("seq_len", 1) > 1:
         seq_len = int(runtime["seq_len"])

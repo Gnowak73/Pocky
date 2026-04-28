@@ -92,26 +92,17 @@ def _load_runtime(model_path: str, repo_root: str, state_model_path: str = "") -
         sys.path.insert(0, worker_dir)
 
     model_name = os.path.basename(model_path)
-    if model_name == "legacy_main_trigger.pt":
-        vis_mod = _load_python_module(
-            "waffle_v3_worker_legacy_runtime_vis_features",
-            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_vis_features.py"),
-        )
-        model_mod = _load_python_module(
-            "waffle_v3_worker_legacy_runtime_imminence_model",
-            os.path.join(repo_root, "Waffle", "waffle_v2", "worker_lib", "runtime_imminence_model.py"),
-        )
-    elif model_name == "gru_pretrigger_10m.pt":
-        vis_mod = _load_python_module(
-            "waffle_v3_worker_pretrigger_runtime_vis_features",
-            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_vis_features.py"),
-        )
-        model_mod = _load_python_module(
-            "waffle_v3_worker_pretrigger_runtime_imminence_model",
-            os.path.join(repo_root, "Waffle", "waffle_v4", "worker_lib", "runtime_imminence_model.py"),
-        )
-    else:
+    if model_name not in {"legacy_main_trigger.pt", "gru_pretrigger_10m.pt"}:
         raise RuntimeError(f"waffle_v3 worker does not recognize model: {model_name}")
+
+    vis_mod = _load_python_module(
+        "waffle_v3_worker_runtime_vis_features",
+        os.path.join(worker_dir, "runtime_vis_features.py"),
+    )
+    model_mod = _load_python_module(
+        "waffle_v3_worker_runtime_imminence_model",
+        os.path.join(worker_dir, "runtime_imminence_model.py"),
+    )
 
     frame_features = vis_mod.frame_features
     engineer_feature_table = model_mod.engineer_feature_table
@@ -178,8 +169,9 @@ def _load_runtime(model_path: str, repo_root: str, state_model_path: str = "") -
         "lookback": int(args.get("lookback", 10)),
         "seq_len": int(args.get("seq_len", 1)),
         "is_binary_horizon": bool(is_binary_horizon),
-        "feature_mode": str(args.get("feature_mode", "all")),
+        "general_feature_mode": "legacy",
         "feature_names": feature_names,
+        "feature_indices": None,
         "x_mean": np.asarray(checkpoint["x_mean"], dtype=np.float32).reshape(-1),
         "x_std": np.asarray(checkpoint["x_std"], dtype=np.float32).reshape(-1),
         "bins": bins,
@@ -235,19 +227,23 @@ def _infer(vis_history: np.ndarray, runtime: dict, em_history: list[float] | Non
     if runtime.get("include_em_proxy_change_features"):
         feats_list = _append_em_proxy_change_features(feats_list, em_history or [])
 
-    X, names, _ = runtime["engineer_feature_table"](
+    X_all, names_all, _ = runtime["engineer_feature_table"](
         feats_list,
         warmup=runtime["warmup"],
-        feature_mode=runtime["feature_mode"],
+        feature_mode=runtime["general_feature_mode"],
         lookback=runtime.get("lookback", 10),
     )
-    if X.size == 0:
+    if X_all.size == 0:
         return None, None, "empty feature table"
-    if names != runtime["feature_names"]:
-        return None, None, (
-            f"feature mismatch generated={len(names)} "
-            f"expected={len(runtime['feature_names'])}"
-        )
+    feature_indices = runtime.get("feature_indices")
+    if feature_indices is None:
+        index_by_name = {name: i for i, name in enumerate(names_all)}
+        try:
+            feature_indices = [index_by_name[name] for name in runtime["feature_names"]]
+        except KeyError as exc:
+            return None, None, f"feature missing: {exc}"
+        runtime["feature_indices"] = feature_indices
+    X = X_all[:, feature_indices]
 
     if runtime.get("seq_len", 1) > 1:
         seq_len = int(runtime["seq_len"])
