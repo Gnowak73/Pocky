@@ -13,6 +13,19 @@ import aux_functions
 import numpy as np
 from aiapy.calibrate.utils import get_correction_table as get_correction_table
 
+
+def resolve_imminence_model_path(model_name_or_path: str) -> str:
+    if not model_name_or_path:
+        return ""
+    if os.path.isabs(model_name_or_path):
+        return model_name_or_path
+    models_dir = os.path.join(os.path.dirname(__file__), "models")
+    candidate = model_name_or_path
+    if not candidate.endswith(".pt"):
+        candidate = f"{candidate}.pt"
+    return os.path.join(models_dir, candidate)
+
+
 if __name__ == "__main__":
     # Define folder where to save the data.
     # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
@@ -21,7 +34,7 @@ if __name__ == "__main__":
     # Optional exact UTC start time for the JSOC query cursor.
     # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = "2026-04-01T07:30:00Z"
+    query_start_time_utc = "2026-04-01T21:50:00Z"
     # Separate controls:
     # 1) today selects realtime vs replay mode and folder naming
     # 2) query_start_time_utc optionally overrides the cursor start
@@ -52,8 +65,8 @@ if __name__ == "__main__":
 
     arnum_top = [4046, 4044, 4043]  # active region numbers
 
-    x_top = np.array([-250, 250, 830])  # heliographic X
-    y_top = np.array([200, 240, 120])  # heliographic Y
+    x_top = np.array([-450, 350, 830])  # heliographic X
+    y_top = np.array([60, 320, 120])  # heliographic Y
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
@@ -106,8 +119,9 @@ if __name__ == "__main__":
 
     # Normalization of light curves: multiply by 1000^2 / (w*h) [ or 500^2 / (w * h ) ]
 
-    # Duration of the current session of the data stream
-    duration_stream = 480  # minutes
+    # Duration of the current session of the data stream.
+    # Use None to run until manually stopped.
+    duration_stream = None
 
     # Timezone with respect to which the times are expressed in the plots
     timezone = "US/Central"  #'US/Mountain'#'US/Alaska'#
@@ -130,16 +144,17 @@ if __name__ == "__main__":
     # - 'scp': publish to remote WKU server using SCP
     publish_mode = "local"
     local_publish_dir = os.path.join(data_folder, "local_web")
-    imminence_model_path = os.path.join(
-        os.path.dirname(__file__), "models", "empeak_c5_pre30_b51020.pt"
-    )
+    imminence_model_name = "empeak_c5_pre30_b51020.pt"
+    imminence_model_path = resolve_imminence_model_path(imminence_model_name)
     imminence_alert_threshold = 0.80
     imminence_alert_count = 2
     imminence_alert_avg_threshold = 0.80
     imminence_alert_peak_threshold = None
     imminence_alert_delta_threshold = None
     imminence_alert_baseline_count = 5
-    imminence_em_nondecrease_tolerance = None
+    imminence_em_nondecrease_tolerance = 0.03
+    imminence_min_active_area_fraction = 0.02
+    # One frame is one minute in the current replay/realtime configuration.
     imminence_alert_cooldown_frames = 10
     # Local website auto-server controls (used only when publish_mode == "local").
     auto_start_local_web = True
@@ -241,6 +256,7 @@ if __name__ == "__main__":
             imminence_alert_delta_threshold=imminence_alert_delta_threshold,
             imminence_alert_baseline_count=imminence_alert_baseline_count,
             imminence_em_nondecrease_tolerance=imminence_em_nondecrease_tolerance,
+            imminence_min_active_area_fraction=imminence_min_active_area_fraction,
             imminence_alert_cooldown_frames=imminence_alert_cooldown_frames,
             imminence_bin_factor=4,
             imminence_recenter=True,

@@ -36,17 +36,30 @@ def _load_runtime(model_path: str) -> dict:
     from runtime_imminence_model import engineer_feature_table, make_model
 
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
-    bins = [float(x) for x in checkpoint["bins"]]
-    n_cls = len(bins) + 1
     args = checkpoint.get("args", {})
+    is_binary_horizon = "horizon_min" in checkpoint and "bins" not in checkpoint
+    if is_binary_horizon:
+        bins = [float(checkpoint["horizon_min"])]
+        n_cls = 2
+        risk_weights = np.asarray([0.0, 1.0], dtype=np.float32)
+        model_type = str(args.get("model", "gru"))
+    else:
+        bins = [float(x) for x in checkpoint["bins"]]
+        n_cls = len(bins) + 1
+        risk_weights = np.asarray(
+            checkpoint.get("risk_weights", [1.0, 0.7, 0.4, 0.0][:n_cls]),
+            dtype=np.float32,
+        )
+        model_type = str(args.get("model", "mlp"))
     feature_names = list(checkpoint["feature_names"])
 
     net = make_model(
         len(feature_names),
         n_cls,
-        str(args.get("model", "mlp")),
+        model_type,
         int(args.get("hidden", 256)),
         float(args.get("dropout", 0.2)),
+        int(args.get("layers", 1)),
     ).to(torch.device("cpu"))
     net.load_state_dict(checkpoint["state_dict"])
     net.eval()
@@ -56,21 +69,22 @@ def _load_runtime(model_path: str) -> dict:
         "frame_features": frame_features,
         "engineer_feature_table": engineer_feature_table,
         "warmup": int(args.get("warmup", 10)),
+        "lookback": int(args.get("lookback", 10)),
+        "seq_len": int(args.get("seq_len", 1)),
+        "is_binary_horizon": bool(is_binary_horizon),
         "feature_mode": str(args.get("feature_mode", "all")),
         "feature_names": feature_names,
         "x_mean": np.asarray(checkpoint["x_mean"], dtype=np.float32).reshape(-1),
         "x_std": np.asarray(checkpoint["x_std"], dtype=np.float32).reshape(-1),
         "bins": bins,
-        "risk_weights": np.asarray(
-            checkpoint.get("risk_weights", [1.0, 0.7, 0.4, 0.0][:n_cls]),
-            dtype=np.float32,
-        ),
+        "risk_weights": risk_weights,
     }
 
 
 def _infer(vis_history: np.ndarray, runtime: dict) -> tuple[float | None, list[float] | None, str]:
-    if len(vis_history) <= runtime["warmup"]:
-        return None, None, f"warmup {len(vis_history)}/{runtime['warmup'] + 1}"
+    required_frames = int(runtime["warmup"]) + int(runtime.get("seq_len", 1))
+    if len(vis_history) < required_frames:
+        return None, None, f"warmup {len(vis_history)}/{required_frames}"
 
     feats_list = []
     prev = None
@@ -84,6 +98,7 @@ def _infer(vis_history: np.ndarray, runtime: dict) -> tuple[float | None, list[f
         feats_list,
         warmup=runtime["warmup"],
         feature_mode=runtime["feature_mode"],
+        lookback=runtime.get("lookback", 10),
     )
     if X.size == 0:
         return None, None, "empty feature table"
@@ -93,12 +108,21 @@ def _infer(vis_history: np.ndarray, runtime: dict) -> tuple[float | None, list[f
             f"expected={len(runtime['feature_names'])}"
         )
 
-    x = np.asarray(X[-1], dtype=np.float32).reshape(-1)
-    x_norm = ((x - runtime["x_mean"]) / runtime["x_std"]).astype(np.float32)
+    if runtime.get("seq_len", 1) > 1:
+        seq_len = int(runtime["seq_len"])
+        if X.shape[0] < seq_len:
+            return None, None, f"sequence warmup {X.shape[0]}/{seq_len}"
+        x = np.asarray(X[-seq_len:], dtype=np.float32)
+        x_norm = ((x - runtime["x_mean"].reshape(1, -1)) / runtime["x_std"].reshape(1, -1)).astype(np.float32)
+        tensor_in = torch.from_numpy(x_norm).unsqueeze(0)
+    else:
+        x = np.asarray(X[-1], dtype=np.float32).reshape(-1)
+        x_norm = ((x - runtime["x_mean"]) / runtime["x_std"]).astype(np.float32)
+        tensor_in = torch.from_numpy(x_norm).unsqueeze(0)
     with torch.no_grad():
-        logits = runtime["model"](torch.from_numpy(x_norm).unsqueeze(0)).cpu().numpy()
+        logits = runtime["model"](tensor_in).cpu().numpy()
     prob = _softmax_np(logits)[0].astype(np.float32)
-    risk = float(np.sum(prob * runtime["risk_weights"]))
+    risk = float(prob[1]) if runtime.get("is_binary_horizon") else float(np.sum(prob * runtime["risk_weights"]))
     return risk, prob.tolist(), "ok"
 
 

@@ -155,6 +155,7 @@ def _load_imminence_runtime(model_path):
         import torch
 
         from runtime_vis_features import frame_features
+        from runtime_area_features import em_active_area_features
         from runtime_imminence_model import (
             engineer_feature_table,
             make_model,
@@ -167,12 +168,20 @@ def _load_imminence_runtime(model_path):
         return _IMMINENCE_RUNTIME
 
     ck = torch.load(model_path, map_location="cpu", weights_only=False)
-    bins = [float(x) for x in ck["bins"]]
-    n_cls = len(bins) + 1
-    risk_weights = np.asarray(
-        ck.get("risk_weights", [1.0, 0.7, 0.4, 0.0][:n_cls]), dtype=np.float32
-    )
     args = ck.get("args", {})
+    is_binary_horizon = "horizon_min" in ck and "bins" not in ck
+    if is_binary_horizon:
+        bins = [float(ck["horizon_min"])]
+        n_cls = 2
+        risk_weights = np.asarray([0.0, 1.0], dtype=np.float32)
+        model_type = str(args.get("model", "gru"))
+    else:
+        bins = [float(x) for x in ck["bins"]]
+        n_cls = len(bins) + 1
+        risk_weights = np.asarray(
+            ck.get("risk_weights", [1.0, 0.7, 0.4, 0.0][:n_cls]), dtype=np.float32
+        )
+        model_type = str(args.get("model", "mlp"))
     feature_names = list(ck["feature_names"])
     x_mean = np.asarray(ck["x_mean"], dtype=np.float32).reshape(-1)
     x_std = np.asarray(ck["x_std"], dtype=np.float32).reshape(-1)
@@ -180,9 +189,10 @@ def _load_imminence_runtime(model_path):
     net = make_model(
         len(feature_names),
         n_cls,
-        str(args.get("model", "mlp")),
+        model_type,
         int(args.get("hidden", 256)),
         float(args.get("dropout", 0.2)),
+        int(args.get("layers", 1)),
     ).to(dev)
     net.load_state_dict(ck["state_dict"])
     net.eval()
@@ -193,9 +203,13 @@ def _load_imminence_runtime(model_path):
         "device": dev,
         "model": net,
         "frame_features": frame_features,
+        "em_active_area_features": em_active_area_features,
         "engineer_feature_table": engineer_feature_table,
         "softmax_np": softmax_np,
         "warmup": int(args.get("warmup", 10)),
+        "lookback": int(args.get("lookback", 10)),
+        "seq_len": int(args.get("seq_len", 1)),
+        "is_binary_horizon": bool(is_binary_horizon),
         "feature_mode": str(args.get("feature_mode", "all")),
         "feature_names": feature_names,
         "x_mean": x_mean,
@@ -205,7 +219,7 @@ def _load_imminence_runtime(model_path):
     }
     print(
         "Imminence model enabled: "
-        f"{model_path} (warmup={_IMMINENCE_RUNTIME['warmup']}, bins={bins})"
+        f"{model_path} (warmup={_IMMINENCE_RUNTIME['warmup']}, bins={bins}, seq_len={_IMMINENCE_RUNTIME['seq_len']})"
     )
     return _IMMINENCE_RUNTIME
 
@@ -476,10 +490,9 @@ def _extract_box_visibility_frame(aia_img, runtime, recenter=True, bin_factor=4)
 
 
 def _infer_imminence_risk_from_history(vis_history, runtime):
-    if len(vis_history) <= runtime["warmup"]:
-        runtime["last_worker_status"] = (
-            f"warmup {len(vis_history)}/{int(runtime['warmup']) + 1}"
-        )
+    required_frames = int(runtime["warmup"]) + int(runtime.get("seq_len", 1))
+    if len(vis_history) < required_frames:
+        runtime["last_worker_status"] = f"warmup {len(vis_history)}/{required_frames}"
         return np.nan, None
     if runtime.get("external_worker"):
         proc = runtime.get("worker_proc")
@@ -547,22 +560,32 @@ def _infer_imminence_risk_from_history(vis_history, runtime):
         feats_list,
         warmup=runtime["warmup"],
         feature_mode=runtime["feature_mode"],
+        lookback=runtime.get("lookback", 10),
     )
     if X.size == 0 or names != runtime["feature_names"]:
+        runtime["last_worker_status"] = "feature mismatch"
         return np.nan, None
-    x = np.asarray(X[-1], dtype=np.float32).reshape(-1)
-    x_norm = ((x - runtime["x_mean"]) / runtime["x_std"]).astype(np.float32)
     torch = runtime["torch"]
+    if runtime.get("seq_len", 1) > 1:
+        seq_len = int(runtime["seq_len"])
+        if X.shape[0] < seq_len:
+            runtime["last_worker_status"] = f"sequence warmup {X.shape[0]}/{seq_len}"
+            return np.nan, None
+        x = np.asarray(X[-seq_len:], dtype=np.float32)
+        x_norm = ((x - runtime["x_mean"].reshape(1, -1)) / runtime["x_std"].reshape(1, -1)).astype(np.float32)
+        tensor_in = torch.from_numpy(x_norm).unsqueeze(0).to(runtime["device"])
+    else:
+        x = np.asarray(X[-1], dtype=np.float32).reshape(-1)
+        x_norm = ((x - runtime["x_mean"]) / runtime["x_std"]).astype(np.float32)
+        tensor_in = torch.from_numpy(x_norm).unsqueeze(0).to(runtime["device"])
     with torch.no_grad():
-        logits = (
-            runtime["model"](
-                torch.from_numpy(x_norm).unsqueeze(0).to(runtime["device"])
-            )
-            .cpu()
-            .numpy()
-        )
+        logits = runtime["model"](tensor_in).cpu().numpy()
     prob = runtime["softmax_np"](logits)[0]
-    risk = float(np.sum(prob * runtime["risk_weights"]))
+    if runtime.get("is_binary_horizon"):
+        risk = float(prob[1])
+    else:
+        risk = float(np.sum(prob * runtime["risk_weights"]))
+    runtime["last_worker_status"] = "ok"
     return risk, prob
 
 
@@ -613,11 +636,17 @@ def save_flare_trigger_snapshot(
     latest_plots_folder,
     trigger_time_utc,
     trigger_time_local,
+    snapshot_time_utc,
+    snapshot_time_local,
     focus_label,
     focus_em,
+    trigger_box_stats,
+    snapshot_box_stats,
     risk_history,
+    alert_config=None,
+    copy_em_goes_plot=True,
 ):
-    """Copy the current website plots into a timestamped trigger folder."""
+    """Copy trigger snapshot assets into a timestamped folder."""
 
     trigger_root = os.path.join(data_folder, "Flare Triggers")
     mkdir(trigger_root)
@@ -630,6 +659,8 @@ def save_flare_trigger_snapshot(
     mkdir(trigger_folder)
 
     for name in os.listdir(latest_plots_folder):
+        if (not copy_em_goes_plot) and name == "em_goes_plot.png":
+            continue
         src = os.path.join(latest_plots_folder, name)
         if os.path.isfile(src):
             shutil.copy2(src, os.path.join(trigger_folder, name))
@@ -638,8 +669,22 @@ def save_flare_trigger_snapshot(
     with open(info_path, "w", encoding="utf-8") as f:
         f.write(f"trigger_time_utc={trigger_time_utc.isoformat()}\n")
         f.write(f"trigger_time_local={trigger_time_local.isoformat()}\n")
+        f.write(f"snapshot_time_utc={snapshot_time_utc.isoformat()}\n")
+        f.write(f"snapshot_time_local={snapshot_time_local.isoformat()}\n")
+        f.write(
+            f"snapshot_delay_min="
+            f"{(snapshot_time_utc - trigger_time_utc).total_seconds() / 60.0:.2f}\n"
+        )
         f.write(f"focus_label={focus_label}\n")
         f.write(f"focus_em={float(focus_em):.6e}\n")
+        if alert_config:
+            f.write("alert_config=\n")
+            for key in sorted(alert_config):
+                f.write(f"  {key}: {alert_config[key]}\n")
+        f.write("trigger_box_stats=\n")
+        _write_trigger_box_stats(f, trigger_box_stats)
+        f.write("snapshot_box_stats=\n")
+        _write_trigger_box_stats(f, snapshot_box_stats)
         f.write("latest_risks=\n")
         for lab, vals in risk_history.items():
             last = vals[-1] if vals else float("nan")
@@ -647,6 +692,133 @@ def save_flare_trigger_snapshot(
 
     print(f"Saved flare trigger snapshot: {trigger_folder}")
     return trigger_folder
+
+
+def update_flare_trigger_em_goes_plot(
+    trigger_folder,
+    latest_plots_folder,
+    trigger_time_utc,
+    snapshot_time_utc,
+    snapshot_time_local,
+):
+    """Refresh only the EM/GOES plot for an existing trigger folder."""
+
+    src = os.path.join(latest_plots_folder, "em_goes_plot.png")
+    if not os.path.isfile(src):
+        print(f"EM/GOES plot missing for trigger refresh: {src}")
+        return
+    dst = os.path.join(trigger_folder, "em_goes_plot.png")
+    shutil.copy2(src, dst)
+
+    info_path = os.path.join(trigger_folder, "trigger_info.txt")
+    with open(info_path, "a", encoding="utf-8") as f:
+        f.write(f"em_goes_snapshot_time_utc={snapshot_time_utc.isoformat()}\n")
+        f.write(f"em_goes_snapshot_time_local={snapshot_time_local.isoformat()}\n")
+        f.write(
+            "em_goes_snapshot_delay_min="
+            f"{(snapshot_time_utc - trigger_time_utc).total_seconds() / 60.0:.2f}\n"
+        )
+
+
+
+def _write_trigger_box_stats(file_obj, box_stats):
+    """Write compact per-box trigger diagnostics."""
+
+    if not box_stats:
+        file_obj.write("  none\n")
+        return
+    max_em = max(
+        (float(row.get("em", float("nan"))) for row in box_stats),
+        default=float("nan"),
+    )
+    max_risk = max(
+        (float(row.get("risk", float("nan"))) for row in box_stats),
+        default=float("nan"),
+    )
+    file_obj.write(f"  max_em={max_em:.6e}\n")
+    file_obj.write(f"  max_risk={max_risk:.6f}\n")
+    for row in box_stats:
+        probs = row.get("probabilities")
+        if probs is None:
+            prob_txt = "NA"
+        else:
+            prob_txt = ",".join(f"{float(x):.6f}" for x in probs)
+        file_obj.write(
+            "  "
+            f"box={row.get('label')} "
+            f"ar={row.get('ar')} "
+            f"lon={float(row.get('lon', float('nan'))):.3f} "
+            f"lat={float(row.get('lat', float('nan'))):.3f} "
+            f"em={float(row.get('em', float('nan'))):.6e} "
+            f"prev_em={float(row.get('prev_em', float('nan'))):.6e} "
+            f"em_ratio={float(row.get('em_ratio', float('nan'))):.6f} "
+            f"risk={float(row.get('risk', float('nan'))):.6f} "
+            f"avg_recent={float(row.get('avg_recent', float('nan'))):.6f} "
+            f"peak_recent={float(row.get('peak_recent', float('nan'))):.6f} "
+            f"baseline_avg={float(row.get('baseline_avg', float('nan'))):.6f} "
+            f"triggered={row.get('triggered')} "
+            f"status={row.get('status')} "
+            f"probabilities={prob_txt}\n"
+        )
+
+
+def _make_imminence_box_stats(
+    labels,
+    arnums,
+    ar_lons,
+    ar_lats,
+    em_totals,
+    em_history,
+    risk_history,
+    probabilities_by_label,
+    trigger_flags,
+    statuses_by_label,
+    alert_count,
+    baseline_count,
+    use_baseline,
+):
+    """Collect per-box EM and risk diagnostics for trigger records."""
+
+    rows = []
+    count = int(alert_count)
+    base_count = int(baseline_count)
+    for i, lab in enumerate(labels):
+        vals = risk_history.get(lab, [])
+        recent_vals = vals[-count:] if count > 0 else vals
+        prev_vals = []
+        if use_baseline and count > 0 and base_count > 0:
+            prev_vals = vals[-(base_count + count) : -count]
+        em_prev = float("nan")
+        if em_history.get(lab):
+            em_prev = float(em_history[lab][-1])
+        em_curr = float(em_totals[i])
+        rows.append(
+            {
+                "label": lab,
+                "ar": arnums[i],
+                "lon": float(ar_lons[i]),
+                "lat": float(ar_lats[i]),
+                "em": em_curr,
+                "prev_em": em_prev,
+                "em_ratio": em_curr / em_prev
+                if np.isfinite(em_prev) and em_prev > 0
+                else float("nan"),
+                "risk": float(vals[-1]) if vals else float("nan"),
+                "avg_recent": float(np.mean(recent_vals))
+                if recent_vals
+                else float("nan"),
+                "peak_recent": float(np.max(recent_vals))
+                if recent_vals
+                else float("nan"),
+                "baseline_avg": float(np.mean(prev_vals))
+                if prev_vals
+                else float("nan"),
+                "probabilities": probabilities_by_label.get(lab),
+                "triggered": bool(trigger_flags[i]) if i < len(trigger_flags) else False,
+                "status": statuses_by_label.get(lab, "ok" if vals else "no risk"),
+            }
+        )
+    return rows
 
 
 # **********************************************************
@@ -2382,11 +2554,17 @@ def plot_em_maps_and_curves(
         )
 
     if trigger_times is not None:
-        for trigger_time in trigger_times:
+        for trigger_entry in trigger_times:
+            if isinstance(trigger_entry, dict):
+                trigger_time = trigger_entry.get("time")
+                trigger_color = trigger_entry.get("color", "black")
+            else:
+                trigger_time = trigger_entry
+                trigger_color = "black"
             if min_time <= trigger_time <= max_time:
                 ax8.axvline(
                     trigger_time,
-                    color="black",
+                    color=trigger_color,
                     linestyle="--",
                     linewidth=1.5,
                     alpha=0.9,
@@ -2723,6 +2901,7 @@ def stream_aia_data(
     imminence_alert_baseline_count=15,
     imminence_em_nondecrease_tolerance=0.05,
     imminence_alert_cooldown_frames=10,
+    imminence_min_active_area_fraction=None,
     imminence_bin_factor=4,
     imminence_recenter=True,
 ):
@@ -2733,7 +2912,8 @@ def stream_aia_data(
     Parameters
         ----------
 
-        duration_stream: int. Duration of the data stream in minutes
+        duration_stream: int or None. Duration of the data stream in minutes.
+                         If None, stream runs until manually stopped.
 
         data_folder: string. Path of the folder where the data are saved
 
@@ -2854,10 +3034,13 @@ def stream_aia_data(
     # Cache to avoid repeated CSV reads/parsing in plotting calls.
     em_cache = {}
     risk_history = {lab: [] for lab in label[:n_ar]}
+    active_area_fraction_history = {lab: [] for lab in label[:n_ar]}
     vis_history = {lab: [] for lab in label[:n_ar]}
     em_history = {lab: [] for lab in label[:n_ar]}
     imminence_trigger_times = []
-    imminence_alert_cooldown_remaining = 0
+    pending_trigger_snapshots = []
+    trigger_snapshot_delay = datetime.timedelta(minutes=10)
+    imminence_alert_cooldown_remaining = {lab: 0 for lab in label[:n_ar]}
     imminence_runtime = _load_imminence_runtime(imminence_model_path)
     plot_imminence_risk_history(
         latest_plots_folder,
@@ -2907,8 +3090,10 @@ def stream_aia_data(
 
     ############ START STREAM
 
+    stream_forever = duration_stream is None
+
     try:
-        while time_diff <= duration_stream:
+        while stream_forever or time_diff <= duration_stream:
             phase_times = {}
             cycle_start = time.time()
             t_phase = time.time()
@@ -3351,18 +3536,28 @@ def stream_aia_data(
                 trigger_states = [False] * n_ar
                 cycle_new_trigger = False
                 cycle_trigger_record = None
+                probabilities_by_label = {}
+                risk_status_by_label = {}
+                cycle_box_stats = []
                 if imminence_runtime:
-                    if imminence_alert_cooldown_remaining > 0:
-                        imminence_alert_cooldown_remaining -= 1
+                    for lab in imminence_alert_cooldown_remaining:
+                        if imminence_alert_cooldown_remaining[lab] > 0:
+                            imminence_alert_cooldown_remaining[lab] -= 1
                     recent_summary = []
                     for i in range(n_ar):
+                        box_label = label[i]
                         risk_val, prob_val = _infer_imminence_risk_from_history(
-                            vis_history[label[i]], imminence_runtime
+                            vis_history[box_label], imminence_runtime
                         )
+                        if prob_val is not None:
+                            probabilities_by_label[box_label] = [
+                                float(x) for x in np.asarray(prob_val).ravel()
+                            ]
                         if np.isfinite(risk_val):
-                            risk_history[label[i]].append(float(risk_val))
-                            if len(risk_history[label[i]]) > 10:
-                                del risk_history[label[i]][:-10]
+                            risk_history[box_label].append(float(risk_val))
+                            if len(risk_history[box_label]) > 10:
+                                del risk_history[box_label][:-10]
+                            risk_status_by_label[box_label] = "ok"
                         if save_box_vis and vis_frames[i] is not None:
                             _save_box_visibility_frame(
                                 vis_frames[i],
@@ -3374,8 +3569,14 @@ def stream_aia_data(
                                 risk=risk_val,
                                 prob=prob_val,
                             )
-                        vals = risk_history[label[i]]
+                        vals = risk_history[box_label]
                         recent_vals = vals[-int(imminence_alert_count) :]
+                        area_feats = imminence_runtime["em_active_area_features"](em_maps[i].data)
+                        area_frac = float(area_feats.get("em_active_area_fraction", float("nan")))
+                        if np.isfinite(area_frac):
+                            active_area_fraction_history[box_label].append(area_frac)
+                            if len(active_area_fraction_history[box_label]) > 16:
+                                del active_area_fraction_history[box_label][:-16]
                         triggered = False
                         trigger_txt = "watch"
                         if len(recent_vals) >= int(imminence_alert_count):
@@ -3390,6 +3591,8 @@ def stream_aia_data(
                                 if imminence_alert_peak_threshold is None
                                 else float(np.max(recent_vals)) >= float(imminence_alert_peak_threshold)
                             )
+                            if np.isfinite(area_frac) and area_frac <= 0.06:
+                                avg_ok = float(np.mean(recent_vals)) >= 0.62
                             delta_ok = True
                             baseline_avg = float("nan")
                             if imminence_alert_delta_threshold is not None:
@@ -3403,36 +3606,36 @@ def stream_aia_data(
                                 else:
                                     delta_ok = False
                             em_ok = True
+                            area_ok = True
                             em_prev = float("nan")
                             em_curr = float(em_totals[i])
                             if (
                                 imminence_em_nondecrease_tolerance is not None
-                                and em_history[label[i]]
+                                and em_history[box_label]
                             ):
-                                em_prev = float(em_history[label[i]][-1])
+                                em_prev = float(em_history[box_label][-1])
                                 if np.isfinite(em_prev) and em_prev > 0:
                                     em_ok = em_curr >= (
                                         1.0 - float(imminence_em_nondecrease_tolerance)
                                     ) * em_prev
-                            triggered = avg_ok and peak_ok and delta_ok and em_ok
+                            if imminence_min_active_area_fraction is not None:
+                                area_ok = area_frac >= float(imminence_min_active_area_fraction)
+                            triggered = avg_ok and peak_ok and delta_ok and em_ok and area_ok
                             if i == focus_idx:
-                                if triggered and imminence_alert_cooldown_remaining == 0:
+                                box_cooldown = int(imminence_alert_cooldown_remaining[box_label])
+                                if triggered and box_cooldown == 0:
                                     trigger_states[i] = True
                                     cycle_new_trigger = True
-                                    imminence_alert_cooldown_remaining = max(
+                                    imminence_alert_cooldown_remaining[box_label] = max(
                                         0, int(imminence_alert_cooldown_frames)
                                     )
                                     trigger_txt = "TRIGGER"
-                                elif triggered and imminence_alert_cooldown_remaining > 0:
+                                elif triggered and box_cooldown > 0:
                                     trigger_states[i] = True
-                                    trigger_txt = (
-                                        f"cooldown({imminence_alert_cooldown_remaining})"
-                                    )
-                                elif imminence_alert_cooldown_remaining > 0:
+                                    trigger_txt = f"cooldown({box_cooldown},box={box_label})"
+                                elif box_cooldown > 0:
                                     trigger_states[i] = True
-                                    trigger_txt = (
-                                        f"cooldown({imminence_alert_cooldown_remaining})"
-                                    )
+                                    trigger_txt = f"cooldown({box_cooldown},box={box_label})"
                                 else:
                                     trigger_txt = "watch"
                             else:
@@ -3470,6 +3673,10 @@ def stream_aia_data(
                                 msg += f"em_ratio={em_curr / em_prev:.3f} "
                             else:
                                 msg += "em_ratio=NA "
+                            if np.isfinite(area_frac):
+                                msg += f"active_area_frac={area_frac:.3f} "
+                            else:
+                                msg += "active_area_frac=NA "
                             msg += f"-> {trigger_txt}"
                             print(msg)
                             recent_summary.append((label[i], vals[-1], triggered))
@@ -3477,6 +3684,9 @@ def stream_aia_data(
                             hist_n = len(vis_history[label[i]])
                             warmup = int(imminence_runtime.get("warmup", 0))
                             if hist_n <= warmup:
+                                risk_status_by_label[label[i]] = (
+                                    f"warmup {hist_n}/{warmup + 1}"
+                                )
                                 print(
                                     f"Box {label[i]} risk pending: "
                                     f"warmup {hist_n}/{warmup + 1}"
@@ -3485,10 +3695,39 @@ def stream_aia_data(
                                 status = imminence_runtime.get(
                                     "last_worker_status", "no finite risk"
                                 )
+                                risk_status_by_label[label[i]] = status
                                 print(f"Box {label[i]} risk unavailable: {status}")
                     print(
                         f"Focus box by EM: {focus_label} "
                         f"(EM={float(em_totals[focus_idx]):.3e})"
+                    )
+                    focus_area_feats = imminence_runtime["em_active_area_features"](
+                        em_maps[focus_idx].data
+                    )
+                    focus_area_frac = float(
+                        focus_area_feats.get("em_active_area_fraction", float("nan"))
+                    )
+                    if np.isfinite(focus_area_frac):
+                        print(
+                            "Focus box active area fraction: "
+                            f"{focus_area_frac:.3f}"
+                        )
+                    else:
+                        print("Focus box active area fraction: NA")
+                    cycle_box_stats = _make_imminence_box_stats(
+                        label[:n_ar],
+                        arnum[:n_ar],
+                        ar_lon[:n_ar],
+                        ar_lat[:n_ar],
+                        em_totals[:n_ar],
+                        em_history,
+                        risk_history,
+                        probabilities_by_label,
+                        trigger_states,
+                        risk_status_by_label,
+                        imminence_alert_count,
+                        imminence_alert_baseline_count,
+                        imminence_alert_delta_threshold is not None,
                     )
                     if cycle_new_trigger:
                         trigger_time_utc = datetime.datetime.strptime(
@@ -3499,14 +3738,22 @@ def stream_aia_data(
                         )
                         if (
                             not imminence_trigger_times
-                            or imminence_trigger_times[-1] != trigger_time_local
+                            or (
+                                imminence_trigger_times[-1].get("time")
+                                if isinstance(imminence_trigger_times[-1], dict)
+                                else imminence_trigger_times[-1]
+                            ) != trigger_time_local
                         ):
-                            imminence_trigger_times.append(trigger_time_local)
+                            trigger_label = focus_label
+                            trigger_color = color_arr[label.index(trigger_label)] if trigger_label in label else "black"
+                            imminence_trigger_times.append({"time": trigger_time_local, "label": trigger_label, "color": trigger_color})
+                            trigger_idx = label.index(trigger_label) if trigger_label in label else focus_idx
                             cycle_trigger_record = (
                                 trigger_time_utc,
                                 trigger_time_local,
-                                focus_label,
-                                float(em_totals[focus_idx]),
+                                trigger_label,
+                                float(em_totals[trigger_idx]),
+                                cycle_box_stats,
                             )
                     plot_imminence_risk_history(
                         latest_plots_folder,
@@ -3563,16 +3810,71 @@ def stream_aia_data(
                         trigger_time_local,
                         trigger_focus_label,
                         trigger_focus_em,
+                        trigger_box_stats,
                     ) = cycle_trigger_record
-                    save_flare_trigger_snapshot(
+                    trigger_folder = save_flare_trigger_snapshot(
                         data_folder,
                         latest_plots_folder,
                         trigger_time_utc,
                         trigger_time_local,
+                        trigger_time_utc,
+                        trigger_time_local,
                         trigger_focus_label,
                         trigger_focus_em,
+                        trigger_box_stats,
+                        cycle_box_stats,
                         risk_history,
+                        alert_config={
+                            "delay_min": trigger_snapshot_delay.total_seconds()
+                            / 60.0,
+                            "alert_count": int(imminence_alert_count),
+                            "avg_threshold": imminence_alert_avg_threshold
+                            if imminence_alert_avg_threshold is not None
+                            else imminence_alert_threshold,
+                            "peak_threshold": imminence_alert_peak_threshold,
+                            "delta_threshold": imminence_alert_delta_threshold,
+                            "baseline_count": int(imminence_alert_baseline_count),
+                            "em_nondecrease_tolerance": (
+                                imminence_em_nondecrease_tolerance
+                            ),
+                            "cooldown_frames": int(
+                                imminence_alert_cooldown_frames
+                            ),
+                            "min_active_area_fraction": (
+                                imminence_min_active_area_fraction
+                            ),
+                        },
+                        copy_em_goes_plot=False,
                     )
+                    pending_trigger_snapshots.append(
+                        {
+                            "due_time_utc": trigger_time_utc + trigger_snapshot_delay,
+                            "trigger_time_utc": trigger_time_utc,
+                            "trigger_time_local": trigger_time_local,
+                            "trigger_folder": trigger_folder,
+                        }
+                    )
+
+                if pending_trigger_snapshots:
+                    current_frame_time_utc = datetime.datetime.strptime(
+                        grouped_t_rec[0], "%Y-%m-%dT%H:%M:%SZ"
+                    ).replace(tzinfo=datetime.timezone.utc)
+                    remaining_snapshots = []
+                    for pending_snapshot in pending_trigger_snapshots:
+                        if current_frame_time_utc < pending_snapshot["due_time_utc"]:
+                            remaining_snapshots.append(pending_snapshot)
+                            continue
+                        snapshot_time_local = convert_utc_to_timezone(
+                            current_frame_time_utc, timezone=timezone
+                        )
+                        update_flare_trigger_em_goes_plot(
+                            pending_snapshot["trigger_folder"],
+                            latest_plots_folder,
+                            pending_snapshot["trigger_time_utc"],
+                            current_frame_time_utc,
+                            snapshot_time_local,
+                        )
+                    pending_trigger_snapshots = remaining_snapshots
 
                 print("Publish data...")
                 t_phase = time.time()
