@@ -17,11 +17,11 @@ if __name__ == "__main__":
     # Define folder where to save the data.
     # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
     # - today="YYYYMonDD" -> replay mode for that day
-    today = "2026Feb4"
+    today = None
     # Optional exact UTC start time for the JSOC query cursor.
     # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
-    query_start_time_utc = "2026-02-04T12:00:00Z"
+    query_start_time_utc = None
     # Separate controls:
     # 1) today selects realtime vs replay mode and folder naming
     # 2) query_start_time_utc optionally overrides the cursor start
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     # Output publishing mode:
     # - 'local': publish latest outputs into a local folder (safe for local testing)
     # - 'scp': publish to remote WKU server using SCP
-    publish_mode = "local"
+    publish_mode = "scp"
     local_publish_dir = os.path.join(data_folder, "local_web")
     # Local website auto-server controls (used only when publish_mode == "local").
     auto_start_local_web = True
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     # DRMS query mode:
     # - "nrt2"   -> near-real-time series used on WKU environment
     # - "public" -> public JSOC series
-    drms_mode = "public"
+    drms_mode = "nrt2"
     if drms_mode == "nrt2":
         drms_series = "aia.lev1_nrt2"
         drms_segment = "image_lev1"
