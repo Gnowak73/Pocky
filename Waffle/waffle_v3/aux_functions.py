@@ -144,6 +144,7 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
         sys.path.insert(0, worker_lib)
 
     from runtime_visibilities import sample_visibilities
+    from runtime_area_features import em_active_area_features
     model_path = os.path.abspath(model_path)
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"waffle_v3 imminence model not found: {model_path}")
@@ -154,6 +155,7 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
     uv = np.load(uv_grid_path)
     base_runtime = {
         "sample_visibilities": sample_visibilities,
+        "em_active_area_features": em_active_area_features,
         "u_vals": uv["u_vals"],
         "v_vals": uv["v_vals"],
         "pixel_arcsec": 0.6,
@@ -170,8 +172,6 @@ def _load_imminence_runtime(model_path, state_model_path="", cache_slot="main"):
 
     print("Imminence runtime mode: direct Torch import")
     import torch
-
-    from runtime_area_features import em_active_area_features
 
     ck = torch.load(model_path, map_location="cpu", weights_only=False)
     args = ck.get("args", {})
