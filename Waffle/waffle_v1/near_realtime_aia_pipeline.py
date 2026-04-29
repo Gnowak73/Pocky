@@ -14,17 +14,57 @@ import numpy as np
 from aiapy.calibrate.utils import get_correction_table as get_correction_table
 
 if __name__ == "__main__":
-    # Define folder where to save the data.
-    # - today=None -> full realtime mode (default WAFFLE realtime source + current UTC cursor)
+    # ------------------------------------------------------------
+    # User settings
+    # ------------------------------------------------------------
+    # Realtime vs replay:
+    # - today=None -> full realtime mode
     # - today="YYYYMonDD" -> replay mode for that day
     today = None
     # Optional exact UTC start time for the JSOC query cursor.
-    # Sentinel: None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
+    # None -> realtime cursor when today=None, otherwise UTC midnight of `today`.
     # Example: "2026-02-04T10:30:00Z"
     query_start_time_utc = None
-    # Separate controls:
-    # 1) today selects realtime vs replay mode and folder naming
-    # 2) query_start_time_utc optionally overrides the cursor start
+
+    # Target boxes: top row A/B/C, bottom row D/E/F.
+    # Coordinates are heliographic X/Y in arcsec.
+    arnum_top = [4397, 4396, 4389]
+    x_top = [-425, -50, 800]
+    y_top = [300, 300, 250]
+
+    arnum_bottom = [1, 4391, 4362]
+    x_bottom = [-550, -400, 200]
+    y_bottom = [-400, 0, -400]
+
+    # Run behavior.
+    duration_stream = 480  # minutes
+    timezone = "US/Central"
+    save_maps = False
+
+    # Plot / website settings.
+    publish_mode = "scp"  # "scp" or "local"
+    auto_start_local_web = True
+    local_web_host = "127.0.0.1"
+    local_web_port = 8000
+
+    # Data source / cadence settings.
+    drms_mode = "nrt2"  # "nrt2" or "public"
+    latency_minutes = 10
+    time_step_minutes = 3
+    n_pix_x = 500
+    n_pix_y = 500
+
+    # Performance / diagnostics.
+    worker_count = 10
+    print_phase_timing = True
+
+    # Website image settings.
+    suvi_top_wavelength = 131  # 94 or 131
+    suvi_use_realtime = True
+
+    # ------------------------------------------------------------
+    # Derived settings and setup
+    # ------------------------------------------------------------
     realtime_mode = today is None
     if realtime_mode:
         today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%b%d")
@@ -46,14 +86,10 @@ if __name__ == "__main__":
     data_folder = os.path.join(".", today)
     aux_functions.mkdir(data_folder)
 
-    # AR parameters, top three first, then bottom three
     rsun = 1000  # radius of solar disk in arcsec
     label_top = ["A", "B", "C"]
-
-    arnum_top = [4397, 4396, 4389]  # active region numbers
-
-    x_top = np.array([-425, -50, 800])  # heliographic X
-    y_top = np.array([300, 300, 250])  # heliographic Y
+    x_top = np.array(x_top)
+    y_top = np.array(y_top)
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
@@ -62,15 +98,9 @@ if __name__ == "__main__":
     # lat_top=[23, -15, 21]# active region latitude in degrees - original line
     # long_top=[29, 15, 53]# active region longitude in degrees - orginal line
 
-    # box_x_top = [200,200,100] # widths of boxes (in pixel units)
-    # box_y_top = [100,100,200] # heights of boxes (in pixel units)
-    # These positions are for the southern region
     label_bottom = ["D", "E", "F"]
-
-    arnum_bottom = [1, 4391, 4362]  # active region numbers
-
-    x_bottom = np.array([-550, -400, 200])  # heliographic X
-    y_bottom = np.array([-400, 0, -400])  # heliographic Y
+    x_bottom = np.array(x_bottom)
+    y_bottom = np.array(y_bottom)
     lat_bottom = (180 / np.pi) * np.arcsin(y_bottom / rsun)
     long_bottom = (180 / np.pi) * np.arcsin(
         x_bottom / (rsun * np.cos((np.pi / 180) * lat_bottom))
@@ -96,31 +126,7 @@ if __name__ == "__main__":
 
     # Normalization of light curves: multiply by 1000^2 / (w*h) [ or 500^2 / (w * h ) ]
 
-    # Duration of the current session of the data stream
-    duration_stream = 480  # minutes
-
-    # Timezone with respect to which the times are expressed in the plots
-    timezone = "US/Central"  #'US/Mountain'#'US/Alaska'#
-
-    # Boolean: if True, the fits files of the downloaded AIA maps and of the EM maps that are computed from the AIA data are saved.
-    save_maps = False
-    # SUVI top image wavelength (94 or 131) for generated website.
-    suvi_top_wavelength = 131
-    # In v1 this should follow replay date by default.
-    suvi_use_realtime = True
-
-    # Output publishing mode:
-    # - 'local': publish latest outputs into a local folder (safe for local testing)
-    # - 'scp': publish to remote WKU server using SCP
-    publish_mode = "scp"
     local_publish_dir = os.path.join(data_folder, "local_web")
-    # Local website auto-server controls (used only when publish_mode == "local").
-    auto_start_local_web = True
-    local_web_host = "127.0.0.1"
-    local_web_port = 8000
-    # Performance diagnostics + calibration parallelism
-    print_phase_timing = True
-    worker_count = 10
 
     # DRMS query mode:
     # - "nrt2"   -> near-real-time series used on WKU environment
@@ -188,16 +194,16 @@ if __name__ == "__main__":
             label,
             correction_table,
             timezone=timezone,
-            n_pix_x=500,
-            n_pix_y=500,
+            n_pix_x=n_pix_x,
+            n_pix_y=n_pix_y,
             save_maps=save_maps,
             publish_mode=publish_mode,
             local_publish_dir=local_publish_dir,
             drms_series=drms_series,
             drms_segment=drms_segment,
             query_start_ut=query_start_ut,
-            latency=10,
-            time_step_minutes=3,
+            latency=latency_minutes,
+            time_step_minutes=time_step_minutes,
             worker_count=worker_count,
             print_phase_timing=print_phase_timing,
             suvi_top_wavelength=suvi_top_wavelength,
