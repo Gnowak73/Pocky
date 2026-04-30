@@ -1,0 +1,30 @@
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>WAFFLE v2</title>
+<style>
+body {
+    margin: 0;
+    padding-top: 22px; /* moves the entire webpage content down */
+}
+</style>
+</head>
+<body>
+<center>
+<img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:97.5%;max-width:100%;height:auto;">
+<br>
+<img id="image1" src="./latest_plots/em_goes_plot.png" style="width:97.5%;max-width:100%;height:auto;">
+<br>
+<img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;">
+<script>
+setInterval(function() {
+    var timestamp = new Date().getTime();
+    document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
+    document.getElementById("image1").src = "./latest_plots/em_goes_plot.png?t=" + timestamp;
+    document.getElementById("image2").src = "./latest_plots/imminence_risk.png?t=" + timestamp;
+}, 15000);
+</script>
+</center>
+</body>
+</html>
