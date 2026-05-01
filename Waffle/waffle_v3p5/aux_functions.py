@@ -322,8 +322,6 @@ def find_em_hotspot_boxes(
 
     picked = []
     occupied = [(float(x), float(y)) for x, y in existing_xy if np.isfinite(x) and np.isfinite(y)]
-    rsun_arcsec = float(getattr(ref_map, "rsun_obs", 960.0 * u.arcsec).to_value(u.arcsec))
-
     attempts = 0
     max_attempts = 5000
     while len(picked) < needed and attempts < max_attempts:
@@ -336,7 +334,12 @@ def find_em_hotspot_boxes(
         world = ref_map.pixel_to_world(xpix * u.pix, ypix * u.pix)
         x_arcsec = float(world.Tx.to_value(u.arcsec))
         y_arcsec = float(world.Ty.to_value(u.arcsec))
-        on_disk = (x_arcsec * x_arcsec + y_arcsec * y_arcsec) <= (rsun_arcsec - float(disk_margin_arcsec)) ** 2
+        on_disk = _is_valid_hpc_center(
+            ref_map,
+            x_arcsec,
+            y_arcsec,
+            disk_margin_arcsec=disk_margin_arcsec,
+        )
         overlaps = any(
             abs(x_arcsec - ox) < float(min_dx_arcsec) and abs(y_arcsec - oy) < float(min_dy_arcsec)
             for ox, oy in occupied
@@ -1841,6 +1844,36 @@ def _pixel_to_hpc_xy(aia_map, x_pix, y_pix):
     return float(world.Tx.to_value(u.arcsec)), float(world.Ty.to_value(u.arcsec))
 
 
+def _is_valid_hpc_center(aia_map, x_arcsec, y_arcsec, disk_margin_arcsec=0.0):
+    """
+    Reject candidate box centers that are off-disk or outside the map footprint.
+    """
+    try:
+        x_arcsec = float(x_arcsec)
+        y_arcsec = float(y_arcsec)
+    except Exception:
+        return False
+    if (not np.isfinite(x_arcsec)) or (not np.isfinite(y_arcsec)):
+        return False
+
+    rsun_arcsec = float(
+        getattr(aia_map, "rsun_obs", 960.0 * u.arcsec).to_value(u.arcsec)
+    )
+    safe_r = max(0.0, rsun_arcsec - float(disk_margin_arcsec))
+    if (x_arcsec * x_arcsec + y_arcsec * y_arcsec) > (safe_r * safe_r):
+        return False
+
+    try:
+        pix_x, pix_y = _hpc_xy_to_pixel(aia_map, x_arcsec, y_arcsec)
+    except Exception:
+        return False
+    if (not np.isfinite(pix_x)) or (not np.isfinite(pix_y)):
+        return False
+
+    ny, nx = aia_map.data.shape
+    return (0.0 <= pix_x < float(nx)) and (0.0 <= pix_y < float(ny))
+
+
 def refine_box_centers_from_em_map(
     aia_maps,
     weights,
@@ -1885,6 +1918,11 @@ def refine_box_centers_from_em_map(
     for i in order:
         if not np.isfinite(out_x[i]) or not np.isfinite(out_y[i]):
             continue
+        if not _is_valid_hpc_center(ref_map, out_x[i], out_y[i], disk_margin_arcsec=0.0):
+            shifts.append((i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan")))
+            out_x[i] = np.nan
+            out_y[i] = np.nan
+            continue
         px, py = _hpc_xy_to_pixel(ref_map, out_x[i], out_y[i])
         cx = int(np.round(px))
         cy = int(np.round(py))
@@ -1905,6 +1943,13 @@ def refine_box_centers_from_em_map(
             new_xpix = x0 + wx
             new_ypix = y0 + wy
             new_x, new_y = _pixel_to_hpc_xy(ref_map, new_xpix, new_ypix)
+            if not _is_valid_hpc_center(ref_map, new_x, new_y, disk_margin_arcsec=0.0):
+                wy0 = max(0, int(wy) - half_h)
+                wy1 = min(window.shape[0], int(wy) + half_h + 1)
+                wx0 = max(0, int(wx) - half_w)
+                wx1 = min(window.shape[1], int(wx) + half_w + 1)
+                window[wy0:wy1, wx0:wx1] = -np.inf
+                continue
             overlaps = any(
                 abs(float(new_x) - ox) < float(min_dx_arcsec)
                 and abs(float(new_y) - oy) < float(min_dy_arcsec)
@@ -1920,6 +1965,11 @@ def refine_box_centers_from_em_map(
             window[wy0:wy1, wx0:wx1] = -np.inf
         if chosen is None:
             orig = (float(out_x[i]), float(out_y[i]))
+            if not _is_valid_hpc_center(ref_map, orig[0], orig[1], disk_margin_arcsec=0.0):
+                shifts.append((i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan")))
+                out_x[i] = np.nan
+                out_y[i] = np.nan
+                continue
             orig_overlaps = any(
                 abs(orig[0] - ox) < float(min_dx_arcsec)
                 and abs(orig[1] - oy) < float(min_dy_arcsec)
