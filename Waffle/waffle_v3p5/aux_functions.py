@@ -3511,15 +3511,24 @@ def plot_em_maps_and_curves(
         em_cache=em_cache,
     )
 
-    # Keep the EM/GOES panel anchored to the current AIA cycle in the same local
-    # timezone as the rest of WAFFLE. In replay mode GOES may extend a few minutes
-    # ahead of the current AIA frame, but the panel should still advance one cycle
-    # at a time rather than exposing a larger preloaded archive window.
-    aia_now_local = (
-        goes_anchor_time_local if goes_anchor_time_local is not None else time_em_array[-1]
-    )
-    min_time = aia_now_local - timedelta(minutes=60)
-    max_time = aia_now_local + timedelta(minutes=float(goes_lead_minutes))
+    # Preserve WAFFLE v3 realtime behavior: when no explicit GOES/AIA anchor is
+    # provided, the panel right edge follows the latest GOES sample rather than the
+    # latest AIA timestamp. Archive/replay mode passes an explicit anchor so that the
+    # panel advances with the replay cursor and can optionally expose a small GOES lead.
+    if goes_anchor_time_local is None:
+        if len(goes_time_array) > 0:
+            min_time = max(
+                time_em_array[-1] - timedelta(minutes=60),
+                np.min(goes_time_array),
+            )
+            max_time = np.max(goes_time_array)
+        else:
+            min_time = time_em_array[-1] - timedelta(minutes=60)
+            max_time = time_em_array[-1]
+    else:
+        aia_now_local = goes_anchor_time_local
+        min_time = aia_now_local - timedelta(minutes=60)
+        max_time = aia_now_local + timedelta(minutes=float(goes_lead_minutes))
 
     if len(goes_time_array) > 0:
         ax7.plot(
@@ -4660,10 +4669,12 @@ def stream_aia_data(
                         goes_folder=goes_folder,
                         lead_minutes=4.0,
                     )
-                goes_anchor_local = convert_utc_to_timezone(
-                    start_time_series, timezone=timezone
-                )
+                goes_anchor_local = None
                 goes_lead_minutes = 0.0 if realtime_mode else 4.0
+                if not realtime_mode:
+                    goes_anchor_local = convert_utc_to_timezone(
+                        start_time_series, timezone=timezone
+                    )
                 goes_plot_data = prepare_goes_plot_arrays(
                     xrsa_current,
                     xrsb_current,
