@@ -140,9 +140,14 @@ if __name__ == "__main__":
     y_bottom = np.array(y_bottom)
 
     if region_source == "solarmonitor":
-        date_yyyymmdd = query_start_ut.astimezone(datetime.timezone.utc).strftime(
-            "%Y%m%d"
+        solarmonitor_anchor_ut = (
+            query_start_ut
+            if query_start_ut is not None
+            else datetime.datetime.now(datetime.timezone.utc)
         )
+        date_yyyymmdd = solarmonitor_anchor_ut.astimezone(
+            datetime.timezone.utc
+        ).strftime("%Y%m%d")
         resolved = aux_functions.resolve_solarmonitor_boxes(
             date_yyyymmdd,
             image_type=solarmonitor_type,
