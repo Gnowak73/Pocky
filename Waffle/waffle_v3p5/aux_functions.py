@@ -301,7 +301,9 @@ def find_em_hotspot_boxes(
     disk_margin_arcsec=40.0,
 ):
     """
-    Find non-overlapping fallback box centers from the strongest full-disk EM hotspots.
+    Find non-overlapping fallback box centers from the strongest full-disk EM regions.
+    Candidates are ranked by integrated EM in a box-sized window, not just by
+    single-pixel hotspot intensity.
     Returns a list of (x_arcsec, y_arcsec) tuples.
     """
     if needed <= 0 or len(aia_maps) == 0:
@@ -314,23 +316,45 @@ def find_em_hotspot_boxes(
     aia_img = np.stack([a[:min_ny, :min_nx] for a in arrs], axis=-1)
     em_map = compute_em_map(aia_img, ref_map.meta, weights)
     em_data = np.array(em_map.data, dtype=float, copy=True)
-    em_data[~np.isfinite(em_data)] = -np.inf
+    em_data[~np.isfinite(em_data)] = 0.0
+    em_data = np.maximum(em_data, 0.0)
 
     ny, nx = em_data.shape
     half_w = max(1, int(np.ceil(float(min_dx_arcsec) / 0.6 / 2.0)))
     half_h = max(1, int(np.ceil(float(min_dy_arcsec) / 0.6 / 2.0)))
+    span_x = 2 * half_w + 1
+    span_y = 2 * half_h + 1
+
+    # Rank candidate centers by integrated EM inside a box-sized window.
+    integ = np.pad(em_data, ((1, 0), (1, 0)), mode="constant").cumsum(axis=0).cumsum(axis=1)
+    y_idx = np.arange(ny)
+    x_idx = np.arange(nx)
+    y0 = np.clip(y_idx - half_h, 0, ny)
+    y1 = np.clip(y_idx + half_h + 1, 0, ny)
+    x0 = np.clip(x_idx - half_w, 0, nx)
+    x1 = np.clip(x_idx + half_w + 1, 0, nx)
+    score_map = (
+        integ[y1[:, None], x1[None, :]]
+        - integ[y0[:, None], x1[None, :]]
+        - integ[y1[:, None], x0[None, :]]
+        + integ[y0[:, None], x0[None, :]]
+    )
 
     picked = []
-    occupied = [(float(x), float(y)) for x, y in existing_xy if np.isfinite(x) and np.isfinite(y)]
+    occupied = [
+        (float(x), float(y))
+        for x, y in existing_xy
+        if np.isfinite(x) and np.isfinite(y)
+    ]
     attempts = 0
     max_attempts = 5000
     while len(picked) < needed and attempts < max_attempts:
         attempts += 1
-        flat_idx = int(np.argmax(em_data))
-        peak = float(em_data.flat[flat_idx])
+        flat_idx = int(np.argmax(score_map))
+        peak = float(score_map.flat[flat_idx])
         if not np.isfinite(peak) or peak <= 0.0:
             break
-        ypix, xpix = np.unravel_index(flat_idx, em_data.shape)
+        ypix, xpix = np.unravel_index(flat_idx, score_map.shape)
         world = ref_map.pixel_to_world(xpix * u.pix, ypix * u.pix)
         x_arcsec = float(world.Tx.to_value(u.arcsec))
         y_arcsec = float(world.Ty.to_value(u.arcsec))
@@ -344,11 +368,11 @@ def find_em_hotspot_boxes(
             abs(x_arcsec - ox) < float(min_dx_arcsec) and abs(y_arcsec - oy) < float(min_dy_arcsec)
             for ox, oy in occupied
         )
-        y0 = max(0, ypix - half_h)
-        y1 = min(ny, ypix + half_h + 1)
-        x0 = max(0, xpix - half_w)
-        x1 = min(nx, xpix + half_w + 1)
-        em_data[y0:y1, x0:x1] = -np.inf
+        iy0 = max(0, ypix - span_y + 1)
+        iy1 = min(ny, ypix + span_y)
+        ix0 = max(0, xpix - span_x + 1)
+        ix1 = min(nx, xpix + span_x)
+        score_map[iy0:iy1, ix0:ix1] = -np.inf
         if not on_disk or overlaps:
             continue
         picked.append((x_arcsec, y_arcsec))
@@ -367,6 +391,72 @@ def assign_fallback_arnums(current_arnum, slots):
         used.add(int(next_id))
         next_id += 1
     return assigned
+
+
+def reorder_box_layout(arnum, ar_x, ar_y, ar_priority=None):
+    """
+    Keep WAFFLE box assignment stable:
+    - top row (A/B/C): left-to-right
+    - bottom row (D/E/F): left-to-right
+    Fallback-filled boxes are reordered into that layout before plotting/inference.
+    """
+    items = []
+    for i in range(len(arnum)):
+        items.append(
+            {
+                "arnum": int(arnum[i]) if np.isfinite(arnum[i]) else arnum[i],
+                "x": float(ar_x[i]),
+                "y": float(ar_y[i]),
+                "priority": (
+                    float(ar_priority[i])
+                    if ar_priority is not None and i < len(ar_priority) and np.isfinite(ar_priority[i])
+                    else 0.0
+                ),
+            }
+        )
+
+    valid = [it for it in items if np.isfinite(it["x"]) and np.isfinite(it["y"])]
+    invalid = [it for it in items if not (np.isfinite(it["x"]) and np.isfinite(it["y"]))]
+    top = sorted(
+        [it for it in valid if it["y"] >= 0.0],
+        key=lambda it: (it["x"], -it["priority"]),
+    )
+    bottom = sorted(
+        [it for it in valid if it["y"] < 0.0],
+        key=lambda it: (it["x"], -it["priority"]),
+    )
+
+    # If one hemisphere is short, spill remaining valid boxes into the open row slots.
+    extra_top = top[3:]
+    extra_bottom = bottom[3:]
+    top = top[:3]
+    bottom = bottom[:3]
+    if len(top) < 3 and extra_bottom:
+        need = 3 - len(top)
+        bottom_spill = sorted(extra_bottom, key=lambda it: (-it["y"], it["x"]))
+        top.extend(bottom_spill[:need])
+        extra_bottom = bottom_spill[need:]
+    if len(bottom) < 3 and extra_top:
+        need = 3 - len(bottom)
+        top_spill = sorted(extra_top, key=lambda it: (it["y"], it["x"]))
+        bottom.extend(top_spill[:need])
+        extra_top = top_spill[need:]
+
+    ordered = top[:3] + bottom[:3]
+    leftovers = [it for it in valid if it not in ordered] + invalid
+    while len(ordered) < len(items) and leftovers:
+        ordered.append(leftovers.pop(0))
+
+    out_arnum = [it["arnum"] for it in ordered[: len(items)]]
+    out_x = np.array([it["x"] for it in ordered[: len(items)]], dtype=float)
+    out_y = np.array([it["y"] for it in ordered[: len(items)]], dtype=float)
+    if ar_priority is None:
+        out_priority = None
+    else:
+        out_priority = np.array(
+            [it["priority"] for it in ordered[: len(items)]], dtype=float
+        )
+    return out_arnum, out_x, out_y, out_priority
 
 
 def _save_runtime_stream_state(
@@ -4445,6 +4535,9 @@ def stream_aia_data(
                     ar_x = np.array(resolved["ar_x"], dtype=float)
                     ar_y = np.array(resolved["ar_y"], dtype=float)
                     ar_priority = np.array(resolved["ar_priority"], dtype=float)
+                    arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
+                        arnum, ar_x, ar_y, ar_priority
+                    )
                     ensure_total_em_files(arnum)
                     startup_boxes_refined = False
                     last_solarmonitor_day = cycle_day_yyyymmdd
@@ -4556,6 +4649,9 @@ def stream_aia_data(
                                 for slot in missing_box_idx[: len(fallback_xy)]
                             )
                         )
+                    arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
+                        arnum, ar_x, ar_y, ar_priority
+                    )
                 should_recenter_now = False
                 recenter_kind = "Box recenter"
                 if startup_box_recenter and (not startup_boxes_refined):
@@ -4612,6 +4708,9 @@ def stream_aia_data(
                                     for slot in recenter_missing_idx[: len(fallback_xy)]
                                 )
                             )
+                    arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
+                        arnum, ar_x, ar_y, ar_priority
+                    )
                     startup_boxes_refined = True
                     last_box_recenter_ut = start_time_series
                     if refined_shifts:
