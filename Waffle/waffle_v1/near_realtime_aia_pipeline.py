@@ -42,7 +42,7 @@ if __name__ == "__main__":
     save_maps = False
 
     # Plot / website settings.
-    publish_mode = "scp"  # "scp" or "local"
+    publish_mode = "local"  # "scp" or "local"
     auto_start_local_web = True
     local_web_host = "127.0.0.1"
     local_web_port = 8000

@@ -122,6 +122,34 @@ def configure_jsoc_server(use_nrt2_server=True):
 # **********************************************************
 
 
+def is_nrt2_auth_error(err: Exception) -> bool:
+    text = str(err).lower()
+    return (
+        "nrt2" in text
+        and (
+            "auth" in text
+            or "authorized" in text
+            or "not allowed" in text
+            or "permission" in text
+            or "forbidden" in text
+            or "denied" in text
+        )
+    )
+
+
+def print_query_wait_message(use_nrt2_server: bool, err: Exception | None = None) -> None:
+    if use_nrt2_server and err is not None and is_nrt2_auth_error(err):
+        print(
+            "NRT2 authorization error: this IP is not authorized for the Stanford "
+            "aia.lev1_nrt2 series. Use drms_mode='public' or run from an authorized IP."
+        )
+        return
+    print("awaiting new data...")
+
+
+# **********************************************************
+
+
 def download_aia_data(
     wav,
     t_rec,
@@ -2187,13 +2215,13 @@ def stream_aia_data(
                     query = None
                     segments = None
                     if attempt < 2:
-                        print("awaiting new data...")
+                        print_query_wait_message(use_nrt2_server, err)
                         time.sleep(2)
                         client = configure_jsoc_server(
                             use_nrt2_server=use_nrt2_server
                         )
                         continue
-                    print("awaiting new data...")
+                    print_query_wait_message(use_nrt2_server, err)
                     break
 
                 if query is not None and len(query) > 0:
