@@ -95,9 +95,6 @@ if __name__ == "__main__":
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
     )
 
-    # lat_top=[23, -15, 21]# active region latitude in degrees - original line
-    # long_top=[29, 15, 53]# active region longitude in degrees - orginal line
-
     label_bottom = ["D", "E", "F"]
     x_bottom = np.array(x_bottom)
     y_bottom = np.array(y_bottom)
@@ -106,23 +103,10 @@ if __name__ == "__main__":
         x_bottom / (rsun * np.cos((np.pi / 180) * lat_bottom))
     )
 
-    # lat_bottom=[2, -28, -10]# active region latitude in degrees - BA
-    # long_bottom=[0, 15, 75]# active region longitude in degrees - BA
-
-    # box_x_bottom = [200,200,100] # widths of boxes (in arcsec units)
-    # box_y_bottom = [100,100,200] # heights of boxes (in arcsec units)
     label = label_top + label_bottom
     arnum = arnum_top + arnum_bottom
     ar_lat = np.concatenate((lat_top, lat_bottom))
     ar_lon = np.concatenate((long_top, long_bottom))
-
-    # box_x = box_x_top + box_x_bottom
-    # box_y = box_y_top + box_y_bottom
-
-    # arnum  = [3624, 3626, 3622, 1, 0, 3620]
-    # ar_lat = [15, 11, 11, -15, +15, -8] #North and South
-    # ar_lon = [-30, 33, 53, -15, -55, 66] #West and East
-    # #If boxes are not used, move to ~,80
 
     # Normalization of light curves: multiply by 1000^2 / (w*h) [ or 500^2 / (w * h ) ]
 
@@ -131,7 +115,6 @@ if __name__ == "__main__":
     # DRMS query mode:
     # - "nrt2"   -> near-real-time series used on WKU environment
     # - "public" -> public JSOC series
-    drms_mode = "nrt2"
     if drms_mode == "nrt2":
         drms_series = "aia.lev1_nrt2"
         drms_segment = "image_lev1"
@@ -218,4 +201,3 @@ if __name__ == "__main__":
                 local_server_proc.kill()
                 local_server_proc.wait(timeout=3)
             print("Local website server stopped.")
-    # aux_functions.stream_aia_data(duration_stream, data_folder, ar_lon, ar_lat, arnum, label, correction_table, timezone=timezone, n_pix_x=1000, n_pix_y=1000, save_maps=save_maps)
