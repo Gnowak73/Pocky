@@ -224,6 +224,7 @@ func legacyWindowsBaseCondaDeps() []string {
 		"astropy",
 		"pillow",
 		"sunpy",
+		"sunkit-instruments",
 		"python-dateutil",
 		"aiapy",
 		"drms",

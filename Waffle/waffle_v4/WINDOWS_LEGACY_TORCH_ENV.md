@@ -12,6 +12,8 @@ and PyTorch were installed in the same environment.
   - Python 3.14.
   - Downloads, calibration, DEM/EM plots, website publishing, and all normal
     WAFFLE processing.
+  - Includes `sunkit-instruments` for GOES temperature / emission-measure
+    calculations.
   - No PyTorch packages.
 - `Waffle_Torch`: isolated PyTorch environment.
   - Python 3.11.
