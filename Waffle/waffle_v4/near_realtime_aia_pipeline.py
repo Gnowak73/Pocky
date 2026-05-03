@@ -74,6 +74,10 @@ if __name__ == "__main__":
     time_step_minutes = 1
     n_pix_x = 500
     n_pix_y = 500
+    # Minimum allowed center-to-center spacing between boxes, in image pixels.
+    # Lower values allow more overlap. Defaults match current box size behavior.
+    min_box_center_dx_pix = 500
+    min_box_center_dy_pix = 500
     startup_box_recenter = True
     startup_box_recenter_arcsec = 200.0
     box_recenter_interval_hours = 2.0  # None/0 disables periodic recenter
@@ -161,6 +165,8 @@ if __name__ == "__main__":
             indexnum=solarmonitor_indexnum,
             n_pix_x=n_pix_x,
             n_pix_y=n_pix_y,
+            min_center_dx_pix=min_box_center_dx_pix,
+            min_center_dy_pix=min_box_center_dy_pix,
         )
         top_sel = resolved["top_sel"]
         bottom_sel = resolved["bottom_sel"]
@@ -210,7 +216,7 @@ if __name__ == "__main__":
     box_vis_root = os.path.join(data_folder, "box_vis")
     local_publish_dir = os.path.join(data_folder, "local_web")
     # Main legacy trigger model now uses the GOES/FAI paper-feature checkpoint as primary.
-    imminence_model_path = resolve_imminence_model_path("legacy_main_trigger.pt")
+    imminence_model_path = resolve_imminence_model_path("legacy_main_trigger_legacy.pt")
     if drms_mode == "nrt2":
         drms_series = "aia.lev1_nrt2"
         drms_segment = "image_lev1"
@@ -322,6 +328,8 @@ if __name__ == "__main__":
             solarmonitor_indexnum=solarmonitor_indexnum,
             solarmonitor_refresh_on_utc_day_rollover=solarmonitor_refresh_on_utc_day_rollover,
             solarmonitor_refresh_on_timezone_day_rollover=solarmonitor_refresh_on_timezone_day_rollover,
+            min_box_center_dx_pix=min_box_center_dx_pix,
+            min_box_center_dy_pix=min_box_center_dy_pix,
             ar_priority=ar_priority,
         )
     finally:

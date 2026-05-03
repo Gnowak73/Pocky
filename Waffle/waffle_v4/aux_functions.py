@@ -268,14 +268,20 @@ def resolve_solarmonitor_boxes(
     indexnum=1,
     n_pix_x=500,
     n_pix_y=500,
+    min_center_dx_pix=None,
+    min_center_dy_pix=None,
 ):
     regions = load_solarmonitor_regions(
         date_yyyymmdd,
         image_type=image_type,
         indexnum=indexnum,
     )
-    box_width_arcsec = 0.6 * float(n_pix_x)
-    box_height_arcsec = 0.6 * float(n_pix_y)
+    if min_center_dx_pix is None:
+        min_center_dx_pix = n_pix_x
+    if min_center_dy_pix is None:
+        min_center_dy_pix = n_pix_y
+    box_width_arcsec = 0.6 * float(min_center_dx_pix)
+    box_height_arcsec = 0.6 * float(min_center_dy_pix)
     top_sel, bottom_sel = select_solarmonitor_box_layout(
         regions,
         per_row=3,
@@ -4751,6 +4757,8 @@ def stream_aia_data(
     solarmonitor_indexnum=1,
     solarmonitor_refresh_on_utc_day_rollover=True,
     solarmonitor_refresh_on_timezone_day_rollover=False,
+    min_box_center_dx_pix=None,
+    min_box_center_dy_pix=None,
     ar_priority=None,
 ):
     """
@@ -4859,6 +4867,12 @@ def stream_aia_data(
     arnum = list(arnum)
     ar_x = np.array(ar_x, dtype=float)
     ar_y = np.array(ar_y, dtype=float)
+    if min_box_center_dx_pix is None:
+        min_box_center_dx_pix = n_pix_x
+    if min_box_center_dy_pix is None:
+        min_box_center_dy_pix = n_pix_y
+    min_center_dx_arcsec = 0.6 * float(min_box_center_dx_pix)
+    min_center_dy_arcsec = 0.6 * float(min_box_center_dy_pix)
 
     # Define JSOC server client.
     use_nrt2_server = str(drms_series).lower().startswith("aia.lev1_nrt2")
@@ -5165,6 +5179,8 @@ def stream_aia_data(
                         indexnum=solarmonitor_indexnum,
                         n_pix_x=n_pix_x,
                         n_pix_y=n_pix_y,
+                        min_center_dx_pix=min_box_center_dx_pix,
+                        min_center_dy_pix=min_box_center_dy_pix,
                     )
                     arnum = list(resolved["arnum"])
                     ar_x = np.array(resolved["ar_x"], dtype=float)
@@ -5270,8 +5286,8 @@ def stream_aia_data(
                             if np.isfinite(ar_x[i]) and np.isfinite(ar_y[i])
                         ],
                         needed=len(missing_box_idx),
-                        min_dx_arcsec=0.6 * float(n_pix_x),
-                        min_dy_arcsec=0.6 * float(n_pix_y),
+                        min_dx_arcsec=min_center_dx_arcsec,
+                        min_dy_arcsec=min_center_dy_arcsec,
                     )
                     for slot, (x_fill, y_fill) in zip(missing_box_idx, fallback_xy):
                         ar_x[slot] = float(x_fill)
@@ -5309,8 +5325,8 @@ def stream_aia_data(
                         ar_y,
                         ar_priority=ar_priority,
                         search_radius_arcsec=startup_box_recenter_arcsec,
-                        min_dx_arcsec=0.6 * float(n_pix_x),
-                        min_dy_arcsec=0.6 * float(n_pix_y),
+                        min_dx_arcsec=min_center_dx_arcsec,
+                        min_dy_arcsec=min_center_dy_arcsec,
                     )
                     recenter_missing_idx = [
                         i for i in range(n_ar) if (not np.isfinite(ar_x[i])) or (not np.isfinite(ar_y[i]))
@@ -5329,8 +5345,8 @@ def stream_aia_data(
                                 if np.isfinite(ar_x[j]) and np.isfinite(ar_y[j])
                             ],
                             needed=len(recenter_missing_idx),
-                            min_dx_arcsec=0.6 * float(n_pix_x),
-                            min_dy_arcsec=0.6 * float(n_pix_y),
+                            min_dx_arcsec=min_center_dx_arcsec,
+                            min_dy_arcsec=min_center_dy_arcsec,
                         )
                         for slot, (x_fill, y_fill) in zip(recenter_missing_idx, fallback_xy):
                             ar_x[slot] = float(x_fill)
