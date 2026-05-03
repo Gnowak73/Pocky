@@ -6486,14 +6486,6 @@ def stream_aia_data(
                     )
 
             else:
-                publish_runtime_status(
-                    publish_mode,
-                    publish_root,
-                    ssh_client,
-                    "warn",
-                    "Waiting",
-                    "No new AIA series yet; WAFFLE is still polling",
-                )
                 print("No new data series. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (

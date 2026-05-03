@@ -99,6 +99,7 @@ body {
 <img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;">
 <script>
 var STATUS_STALE_SEC = 500;
+var lastStatusKey = null;
 
 function setStatusBanner(kind, title, detail) {
     var banner = document.getElementById("status-banner");
@@ -127,6 +128,12 @@ function refreshStatus() {
             var kind = String(data.kind || "ok");
             var title = String(data.title || "Online");
             var detail = String(data.detail || "");
+            var statusKey = kind + "|" + title + "|" + detail + "|" + String(updated);
+            if (lastStatusKey !== null && lastStatusKey !== statusKey) {
+                window.location.reload();
+                return;
+            }
+            lastStatusKey = statusKey;
             setStatusBanner(kind, title, detail);
         })
         .catch(function() {
