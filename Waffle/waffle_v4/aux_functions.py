@@ -413,6 +413,8 @@ def reorder_box_layout(arnum, ar_x, ar_y, ar_priority=None):
     - top row (A/B/C): left-to-right
     - bottom row (D/E/F): left-to-right
     Fallback-filled boxes are reordered into that layout before plotting/inference.
+    Guarantee the top three boxes have y >= the bottom three boxes by splitting
+    the valid boxes into an upper row and a lower row by y-rank, not by sign.
     """
     items = []
     for i in range(len(arnum)):
@@ -431,32 +433,13 @@ def reorder_box_layout(arnum, ar_x, ar_y, ar_priority=None):
 
     valid = [it for it in items if np.isfinite(it["x"]) and np.isfinite(it["y"])]
     invalid = [it for it in items if not (np.isfinite(it["x"]) and np.isfinite(it["y"]))]
-    top = sorted(
-        [it for it in valid if it["y"] >= 0.0],
-        key=lambda it: (it["x"], -it["priority"]),
-    )
-    bottom = sorted(
-        [it for it in valid if it["y"] < 0.0],
-        key=lambda it: (it["x"], -it["priority"]),
-    )
+    by_y = sorted(valid, key=lambda it: (-it["y"], it["x"], -it["priority"]))
+    top_seed = by_y[:3]
+    bottom_seed = by_y[3:]
+    top = sorted(top_seed, key=lambda it: (it["x"], -it["priority"]))
+    bottom = sorted(bottom_seed[:3], key=lambda it: (it["x"], -it["priority"]))
 
-    # If one hemisphere is short, spill remaining valid boxes into the open row slots.
-    extra_top = top[3:]
-    extra_bottom = bottom[3:]
-    top = top[:3]
-    bottom = bottom[:3]
-    if len(top) < 3 and extra_bottom:
-        need = 3 - len(top)
-        bottom_spill = sorted(extra_bottom, key=lambda it: (-it["y"], it["x"]))
-        top.extend(bottom_spill[:need])
-        extra_bottom = bottom_spill[need:]
-    if len(bottom) < 3 and extra_top:
-        need = 3 - len(bottom)
-        top_spill = sorted(extra_top, key=lambda it: (it["y"], it["x"]))
-        bottom.extend(top_spill[:need])
-        extra_top = top_spill[need:]
-
-    ordered = top[:3] + bottom[:3]
+    ordered = top + bottom
     leftovers = [it for it in valid if it not in ordered] + invalid
     while len(ordered) < len(items) and leftovers:
         ordered.append(leftovers.pop(0))
