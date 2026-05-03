@@ -4409,7 +4409,7 @@ def plot_em_maps_and_curves(
     ax7.set_yscale("log")
     ax7.tick_params(axis="x", labelsize=chsize)
     ax7.tick_params(axis="y", labelsize=chsize)
-    display_time_local = goes_time_array[-1] if len(goes_time_array) > 0 else time_em_array[-1]
+    display_time_local = time_em_array[-1]
     ax7.set_title(
         "Latest AIA data: - " + display_time_local.strftime("%H:%M:%S") + " " + timezone,
         fontsize=chsize * 1.5,
