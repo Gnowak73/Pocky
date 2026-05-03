@@ -76,10 +76,35 @@ body {
         padding-top: 48px;
     }
     #status-banner {
-        left: 10px;
-        right: 10px;
-        min-width: 0;
-        max-width: none;
+        left: 8px;
+        right: auto;
+        min-width: 104px;
+        max-width: 138px;
+        padding: 4px 8px 6px 8px;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 5px 12px rgba(16, 33, 43, 0.14);
+    }
+    #status-banner::before,
+    #status-banner::after {
+        width: 10px;
+        height: 10px;
+    }
+    #status-banner::before {
+        left: -7px;
+    }
+    #status-banner::after {
+        right: -7px;
+    }
+    .status-label {
+        font-size: 8px;
+        margin-bottom: 1px;
+    }
+    .status-value {
+        font-size: 11px;
+    }
+    .status-detail {
+        font-size: 8px;
+        margin-top: 2px;
     }
 }
 </style>
