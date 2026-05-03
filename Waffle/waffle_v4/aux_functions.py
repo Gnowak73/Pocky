@@ -1765,6 +1765,9 @@ def download_aia_data(
     silent=False,
     worker_count=5,
     executor=None,
+    download_timeout_sec=30.0,
+    download_retry_delay_sec=10.0,
+    download_retry_attempts=3,
 ):
     """
 
@@ -1839,11 +1842,28 @@ def download_aia_data(
             full_disk_maps_folder,
             "aia_lev1_nrt2_" + t_rec[i] + "_" + str(wav[i]) + ".fits",
         ).replace(":", "")
-        try:
-            urlretrieve(fits_file_url, filename)
-            return i, filename, False
-        except (HTTPError, URLError):
-            return i, None, True
+        max_attempts = max(1, int(download_retry_attempts))
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with urlopen(fits_file_url, timeout=float(download_timeout_sec)) as src, open(
+                    filename, "wb"
+                ) as dst:
+                    shutil.copyfileobj(src, dst)
+                return i, filename, False
+            except Exception:
+                try:
+                    if os.path.exists(filename):
+                        os.remove(filename)
+                except OSError:
+                    pass
+                if attempt >= max_attempts:
+                    return i, None, True
+                if not silent:
+                    print(
+                        f"Retrying AIA download {int(wav[i])}A "
+                        f"(attempt {attempt + 1}/{max_attempts}) after {float(download_retry_delay_sec):.0f}s..."
+                    )
+                time.sleep(float(download_retry_delay_sec))
 
     # Network I/O bound: parallelize downloads with a small bounded pool.
     if executor is None:
@@ -2956,6 +2976,71 @@ def publish_local_files(
         os.path.join(destination_volume, "index.html"), "w", encoding="utf-8"
     ) as f:
         f.write(index_html)
+
+
+def _status_payload(kind, title, detail):
+    return {
+        "kind": str(kind),
+        "title": str(title),
+        "detail": str(detail),
+        "updated_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_unix": time.time(),
+    }
+
+
+def publish_status_local(destination_volume, kind, title, detail):
+    mkdir(destination_volume)
+    status_path = os.path.join(destination_volume, "status.json")
+    tmp_path = status_path + ".tmp"
+    payload = _status_payload(kind, title, detail)
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    os.replace(tmp_path, status_path)
+
+
+def publish_status_remote(ssh_client, destination_volume, kind, title, detail):
+    payload = _status_payload(kind, title, detail)
+    with SCPClient(ssh_client.get_transport()) as scp:
+        scp.putfo(
+            io.BytesIO(json.dumps(payload, indent=2).encode("utf-8")),
+            remote_path=os.path.join(destination_volume, "status.json"),
+        )
+
+
+def publish_runtime_status(
+    publish_mode,
+    destination_volume,
+    ssh_client,
+    kind,
+    title,
+    detail,
+):
+    try:
+        if publish_mode == "scp":
+            publish_status_remote(ssh_client, destination_volume, kind, title, detail)
+        else:
+            publish_status_local(destination_volume, kind, title, detail)
+    except Exception as exc:
+        print(f"Status publish failed: {exc}")
+
+
+def start_delayed_runtime_status(
+    delay_sec,
+    publish_mode,
+    destination_volume,
+    ssh_client,
+    kind,
+    title,
+    detail,
+):
+    timer = threading.Timer(
+        float(delay_sec),
+        publish_runtime_status,
+        args=(publish_mode, destination_volume, ssh_client, kind, title, detail),
+    )
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
 def build_waffle_v2_index_html(
@@ -4752,6 +4837,9 @@ def stream_aia_data(
     startup_box_recenter=True,
     startup_box_recenter_arcsec=180.0,
     box_recenter_interval_hours=2.0,
+    download_timeout_sec=30.0,
+    download_retry_delay_sec=10.0,
+    download_retry_attempts=3,
     region_source="manual",
     solarmonitor_type="shmi_maglc",
     solarmonitor_indexnum=1,
@@ -5000,6 +5088,7 @@ def stream_aia_data(
 
     # Define publishing destination.
     destination_volume = "/server/html/waffle_2/"
+    publish_root = destination_volume
     ssh_client = None
     if publish_mode == "scp":
         ssh_client = define_ssh_client()
@@ -5007,8 +5096,20 @@ def stream_aia_data(
         if local_publish_dir is None:
             local_publish_dir = os.path.join(data_folder, "local_web")
         mkdir(local_publish_dir)
+        publish_root = local_publish_dir
+        publish_status_local(local_publish_dir, "warn", "Waiting", "WAFFLE stream is initializing")
     else:
         raise ValueError("publish_mode must be either 'scp' or 'local'")
+
+    if publish_mode == "scp":
+        publish_runtime_status(
+            publish_mode,
+            publish_root,
+            ssh_client,
+            "warn",
+            "Waiting",
+            "WAFFLE stream is initializing",
+        )
 
     # One shared thread pool for the whole stream to avoid per-phase pool churn.
     worker_count = max(1, int(worker_count))
@@ -5049,12 +5150,28 @@ def stream_aia_data(
                     query = None
                     segments = None
                     if attempt < 2:
+                        publish_runtime_status(
+                            publish_mode,
+                            publish_root,
+                            ssh_client,
+                            "warn",
+                            "Waiting",
+                            "Transient DRMS query issue; retrying shortly",
+                        )
                         print_query_wait_message(use_nrt2_server, err)
                         time.sleep(2)
                         client = configure_jsoc_server(
                             use_nrt2_server=use_nrt2_server
                         )
                         continue
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "warn",
+                        "Waiting",
+                        "DRMS query failed; WAFFLE will keep retrying",
+                    )
                     print_query_wait_message(use_nrt2_server, err)
                     print(f"DRMS query failed for {ds_query}: {err}")
                     break
@@ -5066,10 +5183,26 @@ def stream_aia_data(
                         break
 
                 if attempt < 2:
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "warn",
+                        "Waiting",
+                        "JSOC responded without a complete AIA cycle; retrying shortly",
+                    )
                     print_query_wait_message(use_nrt2_server)
                     time.sleep(2)
                     client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
                 else:
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "warn",
+                        "Waiting",
+                        "No usable DRMS rows yet; WAFFLE is still polling",
+                    )
                     cols = list(getattr(query, "columns", [])) if query is not None else []
                     rows = len(query) if query is not None else 0
                     print_query_wait_message(use_nrt2_server)
@@ -5250,6 +5383,15 @@ def stream_aia_data(
 
                 # Download and calibrate full-disk near real time AIA maps
                 t_phase = time.time()
+                waiting_timer = start_delayed_runtime_status(
+                    120.0,
+                    publish_mode,
+                    publish_root,
+                    ssh_client,
+                    "warn",
+                    "Waiting",
+                    "AIA download is taking longer than expected",
+                )
                 aia_maps, dowloaded_data_folder, error = download_aia_data(
                     grouped_wav,
                     grouped_t_rec,
@@ -5258,7 +5400,11 @@ def stream_aia_data(
                     timezone=timezone,
                     worker_count=worker_count,
                     executor=shared_executor,
+                    download_timeout_sec=download_timeout_sec,
+                    download_retry_delay_sec=download_retry_delay_sec,
+                    download_retry_attempts=download_retry_attempts,
                 )
+                waiting_timer.cancel()
                 if print_phase_timing:
                     phase_times["download"] = time.time() - t_phase
 
@@ -5397,6 +5543,14 @@ def stream_aia_data(
                     phase_times["calibrate"] = time.time() - t_phase
 
                 if error:
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "warn",
+                        "Waiting",
+                        "One or more AIA files failed to download; retrying next cycle",
+                    )
                     print("Error in downloading data. Continue..")
                     time.sleep(30)
                     continue
@@ -5470,6 +5624,7 @@ def stream_aia_data(
                         lookback_hours=1.0,
                         lead_minutes=2.0,
                     )
+                goes_available = (not xrsa_current.empty) and (not xrsb_current.empty)
                 goes_anchor_local = None
                 goes_lead_minutes = 0.0 if realtime_mode else 2.0
                 if not realtime_mode:
@@ -5878,13 +6033,6 @@ def stream_aia_data(
                                 f"{v:.3f}" for v in vals[-int(imminence_alert_count) :]
                             )
                             avg_recent = float(np.mean(recent_vals)) if recent_vals else float("nan")
-                            large_count = max(1, int(imminence_large_area_alert_count))
-                            large_recent_vals = vals[-large_count:]
-                            large_avg_recent = (
-                                float(np.mean(large_recent_vals))
-                                if len(large_recent_vals) >= large_count
-                                else float("nan")
-                            )
                             peak_recent = float(np.max(recent_vals)) if recent_vals else float("nan")
                             baseline_avg = float("nan")
                             if imminence_alert_delta_threshold is not None:
@@ -5895,7 +6043,6 @@ def stream_aia_data(
                             msg = (
                                 f"Box {label[i]} risk last {len(vals)}: [{recent_txt}] "
                                 f"avg{int(imminence_alert_count)}={avg_recent:.3f} "
-                                f"avg{large_count}_large={large_avg_recent:.3f} "
                             )
                             if imminence_alert_delta_threshold is not None:
                                 if np.isfinite(baseline_avg):
@@ -6267,6 +6414,24 @@ def stream_aia_data(
                         ).strftime("%Y-%m-%d"),
                         suvi_use_realtime=suvi_use_realtime,
                     )
+                if goes_available:
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "ok",
+                        "Online",
+                        "Latest plots are up to date",
+                    )
+                else:
+                    publish_runtime_status(
+                        publish_mode,
+                        publish_root,
+                        ssh_client,
+                        "warn",
+                        "Waiting",
+                        "AIA is online but GOES XRS is unavailable",
+                    )
                 print("Publish completed!")
                 if print_phase_timing:
                     phase_times["publish"] = time.time() - t_phase
@@ -6321,6 +6486,14 @@ def stream_aia_data(
                     )
 
             else:
+                publish_runtime_status(
+                    publish_mode,
+                    publish_root,
+                    ssh_client,
+                    "warn",
+                    "Waiting",
+                    "No new AIA series yet; WAFFLE is still polling",
+                )
                 print("No new data series. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (

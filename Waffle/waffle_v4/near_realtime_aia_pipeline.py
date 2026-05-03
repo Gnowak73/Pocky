@@ -78,6 +78,9 @@ if __name__ == "__main__":
     # Lower values allow more overlap. Defaults match current box size behavior.
     min_box_center_dx_pix = 500
     min_box_center_dy_pix = 500
+    download_timeout_sec = 30.0
+    download_retry_delay_sec = 10.0
+    download_retry_attempts = 3
     startup_box_recenter = True
     startup_box_recenter_arcsec = 200.0
     box_recenter_interval_hours = 2.0  # None/0 disables periodic recenter
@@ -323,6 +326,9 @@ if __name__ == "__main__":
             startup_box_recenter=startup_box_recenter,
             startup_box_recenter_arcsec=startup_box_recenter_arcsec,
             box_recenter_interval_hours=box_recenter_interval_hours,
+            download_timeout_sec=download_timeout_sec,
+            download_retry_delay_sec=download_retry_delay_sec,
+            download_retry_attempts=download_retry_attempts,
             region_source=region_source,
             solarmonitor_type=solarmonitor_type,
             solarmonitor_indexnum=solarmonitor_indexnum,

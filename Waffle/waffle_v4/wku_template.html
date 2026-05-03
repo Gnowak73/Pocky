@@ -6,25 +6,144 @@
 <style>
 body {
     margin: 0;
-    padding-top: 22px; /* moves the entire webpage content down */
+    background: #ffffff;
+    color: #10212b;
+    font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+}
+#page-frame {
+    width: 97.5%;
+    margin: 0 auto;
+    padding-top: 22px;
+    background: #ffffff;
+    position: relative;
+}
+#status-banner {
+    position: absolute;
+    top: 0;
+    left: 22px;
+    z-index: 50;
+    min-width: 150px;
+    max-width: min(52vw, 240px);
+    padding: 6px 12px 8px 12px;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 8px 18px rgba(16, 33, 43, 0.16);
+    border: 1px solid rgba(16, 33, 43, 0.12);
+    border-top: 0;
+    background: #1f7a45;
+    color: #ffffff;
+    text-align: left;
+}
+#status-banner::before,
+#status-banner::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 14px;
+    height: 14px;
+    background: inherit;
+}
+#status-banner::before {
+    left: -10px;
+    clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+#status-banner::after {
+    right: -10px;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.status-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    margin-bottom: 2px;
+}
+.status-value {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+.status-detail {
+    display: block;
+    font-size: 10px;
+    opacity: 0.9;
+    margin-top: 3px;
+}
+@media (max-width: 700px) {
+    #page-frame {
+        width: 100%;
+        padding-top: 48px;
+    }
+    #status-banner {
+        left: 10px;
+        right: 10px;
+        min-width: 0;
+        max-width: none;
+    }
 }
 </style>
 </head>
 <body>
+<div id="page-frame">
+<div id="status-banner">
+    <span class="status-label">Status</span>
+    <span id="status-value" class="status-value">Loading...</span>
+    <span id="status-detail" class="status-detail">Checking WAFFLE stream...</span>
+</div>
 <center>
-<img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:97.5%;max-width:100%;height:auto;">
+<img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:100%;max-width:100%;height:auto;">
 <br>
-<img id="image1" src="./latest_plots/em_goes_plot.png" style="width:97.5%;max-width:100%;height:auto;">
+<img id="image1" src="./latest_plots/em_goes_plot.png" style="width:100%;max-width:100%;height:auto;">
 <br>
 <img id="image2" src="./latest_plots/imminence_risk.png" style="width:85%;max-width:100%;height:auto;">
 <script>
+var STATUS_STALE_SEC = 500;
+
+function setStatusBanner(kind, title, detail) {
+    var banner = document.getElementById("status-banner");
+    var value = document.getElementById("status-value");
+    var detailNode = document.getElementById("status-detail");
+    var bg = "#1f7a45";
+    if (kind === "warn") bg = "#a66b00";
+    if (kind === "error") bg = "#a12d2d";
+    if (kind === "offline") bg = "#6b1f7d";
+    banner.style.background = bg;
+    value.textContent = title;
+    detailNode.textContent = detail || "";
+}
+
+function refreshStatus() {
+    fetch("./status.json?t=" + new Date().getTime(), {cache: "no-store"})
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            var nowSec = Date.now() / 1000.0;
+            var updated = Number(data.updated_unix || 0);
+            var age = updated > 0 ? (nowSec - updated) : 1e9;
+            if (age > STATUS_STALE_SEC) {
+                setStatusBanner("offline", "WKU Internet Offline", "Last update " + Math.round(age) + "s ago");
+                return;
+            }
+            var kind = String(data.kind || "ok");
+            var title = String(data.title || "Online");
+            var detail = String(data.detail || "");
+            setStatusBanner(kind, title, detail);
+        })
+        .catch(function() {
+            setStatusBanner("offline", "Status Unreachable", "Could not load status.json");
+        });
+}
+
 setInterval(function() {
     var timestamp = new Date().getTime();
     document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
     document.getElementById("image1").src = "./latest_plots/em_goes_plot.png?t=" + timestamp;
     document.getElementById("image2").src = "./latest_plots/imminence_risk.png?t=" + timestamp;
 }, 15000);
+setInterval(refreshStatus, 5000);
+refreshStatus();
 </script>
 </center>
+</div>
 </body>
 </html>
