@@ -312,12 +312,13 @@ def find_em_hotspot_boxes(
     needed,
     min_dx_arcsec,
     min_dy_arcsec,
-    disk_margin_arcsec=40.0,
+    disk_margin_arcsec=0.0,
 ):
     """
     Find non-overlapping fallback box centers from the strongest full-disk EM regions.
     Candidates are ranked by integrated EM in a box-sized window, not just by
     single-pixel hotspot intensity.
+    A candidate is allowed as long as its center is on-disk and inside the map.
     Returns a list of (x_arcsec, y_arcsec) tuples.
     """
     if needed <= 0 or len(aia_maps) == 0:
