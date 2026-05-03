@@ -46,6 +46,8 @@ import subprocess
 import tempfile
 import threading
 import logging
+import smtplib
+from email.message import EmailMessage
 
 from dateutil import tz
 
@@ -3024,6 +3026,68 @@ def publish_runtime_status(
         print(f"Status publish failed: {exc}")
 
 
+def _ensure_text_file(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+
+
+def load_sms_recipients(path: Path) -> list[str]:
+    _ensure_text_file(path)
+    out: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        out.append(text)
+    return out
+
+
+def load_sms_smtp_config(path: Path) -> dict:
+    if not path.exists():
+        path.write_text(
+            json.dumps(
+                {
+                    "from_email": "",
+                    "app_password": "",
+                    "smtp_host": "smtp.gmail.com",
+                    "smtp_port": 465,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def send_sms_alert(message: str, recipients: list[str], smtp_cfg: dict) -> bool:
+    from_email = str(smtp_cfg.get("from_email", "")).strip()
+    app_password = str(smtp_cfg.get("app_password", "")).strip()
+    smtp_host = str(smtp_cfg.get("smtp_host", "smtp.gmail.com")).strip() or "smtp.gmail.com"
+    smtp_port = int(smtp_cfg.get("smtp_port", 465) or 465)
+    if not from_email or not app_password or not recipients:
+        return False
+    try:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as smtp:
+            smtp.login(from_email, app_password)
+            for recipient in recipients:
+                msg = EmailMessage()
+                msg["From"] = from_email
+                msg["To"] = recipient
+                msg["Subject"] = ""
+                msg.set_content(message)
+                smtp.send_message(msg)
+        return True
+    except Exception as exc:
+        print(f"SMS alert failed: {exc}")
+        return False
+
+
 def start_delayed_runtime_status(
     delay_sec,
     publish_mode,
@@ -4840,6 +4904,9 @@ def stream_aia_data(
     download_timeout_sec=30.0,
     download_retry_delay_sec=10.0,
     download_retry_attempts=3,
+    send_sms=False,
+    sms_recipients_file="",
+    sms_smtp_config_file="",
     region_source="manual",
     solarmonitor_type="shmi_maglc",
     solarmonitor_indexnum=1,
@@ -5090,6 +5157,39 @@ def stream_aia_data(
     destination_volume = "/server/html/waffle_2/"
     publish_root = destination_volume
     ssh_client = None
+    sms_recipients_path = Path(
+        sms_recipients_file.strip()
+        if str(sms_recipients_file).strip()
+        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "sms_recipients.txt")
+    )
+    sms_smtp_config_path = Path(
+        sms_smtp_config_file.strip()
+        if str(sms_smtp_config_file).strip()
+        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "sms_smtp_config.json")
+    )
+    sms_recipients = load_sms_recipients(sms_recipients_path)
+    sms_smtp_cfg = load_sms_smtp_config(sms_smtp_config_path)
+    sms_enabled = bool(send_sms)
+    if sms_enabled:
+        sms_missing = []
+        if not sms_recipients:
+            sms_missing.append(f"no recipients in {sms_recipients_path}")
+        if not str(sms_smtp_cfg.get("from_email", "")).strip():
+            sms_missing.append(f"missing from_email in {sms_smtp_config_path}")
+        if not str(sms_smtp_cfg.get("app_password", "")).strip():
+            sms_missing.append(f"missing app_password in {sms_smtp_config_path}")
+        if sms_missing:
+            print(
+                "SMS disabled: "
+                + "; ".join(sms_missing)
+            )
+            sms_enabled = False
+    c5_sms_active = False
+    goes_sms_active = False
+    aia_sms_active = False
+    offline_sms_active = False
+    startup_sms_sent = False
+    last_successful_publish_unix = time.time()
     if publish_mode == "scp":
         ssh_client = define_ssh_client()
     elif publish_mode == "local":
@@ -5117,6 +5217,11 @@ def stream_aia_data(
     if worker_count > 1:
         shared_executor = ThreadPoolExecutor(max_workers=worker_count)
 
+    def maybe_send_sms(message: str) -> None:
+        if not sms_enabled:
+            return
+        send_sms_alert(message, sms_recipients, sms_smtp_cfg)
+
     ############ START STREAM
 
     stream_forever = duration_stream is None
@@ -5126,6 +5231,13 @@ def stream_aia_data(
             phase_times = {}
             cycle_start = time.time()
             t_phase = time.time()
+            publish_age = time.time() - float(last_successful_publish_unix)
+            if publish_age > 500.0:
+                if not offline_sms_active:
+                    maybe_send_sms("Waffle: The internet connection has gone down.")
+                    offline_sms_active = True
+            else:
+                offline_sms_active = False
             # Query data (retry transient/partial DRMS responses before skipping cycle).
             ds_query = (
                 drms_series
@@ -5543,6 +5655,9 @@ def stream_aia_data(
                     phase_times["calibrate"] = time.time() - t_phase
 
                 if error:
+                    if not aia_sms_active:
+                        maybe_send_sms("Waffle: AIA data download has dropped out.")
+                        aia_sms_active = True
                     publish_runtime_status(
                         publish_mode,
                         publish_root,
@@ -5554,6 +5669,7 @@ def stream_aia_data(
                     print("Error in downloading data. Continue..")
                     time.sleep(30)
                     continue
+                aia_sms_active = False
 
                 # Crop images around ARs and compute EM of the "hottest region"
                 cropped_maps_folder = dowloaded_data_folder + "_crop"
@@ -5625,6 +5741,11 @@ def stream_aia_data(
                         lead_minutes=2.0,
                     )
                 goes_available = (not xrsa_current.empty) and (not xrsb_current.empty)
+                if goes_available:
+                    goes_sms_active = False
+                elif not goes_sms_active:
+                    maybe_send_sms("Waffle: GOES XRS data has dropped out.")
+                    goes_sms_active = True
                 goes_anchor_local = None
                 goes_lead_minutes = 0.0 if realtime_mode else 2.0
                 if not realtime_mode:
@@ -6088,6 +6209,12 @@ def stream_aia_data(
                         f"Focus box by EM: {focus_label} "
                         f"(EM={float(em_totals[focus_idx]):.3e})"
                     )
+                    if float(em_totals[focus_idx]) >= 5.0e48:
+                        if not c5_sms_active:
+                            maybe_send_sms("Waffle: C5+ level has been reached, possible flare.")
+                            c5_sms_active = True
+                    else:
+                        c5_sms_active = False
                     focus_area_feats = imminence_runtime["em_active_area_features"](
                         em_maps[focus_idx].data
                     )
@@ -6432,6 +6559,13 @@ def stream_aia_data(
                         "Waiting",
                         "AIA is online but GOES XRS is unavailable",
                     )
+                last_successful_publish_unix = time.time()
+                if not startup_sms_sent:
+                    maybe_send_sms("Waffle: Waffle is up and running.")
+                    startup_sms_sent = True
+                if offline_sms_active:
+                    maybe_send_sms("Waffle: Internet is back online.")
+                offline_sms_active = False
                 print("Publish completed!")
                 if print_phase_timing:
                     phase_times["publish"] = time.time() - t_phase

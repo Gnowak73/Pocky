@@ -1,0 +1,6 @@
+{
+  "from_email": "",
+  "app_password": "",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 465
+}

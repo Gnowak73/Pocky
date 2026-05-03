@@ -55,6 +55,9 @@ if __name__ == "__main__":
     x_bottom = [-100, 200, 750]
     y_bottom = [-276, -180, -515]
 
+    # SMS Alerts
+    send_sms = True
+
     # Run behavior.
     duration_stream = None
     timezone = "US/Central"
@@ -329,6 +332,7 @@ if __name__ == "__main__":
             download_timeout_sec=download_timeout_sec,
             download_retry_delay_sec=download_retry_delay_sec,
             download_retry_attempts=download_retry_attempts,
+            send_sms=send_sms,
             region_source=region_source,
             solarmonitor_type=solarmonitor_type,
             solarmonitor_indexnum=solarmonitor_indexnum,
