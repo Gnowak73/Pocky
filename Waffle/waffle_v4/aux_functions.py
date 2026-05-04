@@ -5558,6 +5558,12 @@ def stream_aia_data(
                                 for slot in missing_box_idx[: len(fallback_xy)]
                             )
                         )
+                    # If SolarMonitor gave us no usable boxes, assign the initial
+                    # fallback-only layout into WAFFLE's top/bottom slot order once.
+                    if np.sum(np.isfinite(ar_priority)) == 0 and np.all(np.isfinite(ar_x)) and np.all(np.isfinite(ar_y)):
+                        arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
+                            arnum, ar_x, ar_y, ar_priority
+                        )
                 should_recenter_now = False
                 recenter_kind = "Box recenter"
                 if startup_box_recenter and (not startup_boxes_refined):
@@ -6244,6 +6250,9 @@ def stream_aia_data(
                         trigger_time_local = convert_utc_to_timezone(
                             trigger_time_utc, timezone=timezone
                         )
+                        maybe_send_sms(
+                            f"Waffle: Main trigger fired in box {focus_label}."
+                        )
                         if (
                             not imminence_trigger_times
                             or (
@@ -6276,6 +6285,9 @@ def stream_aia_data(
                         ).replace(tzinfo=datetime.timezone.utc)
                         trigger_time_local = convert_utc_to_timezone(
                             trigger_time_utc, timezone=timezone
+                        )
+                        maybe_send_sms(
+                            f"Waffle: Pretrigger fired in box {focus_label}."
                         )
                         if (
                             not imminence_trigger_times
