@@ -787,11 +787,11 @@ def _c5_pretrigger_condition(box_em_total: float, t_mk: float, em49: float) -> b
     if not (np.isfinite(box_em_total) and np.isfinite(t_mk) and np.isfinite(em49)):
         return False
     if box_em_total >= 9.0e48:
-        return (t_mk >= 12.0) and (em49 >= 0.15)
+        return (t_mk >= 12.0) and (em49 >= 0.11)
     if box_em_total >= 5.0e48:
-        return (t_mk >= 11.0) and (em49 >= 0.08)
+        return (t_mk >= 10.5) and (em49 >= 0.07)
     if box_em_total >= 1.0e48:
-        return (t_mk >= 9.0) and (em49 >= 0.05)
+        return (t_mk >= 9.0) and (em49 >= 0.03)
     if box_em_total >= 5.0e47:
         return (t_mk >= 10.0) and (em49 >= 0.035)
     return False
@@ -5558,9 +5558,6 @@ def stream_aia_data(
                                 for slot in missing_box_idx[: len(fallback_xy)]
                             )
                         )
-                    arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
-                        arnum, ar_x, ar_y, ar_priority
-                    )
                 should_recenter_now = False
                 recenter_kind = "Box recenter"
                 if startup_box_recenter and (not startup_boxes_refined):
@@ -5617,9 +5614,6 @@ def stream_aia_data(
                                     for slot in recenter_missing_idx[: len(fallback_xy)]
                                 )
                             )
-                    arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
-                        arnum, ar_x, ar_y, ar_priority
-                    )
                     startup_boxes_refined = True
                     last_box_recenter_ut = start_time_series
                     if refined_shifts:
@@ -6484,9 +6478,9 @@ def stream_aia_data(
                         alert_config={
                             "type": "pretrigger",
                             "alert_count": 2,
-                            "box_em_total_thresholds": [1.0e48, 5.0e48, 1.0e49],
-                            "t_mk_thresholds": [8.0, 10.0, 11.0],
-                            "em49_thresholds": [0.04, 0.08, 0.15],
+                            "box_em_total_thresholds": [5.0e47, 1.0e48, 5.0e48, 9.0e48],
+                            "t_mk_thresholds": [10.0, 9.0, 10.5, 12.0],
+                            "em49_thresholds": [0.035, 0.03, 0.07, 0.11],
                             "consecutive_frames_required": 2,
                             "cooldown_frames": int(
                                 imminence_pretrigger_cooldown_frames
