@@ -2627,6 +2627,22 @@ def prepare_goes_plot_arrays(
     return goes_time_array, goes_xrsa_flux, goes_xrsb_flux
 
 
+def append_goes_plot_break(goes_plot_data, break_time_local):
+    """Extend the last successful GOES plot with a NaN endpoint to render a break."""
+    if goes_plot_data is None:
+        return None
+    goes_time_array, goes_xrsa_flux, goes_xrsb_flux = goes_plot_data
+    if len(goes_time_array) == 0 or break_time_local is None:
+        return goes_plot_data
+    if goes_time_array[-1] >= break_time_local:
+        return goes_plot_data
+    return (
+        np.append(goes_time_array, break_time_local),
+        np.append(np.asarray(goes_xrsa_flux, dtype=float), np.nan),
+        np.append(np.asarray(goes_xrsb_flux, dtype=float), np.nan),
+    )
+
+
 def _latest_xrsb_derivative(xrsb_current, reference_time_ut=None):
     if xrsb_current is None or len(xrsb_current) < 2:
         return np.nan
@@ -5190,6 +5206,7 @@ def stream_aia_data(
     offline_sms_active = False
     startup_sms_sent = False
     last_successful_publish_unix = time.time()
+    last_successful_goes_plot_data = None
     if publish_mode == "scp":
         ssh_client = define_ssh_client()
     elif publish_mode == "local":
@@ -5760,6 +5777,18 @@ def stream_aia_data(
                     lookback_minutes=60,
                     lead_minutes=goes_lead_minutes,
                 )
+                if goes_available:
+                    last_successful_goes_plot_data = goes_plot_data
+                elif last_successful_goes_plot_data is not None:
+                    break_time_local = goes_anchor_local
+                    if break_time_local is None:
+                        break_time_local = convert_utc_to_timezone(
+                            start_time_series, timezone=timezone
+                        )
+                    goes_plot_data = append_goes_plot_break(
+                        last_successful_goes_plot_data,
+                        break_time_local,
+                    )
                 xrsb_derivative = _latest_xrsb_derivative(
                     xrsb_current, reference_time_ut=start_time_series
                 )
