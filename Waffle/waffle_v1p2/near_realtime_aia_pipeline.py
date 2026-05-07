@@ -48,6 +48,12 @@ if __name__ == "__main__":
     publish_mode = "local"  # "scp" or "local"
     local_web_host = "127.0.0.1"
     local_web_port = 8003
+    enable_global_control = True
+    global_control_provider = "cloudflared"  # "auto", "cloudflared", or "ngrok"
+    global_control_config_path = aux_functions.default_global_control_config_path()
+    external_control_url = ""
+    control_auth_user = "waffle"
+    control_auth_password = "waffle"
     ssh_host = "physics.wku.edu"
     ssh_user = "emslie"
     ssh_password = "waffle"
@@ -150,6 +156,14 @@ if __name__ == "__main__":
     drms_series, drms_segment = aux_functions.resolve_drms_source(drms_mode)
     correction_table = aux_functions.load_aia_correction_table()
     local_server_proc = None
+    global_control_tunnel = None
+    global_control_cfg = aux_functions.load_global_control_config(
+        global_control_config_path
+    )
+    if not external_control_url:
+        external_control_url = str(
+            global_control_cfg.get("external_control_url", "") or ""
+        ).strip()
 
     try:
         if publish_mode == "local":
@@ -158,7 +172,24 @@ if __name__ == "__main__":
                 local_web_host,
                 local_web_port,
                 control_config_path=box_control_path,
+                control_auth_user=control_auth_user,
+                control_auth_password=control_auth_password,
             )
+            if enable_global_control:
+                global_control_tunnel = aux_functions.start_global_control_tunnel(
+                    local_web_port,
+                    provider=global_control_provider,
+                    cloudflared_token=str(
+                        global_control_cfg.get("cloudflared_token", "") or ""
+                    ).strip(),
+                    external_control_url=external_control_url,
+                )
+                public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
+                    "/"
+                )
+                external_control_url = (
+                    public_url + "/control.html" if public_url else external_control_url
+                )
 
         # Start AIA data stream
         aux_functions.stream_aia_data(
@@ -179,6 +210,7 @@ if __name__ == "__main__":
             box_crops_root=box_crops_root,
             publish_mode=publish_mode,
             local_publish_dir=local_publish_dir,
+            external_control_url=external_control_url,
             drms_series=drms_series,
             drms_segment=drms_segment,
             query_start_ut=query_start_ut,
@@ -212,4 +244,5 @@ if __name__ == "__main__":
             ar_priority=ar_priority,
         )
     finally:
+        aux_functions.stop_global_control_tunnel(global_control_tunnel)
         aux_functions.stop_local_publish_server(local_server_proc)

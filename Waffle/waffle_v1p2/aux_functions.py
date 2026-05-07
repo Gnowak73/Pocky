@@ -39,6 +39,8 @@ import io
 import importlib.util
 import pickle
 import subprocess
+import base64
+import secrets
 import socket
 import threading
 import http.server
@@ -46,6 +48,7 @@ import logging
 import smtplib
 from email.message import EmailMessage
 from urllib.parse import urlparse
+from urllib.parse import urljoin
 
 from dateutil import tz
 
@@ -299,8 +302,18 @@ def _validate_manual_box_control_payload(payload, max_radius_arcsec=1000.0):
 
 
 class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, directory=None, control_config_path=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        directory=None,
+        control_config_path=None,
+        control_auth_user="",
+        control_auth_password="",
+        **kwargs,
+    ):
         self._control_config_path = control_config_path
+        self._control_auth_user = str(control_auth_user or "")
+        self._control_auth_password = str(control_auth_password or "")
         super().__init__(*args, directory=directory, **kwargs)
 
     def log_message(self, fmt, *args):
@@ -314,8 +327,40 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _control_auth_enabled(self):
+        return bool(self._control_auth_user or self._control_auth_password)
+
+    def _is_control_path(self, path):
+        return path in ("/control.html", "/api/box-control")
+
+    def _authorized(self):
+        if not self._control_auth_enabled():
+            return True
+        header = str(self.headers.get("Authorization", "") or "")
+        if not header.startswith("Basic "):
+            return False
+        try:
+            raw = base64.b64decode(header.split(" ", 1)[1]).decode("utf-8")
+        except Exception:
+            return False
+        user, sep, password = raw.partition(":")
+        if not sep:
+            return False
+        return secrets.compare_digest(user, self._control_auth_user) and secrets.compare_digest(
+            password, self._control_auth_password
+        )
+
+    def _request_auth(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="WAFFLE Box Control"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if self._is_control_path(parsed.path) and not self._authorized():
+            self._request_auth()
+            return
         if parsed.path == "/api/box-control":
             if not self._control_config_path or not os.path.exists(self._control_config_path):
                 self._send_json(404, {"ok": False, "error": "box control unavailable"})
@@ -329,6 +374,9 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if self._is_control_path(parsed.path) and not self._authorized():
+            self._request_auth()
+            return
         if parsed.path != "/api/box-control":
             self._send_json(404, {"ok": False, "error": "not found"})
             return
@@ -348,7 +396,14 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": str(exc)})
 
 
-def start_local_publish_server(local_publish_dir, host, port, control_config_path=None):
+def start_local_publish_server(
+    local_publish_dir,
+    host,
+    port,
+    control_config_path=None,
+    control_auth_user="",
+    control_auth_password="",
+):
     mkdir(local_publish_dir)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
@@ -360,6 +415,8 @@ def start_local_publish_server(local_publish_dir, host, port, control_config_pat
         *args,
         directory=local_publish_dir,
         control_config_path=control_config_path,
+        control_auth_user=control_auth_user,
+        control_auth_password=control_auth_password,
         **kwargs,
     )
     server = http.server.ThreadingHTTPServer((host, port), handler)
@@ -380,6 +437,184 @@ def stop_local_publish_server(proc):
         if thread is not None:
             thread.join(timeout=3)
     print("Local website server stopped.")
+
+
+def default_global_control_config_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "global_control_config.json",
+    )
+
+
+def load_global_control_config(path):
+    cfg_path = Path(path)
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    default_cfg = {
+        "cloudflared_token": "",
+        "external_control_url": "",
+    }
+    if not cfg_path.exists():
+        cfg_path.write_text(json.dumps(default_cfg, indent=2) + "\n", encoding="utf-8")
+        return dict(default_cfg)
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return dict(default_cfg)
+    out = dict(default_cfg)
+    if isinstance(data, dict):
+        out["cloudflared_token"] = str(data.get("cloudflared_token", "") or "").strip()
+        out["external_control_url"] = str(data.get("external_control_url", "") or "").strip()
+    return out
+
+
+def _extract_tunnel_url(line):
+    match = re.search(r"https://[A-Za-z0-9.-]+", str(line))
+    return match.group(0) if match else None
+
+
+def start_global_control_tunnel(
+    local_port,
+    provider="auto",
+    startup_timeout_sec=20.0,
+    cloudflared_token="",
+    external_control_url="",
+):
+    cloudflared_token = str(cloudflared_token or "").strip()
+    external_control_url = str(external_control_url or "").strip()
+    if cloudflared_token:
+        cmd = [
+            sys.executable,
+            "-m",
+            "pycloudflared",
+            "tunnel",
+            "run",
+            "--token",
+            cloudflared_token,
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        deadline = time.time() + float(startup_timeout_sec)
+        lines = []
+        while time.time() < deadline:
+            line = proc.stdout.readline() if proc.stdout is not None else ""
+            if line:
+                lines.append(line.rstrip())
+            if proc.poll() is not None:
+                break
+            if lines:
+                last_line = lines[-1].lower()
+                if "registered tunnel connection" in last_line or "connection" in last_line:
+                    break
+            time.sleep(0.1)
+        if proc.poll() is None:
+            public_url = external_control_url.rstrip("/") if external_control_url else ""
+            if public_url:
+                print(f"Global control tunnel started with token: {public_url}")
+            else:
+                print("Global control tunnel started with token.")
+            return {
+                "proc": proc,
+                "provider": "pycloudflared-token",
+                "public_url": public_url,
+            }
+        if lines:
+            print(f"Global control tunnel token start failed: {lines[-1]}")
+
+    provider_order = []
+    provider = str(provider or "auto").strip().lower()
+    if provider == "auto":
+        provider_order = ["cloudflared", "ngrok"]
+    elif provider in ("cloudflared", "ngrok"):
+        provider_order = [provider]
+    else:
+        raise ValueError(
+            "global control provider must be 'auto', 'cloudflared', or 'ngrok'"
+        )
+
+    for name in provider_order:
+        if name == "cloudflared":
+            try:
+                from pycloudflared import try_cloudflare
+
+                urls = try_cloudflare(int(local_port), verbose=False)
+                url = str(urls.tunnel).rstrip("/")
+                print(f"Global control tunnel started with pycloudflared: {url}")
+                return {
+                    "proc": urls.process,
+                    "provider": "pycloudflared",
+                    "public_url": url,
+                }
+            except Exception:
+                pass
+        binary = shutil.which(name)
+        if not binary:
+            continue
+        if name == "cloudflared":
+            cmd = [binary, "tunnel", "--url", f"http://127.0.0.1:{int(local_port)}"]
+        else:
+            cmd = [binary, "http", str(int(local_port)), "--log", "stdout"]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except Exception:
+            continue
+        lines = []
+        deadline = time.time() + float(startup_timeout_sec)
+        url = None
+        while time.time() < deadline:
+            line = proc.stdout.readline() if proc.stdout is not None else ""
+            if not line:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.1)
+                continue
+            lines.append(line.rstrip())
+            candidate = _extract_tunnel_url(line)
+            if candidate:
+                url = candidate
+                break
+        if url:
+            print(f"Global control tunnel started with {name}: {url}")
+            return {"proc": proc, "provider": name, "public_url": url}
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        if lines:
+            print(f"Global control tunnel {name} failed to start: {lines[-1]}")
+    raise RuntimeError(
+        "No supported global tunnel could be started. Install cloudflared or ngrok, or disable global control."
+    )
+
+
+def stop_global_control_tunnel(tunnel_info):
+    if not tunnel_info:
+        return
+    proc = tunnel_info.get("proc")
+    if proc is None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 def em_active_area_fraction(em_map, active_threshold=1.0e43):
     arr = np.asarray(em_map, dtype=np.float64)
@@ -2781,6 +3016,7 @@ def publish_local_files(
     suvi_top_wavelength=131,
     suvi_day_utc=None,
     suvi_use_realtime=False,
+    control_page_href="./control.html",
 ):
     """
     Publish latest output files to a local folder (e.g., local web root).
@@ -2824,12 +3060,26 @@ def publish_local_files(
         suvi_day_utc=suvi_day_utc,
         suvi_use_realtime=suvi_use_realtime,
         control_enabled=True,
+        page_mode="full",
+        control_page_href=control_page_href,
+    )
+    control_html = build_waffle_v2_index_html(
+        suvi_top_wavelength=suvi_top_wavelength,
+        suvi_day_utc=suvi_day_utc,
+        suvi_use_realtime=suvi_use_realtime,
+        control_enabled=True,
+        page_mode="control",
+        control_page_href=control_page_href,
     )
 
     with open(
         os.path.join(destination_volume, "index.html"), "w", encoding="utf-8"
     ) as f:
         f.write(index_html)
+    with open(
+        os.path.join(destination_volume, "control.html"), "w", encoding="utf-8"
+    ) as f:
+        f.write(control_html)
 
 
 def _status_payload(kind, title, detail):
@@ -2964,6 +3214,8 @@ def build_waffle_v2_index_html(
     suvi_day_utc=None,
     suvi_use_realtime=False,
     control_enabled=False,
+    page_mode="full",
+    control_page_href="#",
 ):
     index_html = ""
     # Use the template next to near_realtime_aia_pipeline.py / aux_functions.py.
@@ -2997,6 +3249,8 @@ def build_waffle_v2_index_html(
     index_html = index_html.replace(
         "__CONTROL_ENABLED__", "true" if control_enabled else "false"
     )
+    index_html = index_html.replace("__PAGE_MODE__", str(page_mode))
+    index_html = index_html.replace("__CONTROL_PAGE_HREF__", str(control_page_href))
     return index_html
 
 
@@ -3006,12 +3260,15 @@ def publish_remote_index_html(
     suvi_top_wavelength=131,
     suvi_day_utc=None,
     suvi_use_realtime=False,
+    control_page_href="#",
 ):
     index_html = build_waffle_v2_index_html(
         suvi_top_wavelength=suvi_top_wavelength,
         suvi_day_utc=suvi_day_utc,
         suvi_use_realtime=suvi_use_realtime,
         control_enabled=False,
+        page_mode="full",
+        control_page_href=control_page_href,
     )
     with SCPClient(ssh_client.get_transport()) as scp:
         scp.putfo(
@@ -4723,6 +4980,7 @@ def stream_aia_data(
     box_crops_root=None,
     publish_mode="scp",
     local_publish_dir=None,
+    external_control_url="",
     drms_series="aia.lev1_nrt2",
     drms_segment="image_lev1",
     query_start_ut=None,
@@ -5997,7 +6255,10 @@ def stream_aia_data(
                     )
                     estimated_realtime_utc = None
                     estimated_realtime_local = None
-                    if archive_trigger_realtime_delay_minutes is not None:
+                    if (
+                        (not realtime_mode)
+                        and archive_trigger_realtime_delay_minutes is not None
+                    ):
                         estimated_realtime_utc, estimated_realtime_local = _estimate_realtime_from_aia(
                             trigger_time_utc,
                             timezone=timezone,
@@ -6174,6 +6435,11 @@ def stream_aia_data(
                             datetime.timezone.utc
                         ).strftime("%Y-%m-%d"),
                         suvi_use_realtime=suvi_use_realtime,
+                        control_page_href=(
+                            external_control_url.strip()
+                            if str(external_control_url).strip()
+                            else "#"
+                        ),
                     )
                 else:
                     publish_local_files(
@@ -6184,6 +6450,11 @@ def stream_aia_data(
                             datetime.timezone.utc
                         ).strftime("%Y-%m-%d"),
                         suvi_use_realtime=suvi_use_realtime,
+                        control_page_href=(
+                            external_control_url.strip()
+                            if str(external_control_url).strip()
+                            else "./control.html"
+                        ),
                     )
                 if goes_available:
                     publish_runtime_status(

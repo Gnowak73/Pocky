@@ -117,6 +117,25 @@ body {
     box-sizing: border-box;
     text-align: left;
 }
+.control-launch {
+    width: 100%;
+    margin: 14px 0 4px 0;
+    text-align: right;
+}
+.control-launch a {
+    display: inline-block;
+    border-radius: 8px;
+    padding: 9px 13px;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    background: #184f8a;
+    color: #ffffff;
+}
+.control-launch.disabled a {
+    background: #7a8790;
+    pointer-events: none;
+}
 .control-panel h2 {
     margin: 0 0 12px 0;
     font-size: 20px;
@@ -247,6 +266,9 @@ body {
 <br>
 <img id="image1" src="./latest_plots/em_goes_plot.png" style="width:100%;max-width:100%;height:auto;">
 </center>
+<div id="control-launch" class="control-launch">
+    <a id="control-link" href="__CONTROL_PAGE_HREF__" target="_blank" rel="noopener">Open Box Control in New Tab</a>
+</div>
 <div id="control-panel" class="control-panel">
     <h2>Box Control</h2>
     <div class="control-note">Updates submitted here are applied at the next WAFFLE cycle boundary, not mid-cycle.</div>
@@ -308,6 +330,7 @@ body {
 var STATUS_STALE_SEC = 500;
 var lastStatusKey = null;
 var CONTROL_ENABLED = "__CONTROL_ENABLED__" === "true";
+var PAGE_MODE = "__PAGE_MODE__";
 var BOX_LABELS = ["A", "B", "C", "D", "E", "F"];
 var controlStatusTimer = null;
 
@@ -332,7 +355,7 @@ function refreshStatus() {
             var updated = Number(data.updated_unix || 0);
             var age = updated > 0 ? (nowSec - updated) : 1e9;
             if (age > STATUS_STALE_SEC) {
-                setStatusBanner("offline", "WKU Internet Offline", "Last update " + Math.round(age) + "s ago");
+                setStatusBanner("offline", "WAFFLE Offline", "Last update " + Math.round(age) + "s ago");
                 return;
             }
             var kind = String(data.kind || "ok");
@@ -343,7 +366,7 @@ function refreshStatus() {
             setStatusBanner(kind, title, detail);
         })
         .catch(function() {
-            setStatusBanner("offline", "Status Unreachable", "Could not load status.json");
+            setStatusBanner("offline", "WAFFLE Offline", "Could not load status.json");
         });
 }
 
@@ -476,6 +499,24 @@ function loadControlConfig() {
         });
 }
 
+function configurePageMode() {
+    var launch = document.getElementById("control-launch");
+    var panel = document.getElementById("control-panel");
+    if (!CONTROL_ENABLED) {
+        launch.classList.add("disabled");
+    }
+    if (PAGE_MODE === "control") {
+        document.getElementById("image0").style.display = "none";
+        document.getElementById("image1").style.display = "none";
+        launch.style.display = "none";
+        document.querySelector("#control-panel h2").textContent = "Remote Box Control";
+        document.querySelector(".control-note").textContent =
+            "Updates submitted here are applied at the next WAFFLE cycle boundary.";
+    } else {
+        panel.style.display = "none";
+    }
+}
+
 setInterval(function() {
     var timestamp = new Date().getTime();
     document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
@@ -523,6 +564,7 @@ document.getElementById("box-control-form").addEventListener("submit", function(
         });
 });
 
+configurePageMode();
 loadControlConfig();
 </script>
 </center>
