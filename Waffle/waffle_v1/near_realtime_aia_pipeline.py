@@ -90,6 +90,14 @@ if __name__ == "__main__":
     label_top = ["A", "B", "C"]
     x_top = np.array(x_top)
     y_top = np.array(y_top)
+    invalid_top = np.where((x_top**2 + y_top**2) > rsun**2)[0]
+    if invalid_top.size:
+        bad = ", ".join(
+            f"{label_top[i]}=({int(x_top[i])},{int(y_top[i])})" for i in invalid_top
+        )
+        raise ValueError(
+            f"Top-row box coordinates must lie within radius {rsun} arcsec: {bad}"
+        )
     lat_top = (180 / np.pi) * np.arcsin(y_top / rsun)
     long_top = (180 / np.pi) * np.arcsin(
         x_top / (rsun * np.cos((np.pi / 180) * lat_top))
@@ -98,6 +106,15 @@ if __name__ == "__main__":
     label_bottom = ["D", "E", "F"]
     x_bottom = np.array(x_bottom)
     y_bottom = np.array(y_bottom)
+    invalid_bottom = np.where((x_bottom**2 + y_bottom**2) > rsun**2)[0]
+    if invalid_bottom.size:
+        bad = ", ".join(
+            f"{label_bottom[i]}=({int(x_bottom[i])},{int(y_bottom[i])})"
+            for i in invalid_bottom
+        )
+        raise ValueError(
+            f"Bottom-row box coordinates must lie within radius {rsun} arcsec: {bad}"
+        )
     lat_bottom = (180 / np.pi) * np.arcsin(y_bottom / rsun)
     long_bottom = (180 / np.pi) * np.arcsin(
         x_bottom / (rsun * np.cos((np.pi / 180) * lat_bottom))
