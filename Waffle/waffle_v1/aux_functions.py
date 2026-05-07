@@ -36,6 +36,7 @@ import pandas as pd
 
 import json
 import io
+import shutil
 
 from dateutil import tz
 
@@ -124,20 +125,19 @@ def configure_jsoc_server(use_nrt2_server=True):
 
 def is_nrt2_auth_error(err: Exception) -> bool:
     text = str(err).lower()
-    return (
-        "nrt2" in text
-        and (
-            "auth" in text
-            or "authorized" in text
-            or "not allowed" in text
-            or "permission" in text
-            or "forbidden" in text
-            or "denied" in text
-        )
+    return "nrt2" in text and (
+        "auth" in text
+        or "authorized" in text
+        or "not allowed" in text
+        or "permission" in text
+        or "forbidden" in text
+        or "denied" in text
     )
 
 
-def print_query_wait_message(use_nrt2_server: bool, err: Exception | None = None) -> None:
+def print_query_wait_message(
+    use_nrt2_server: bool, err: Exception | None = None
+) -> None:
     if use_nrt2_server and err is not None and is_nrt2_auth_error(err):
         print(
             "NRT2 authorization error: this IP is not authorized for the Stanford "
@@ -159,6 +159,9 @@ def download_aia_data(
     silent=False,
     worker_count=5,
     executor=None,
+    download_timeout_sec=30.0,
+    download_retry_delay_sec=10.0,
+    download_retry_attempts=2,
 ):
     """
 
@@ -233,11 +236,29 @@ def download_aia_data(
             full_disk_maps_folder,
             "aia_lev1_nrt2_" + t_rec[i] + "_" + str(wav[i]) + ".fits",
         ).replace(":", "")
-        try:
-            urlretrieve(fits_file_url, filename)
-            return i, filename, False
-        except (HTTPError, URLError):
-            return i, None, True
+        max_attempts = max(1, int(download_retry_attempts))
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with (
+                    urlopen(fits_file_url, timeout=float(download_timeout_sec)) as src,
+                    open(filename, "wb") as dst,
+                ):
+                    shutil.copyfileobj(src, dst)
+                return i, filename, False
+            except Exception:
+                try:
+                    if os.path.exists(filename):
+                        os.remove(filename)
+                except OSError:
+                    pass
+                if attempt >= max_attempts:
+                    return i, None, True
+                if not silent:
+                    print(
+                        f"Retrying AIA download {int(wav[i])}A "
+                        f"(attempt {attempt + 1}/{max_attempts}) after {float(download_retry_delay_sec):.0f}s..."
+                    )
+                time.sleep(float(download_retry_delay_sec))
 
     # Network I/O bound: parallelize downloads with a small bounded pool.
     if executor is None:
@@ -855,7 +876,7 @@ def resolve_suvi_day_url(day_utc, wavelength=131, spacecraft="primary"):
         refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         # Also capture bare .png tokens from directory listings.
-        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        refs += re.findall(r"([A-Za-z0-9_./-]+\.png)", html, flags=re.IGNORECASE)
         seen = set()
         refs = [x for x in refs if not (x in seen or seen.add(x))]
         dated = []
@@ -901,7 +922,7 @@ def resolve_suvi_latest_dated_url(wavelength=131, spacecraft="primary"):
             html = r.read().decode("utf-8", errors="ignore")
         refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
-        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        refs += re.findall(r"([A-Za-z0-9_./-]+\.png)", html, flags=re.IGNORECASE)
         seen = set()
         refs = [x for x in refs if not (x in seen or seen.add(x))]
         # Prefer the dated entry immediately before latest.png in listing order.
@@ -2217,9 +2238,7 @@ def stream_aia_data(
                     if attempt < 2:
                         print_query_wait_message(use_nrt2_server, err)
                         time.sleep(2)
-                        client = configure_jsoc_server(
-                            use_nrt2_server=use_nrt2_server
-                        )
+                        client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
                         continue
                     print_query_wait_message(use_nrt2_server, err)
                     break
@@ -2258,6 +2277,12 @@ def stream_aia_data(
             idx = idx[0]
 
             if len(idx) == 0:
+                if realtime_mode:
+                    latest_query_start = datetime.datetime.now(
+                        datetime.timezone.utc
+                    ) - timedelta(minutes=latency)
+                    if latest_query_start > current_time_ut:
+                        current_time_ut = latest_query_start
                 print("Reference wavelength not found. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (
@@ -2334,6 +2359,12 @@ def stream_aia_data(
                     selected_segments.append(grouped_segments[j])
 
                 if len(selected_wav) != len(wavelengths_needed):
+                    if realtime_mode:
+                        latest_query_start = datetime.datetime.now(
+                            datetime.timezone.utc
+                        ) - timedelta(minutes=latency)
+                        if latest_query_start > current_time_ut:
+                            current_time_ut = latest_query_start
                     print("Selected cycle missing required wavelengths. Wait 15 s.")
                     time.sleep(15)
                     time_diff = (
@@ -2388,6 +2419,12 @@ def stream_aia_data(
                     phase_times["calibrate"] = time.time() - t_phase
 
                 if error:
+                    if realtime_mode:
+                        latest_query_start = datetime.datetime.now(
+                            datetime.timezone.utc
+                        ) - timedelta(minutes=latency)
+                        if latest_query_start > current_time_ut:
+                            current_time_ut = latest_query_start
                     print("Error in downloading data. Continue..")
                     time.sleep(30)
                     continue
@@ -2505,7 +2542,9 @@ def stream_aia_data(
                     em_map_th = em_map_raw.data.copy()
                     em_map_th[em_map_th < th_tot_em] = 0
                     # Match legacy WAFFLE scaling used in CSV totals.
-                    total_em_current = float(np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y))
+                    total_em_current = float(
+                        np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y)
+                    )
                     return i, em_map_raw, total_em_current
 
                 n_workers = max(1, min(int(worker_count), n_ar))
@@ -2673,6 +2712,12 @@ def stream_aia_data(
                     )
 
             else:
+                if realtime_mode:
+                    latest_query_start = datetime.datetime.now(
+                        datetime.timezone.utc
+                    ) - timedelta(minutes=latency)
+                    if latest_query_start > current_time_ut:
+                        current_time_ut = latest_query_start
                 print("No new data series. Wait 15 s.")
                 time.sleep(15)
                 time_diff = (
