@@ -171,7 +171,7 @@ if __name__ == "__main__":
         external_control_url = ""
 
     try:
-        if publish_mode == "local":
+        if publish_mode == "local" or enable_global_control:
             local_server_proc = aux_functions.start_local_publish_server(
                 local_publish_dir,
                 local_web_host,
@@ -180,23 +180,23 @@ if __name__ == "__main__":
                 control_auth_user=control_auth_user,
                 control_auth_password=control_auth_password,
             )
-            if enable_global_control:
-                global_control_tunnel = aux_functions.start_global_control_tunnel(
-                    local_web_port,
-                    provider=global_control_provider,
-                    cloudflared_token=cloudflared_token,
-                    external_control_url=external_control_url,
-                )
-                public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
-                    "/"
-                )
-                external_control_url = (
-                    public_url + "/control.html" if public_url else external_control_url
-                )
-                if external_control_url:
-                    print(f"Global control link resolved: {external_control_url}")
-                else:
-                    print("Global control link unresolved for this run.")
+        if enable_global_control:
+            global_control_tunnel = aux_functions.start_global_control_tunnel(
+                local_web_port,
+                provider=global_control_provider,
+                cloudflared_token=cloudflared_token,
+                external_control_url=external_control_url,
+            )
+            public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
+                "/"
+            )
+            external_control_url = (
+                public_url + "/control.html" if public_url else external_control_url
+            )
+            if external_control_url:
+                print(f"Global control link resolved: {external_control_url}")
+            else:
+                print("Global control link unresolved for this run.")
 
         # Start AIA data stream
         aux_functions.stream_aia_data(

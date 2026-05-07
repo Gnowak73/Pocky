@@ -6427,6 +6427,21 @@ def stream_aia_data(
                 print("Publish data...")
                 t_phase = time.time()
                 if publish_mode == "scp":
+                    if local_publish_dir:
+                        publish_local_files(
+                            latest_plots_folder,
+                            local_publish_dir,
+                            suvi_top_wavelength=suvi_top_wavelength,
+                            suvi_day_utc=start_time_series.astimezone(
+                                datetime.timezone.utc
+                            ).strftime("%Y-%m-%d"),
+                            suvi_use_realtime=suvi_use_realtime,
+                            control_page_href=(
+                                external_control_url.strip()
+                                if str(external_control_url).strip()
+                                else "./control.html"
+                            ),
+                        )
                     ssh_scp_files(ssh_client, latest_plots_folder, destination_volume)
                     publish_remote_index_html(
                         ssh_client,
