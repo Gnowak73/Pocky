@@ -511,6 +511,20 @@ def start_global_control_tunnel(
         )
 
     for name in provider_order:
+        if name == "cloudflared":
+            try:
+                from pycloudflared import try_cloudflare
+
+                urls = try_cloudflare(int(local_port), verbose=False)
+                url = str(urls.tunnel).rstrip("/")
+                print(f"Global control tunnel started with pycloudflared: {url}")
+                return {
+                    "proc": urls.process,
+                    "provider": "pycloudflared",
+                    "public_url": url,
+                }
+            except Exception as exc:
+                print(f"Global control tunnel pycloudflared fallback failed: {exc}")
         binary = shutil.which(name)
         if not binary:
             continue
