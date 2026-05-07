@@ -30,3 +30,6 @@ DEM/test_ratios.txt
 **/local_web/
 **/total_em/
 **/launcher_logs/
+Waffle/waffle_v4/sms_recipients.txt
+Waffle/waffle_v4/sms_smtp_config.json
+Waffle/waffle_v1p2/global_control_config.json
