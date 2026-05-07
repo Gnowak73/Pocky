@@ -160,10 +160,15 @@ if __name__ == "__main__":
     global_control_cfg = aux_functions.load_global_control_config(
         global_control_config_path
     )
-    if not external_control_url:
-        external_control_url = str(
-            global_control_cfg.get("external_control_url", "") or ""
-        ).strip()
+    cloudflared_token = str(global_control_cfg.get("cloudflared_token", "") or "").strip()
+    if cloudflared_token:
+        if not external_control_url:
+            external_control_url = str(
+                global_control_cfg.get("external_control_url", "") or ""
+            ).strip()
+    else:
+        # Free temporary tunnels must publish a fresh URL every run.
+        external_control_url = ""
 
     try:
         if publish_mode == "local":
@@ -179,9 +184,7 @@ if __name__ == "__main__":
                 global_control_tunnel = aux_functions.start_global_control_tunnel(
                     local_web_port,
                     provider=global_control_provider,
-                    cloudflared_token=str(
-                        global_control_cfg.get("cloudflared_token", "") or ""
-                    ).strip(),
+                    cloudflared_token=cloudflared_token,
                     external_control_url=external_control_url,
                 )
                 public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
@@ -190,6 +193,10 @@ if __name__ == "__main__":
                 external_control_url = (
                     public_url + "/control.html" if public_url else external_control_url
                 )
+                if external_control_url:
+                    print(f"Global control link resolved: {external_control_url}")
+                else:
+                    print("Global control link unresolved for this run.")
 
         # Start AIA data stream
         aux_functions.stream_aia_data(
