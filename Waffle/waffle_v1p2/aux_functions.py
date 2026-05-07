@@ -3262,11 +3262,12 @@ def publish_remote_index_html(
     suvi_use_realtime=False,
     control_page_href="#",
 ):
+    control_link_enabled = str(control_page_href).strip() not in ("", "#")
     index_html = build_waffle_v2_index_html(
         suvi_top_wavelength=suvi_top_wavelength,
         suvi_day_utc=suvi_day_utc,
         suvi_use_realtime=suvi_use_realtime,
-        control_enabled=False,
+        control_enabled=control_link_enabled,
         page_mode="full",
         control_page_href=control_page_href,
     )
