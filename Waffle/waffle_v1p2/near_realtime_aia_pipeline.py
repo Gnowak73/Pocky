@@ -49,7 +49,7 @@ if __name__ == "__main__":
     local_web_host = "127.0.0.1"
     local_web_port = 8003
     enable_global_control = True
-    global_control_provider = "ngrok"  # "auto", "ngrok", or "cloudflared"
+    global_control_provider = "auto"  # "auto", "ngrok", or "cloudflared"
     global_control_config_path = aux_functions.default_global_control_config_path()
     external_control_url = ""
     control_auth_user = "waffle"
@@ -187,9 +187,7 @@ if __name__ == "__main__":
                 ngrok_authtoken=ngrok_authtoken,
                 external_control_url=external_control_url,
             )
-            public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
-                "/"
-            )
+            public_url = str(global_control_tunnel.get("public_url", "")).rstrip("/")
             external_control_url = (
                 public_url + "/control.html" if public_url else external_control_url
             )

@@ -511,6 +511,26 @@ def start_global_control_tunnel(
         )
 
     for name in provider_order:
+        if name == "ngrok":
+            if not ngrok_authtoken:
+                continue
+            try:
+                import ngrok
+
+                listener = ngrok.forward(
+                    int(local_port),
+                    authtoken=ngrok_authtoken,
+                )
+                public_url = str(listener.url()).rstrip("/")
+                print(f"Global control tunnel started with ngrok sdk: {public_url}")
+                return {
+                    "listener": listener,
+                    "provider": "ngrok-sdk",
+                    "public_url": public_url,
+                }
+            except Exception as exc:
+                print(f"Global control tunnel ngrok sdk failed to start: {exc}")
+                continue
         if name == "cloudflared":
             try:
                 from pycloudflared import try_cloudflare
@@ -525,57 +545,8 @@ def start_global_control_tunnel(
                 }
             except Exception as exc:
                 print(f"Global control tunnel pycloudflared fallback failed: {exc}")
-        binary = shutil.which(name)
-        if not binary:
-            continue
-        if name == "ngrok":
-            cmd = [binary, "http", str(int(local_port)), "--log", "stdout"]
-            if ngrok_authtoken:
-                cmd.extend(["--authtoken", ngrok_authtoken])
-        elif name == "cloudflared":
-            cmd = [binary, "tunnel", "--url", f"http://127.0.0.1:{int(local_port)}"]
-        else:
-            cmd = [binary, "http", str(int(local_port)), "--log", "stdout"]
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-        except Exception:
-            continue
-        lines = []
-        deadline = time.time() + float(startup_timeout_sec)
-        url = None
-        while time.time() < deadline:
-            line = proc.stdout.readline() if proc.stdout is not None else ""
-            if not line:
-                if proc.poll() is not None:
-                    break
-                time.sleep(0.1)
-                continue
-            lines.append(line.rstrip())
-            candidate = _extract_tunnel_url(line)
-            if candidate:
-                url = candidate
-                break
-        if url:
-            print(f"Global control tunnel started with {name}: {url}")
-            return {"proc": proc, "provider": name, "public_url": url}
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-        if lines:
-            print(f"Global control tunnel {name} failed to start: {lines[-1]}")
     raise RuntimeError(
-        "No supported global tunnel could be started. Install cloudflared or ngrok, or disable global control."
+        "No supported Python tunnel could be started. Configure ngrok_authtoken for ngrok or use pycloudflared fallback."
     )
 
 
