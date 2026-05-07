@@ -3118,10 +3118,13 @@ def publish_runtime_status(
     kind,
     title,
     detail,
+    local_mirror_destination=None,
 ):
     try:
         if publish_mode == "scp":
             publish_status_remote(ssh_client, destination_volume, kind, title, detail)
+            if local_mirror_destination:
+                publish_status_local(local_mirror_destination, kind, title, detail)
         else:
             publish_status_local(destination_volume, kind, title, detail)
     except Exception as exc:
@@ -3198,11 +3201,20 @@ def start_delayed_runtime_status(
     kind,
     title,
     detail,
+    local_mirror_destination=None,
 ):
     timer = threading.Timer(
         float(delay_sec),
         publish_runtime_status,
-        args=(publish_mode, destination_volume, ssh_client, kind, title, detail),
+        args=(
+            publish_mode,
+            destination_volume,
+            ssh_client,
+            kind,
+            title,
+            detail,
+            local_mirror_destination,
+        ),
     )
     timer.daemon = True
     timer.start()
@@ -5342,6 +5354,7 @@ def stream_aia_data(
             "warn",
             "Waiting",
             "WAFFLE stream is initializing",
+            local_mirror_destination=local_publish_dir,
         )
 
     def sync_box_control_file():
@@ -5485,6 +5498,7 @@ def stream_aia_data(
                             "warn",
                             "Waiting",
                             "Transient DRMS query issue; retrying shortly",
+                            local_mirror_destination=local_publish_dir,
                         )
                         print_query_wait_message(use_nrt2_server, err)
                         time.sleep(2)
@@ -5499,6 +5513,7 @@ def stream_aia_data(
                         "warn",
                         "Waiting",
                         "DRMS query failed; WAFFLE will keep retrying",
+                        local_mirror_destination=local_publish_dir,
                     )
                     print_query_wait_message(use_nrt2_server, err)
                     print(f"DRMS query failed for {ds_query}: {err}")
@@ -5518,6 +5533,7 @@ def stream_aia_data(
                         "warn",
                         "Waiting",
                         "JSOC responded without a complete AIA cycle; retrying shortly",
+                        local_mirror_destination=local_publish_dir,
                     )
                     print_query_wait_message(use_nrt2_server)
                     time.sleep(2)
@@ -5530,6 +5546,7 @@ def stream_aia_data(
                         "warn",
                         "Waiting",
                         "No usable DRMS rows yet; WAFFLE is still polling",
+                        local_mirror_destination=local_publish_dir,
                     )
                     cols = list(getattr(query, "columns", [])) if query is not None else []
                     rows = len(query) if query is not None else 0
@@ -5734,6 +5751,7 @@ def stream_aia_data(
                     "warn",
                     "Waiting",
                     "AIA download is taking longer than expected",
+                    local_mirror_destination=local_publish_dir,
                 )
                 aia_maps, dowloaded_data_folder, error = download_aia_data(
                     grouped_wav,
@@ -5905,6 +5923,7 @@ def stream_aia_data(
                         "warn",
                         "Waiting",
                         "One or more AIA files failed to download; retrying next cycle",
+                        local_mirror_destination=local_publish_dir,
                     )
                     print("Error in downloading data. Continue..")
                     time.sleep(30)
@@ -6480,6 +6499,7 @@ def stream_aia_data(
                         "ok",
                         "Online",
                         "Latest plots are up to date",
+                        local_mirror_destination=local_publish_dir,
                     )
                 else:
                     publish_runtime_status(
@@ -6489,6 +6509,7 @@ def stream_aia_data(
                         "warn",
                         "Waiting",
                         "AIA is online but GOES XRS is unavailable",
+                        local_mirror_destination=local_publish_dir,
                     )
                 last_successful_publish_unix = time.time()
                 if not startup_sms_sent:
@@ -6594,6 +6615,7 @@ def stream_aia_data(
                 "warn",
                 "Offline",
                 "WAFFLE is not running",
+                local_mirror_destination=local_publish_dir,
             )
         except Exception as exc:
             print(f"Failed to publish offline runtime status: {exc}")
