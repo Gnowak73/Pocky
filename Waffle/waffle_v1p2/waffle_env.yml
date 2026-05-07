@@ -1,0 +1,20 @@
+name: Waffle
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.14
+  - numpy
+  - astropy
+  - pillow
+  - sunpy
+  - sunkit-instruments
+  - python-dateutil
+  - aiapy
+  - drms
+  - pandas
+  - paramiko
+  - scipy
+  - pytz
+  - matplotlib
+  - scp

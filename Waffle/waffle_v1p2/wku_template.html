@@ -1,0 +1,531 @@
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>WAFFLE v1p2</title>
+<style>
+body {
+    margin: 0;
+    background: #ffffff;
+    color: #10212b;
+    font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+}
+#page-frame {
+    width: 97.5%;
+    margin: 0 auto;
+    padding-top: 22px;
+    background: #ffffff;
+    position: relative;
+}
+#status-banner {
+    position: absolute;
+    top: 0;
+    left: 22px;
+    z-index: 50;
+    min-width: 150px;
+    max-width: min(52vw, 240px);
+    padding: 6px 12px 8px 12px;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 8px 18px rgba(16, 33, 43, 0.16);
+    border: 1px solid rgba(16, 33, 43, 0.12);
+    border-top: 0;
+    background: #1f7a45;
+    color: #ffffff;
+    text-align: left;
+}
+#status-banner::before,
+#status-banner::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 14px;
+    height: 14px;
+    background: inherit;
+}
+#status-banner::before {
+    left: -10px;
+    clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+#status-banner::after {
+    right: -10px;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.status-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    margin-bottom: 2px;
+}
+.status-value {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+.status-detail {
+    display: block;
+    font-size: 10px;
+    opacity: 0.9;
+    margin-top: 3px;
+}
+@media (max-width: 700px) {
+    #page-frame {
+        width: 100%;
+        padding-top: 48px;
+    }
+    #status-banner {
+        left: 8px;
+        right: auto;
+        min-width: 104px;
+        max-width: 138px;
+        padding: 4px 8px 6px 8px;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 5px 12px rgba(16, 33, 43, 0.14);
+    }
+    #status-banner::before,
+    #status-banner::after {
+        width: 10px;
+        height: 10px;
+    }
+    #status-banner::before {
+        left: -7px;
+    }
+    #status-banner::after {
+        right: -7px;
+    }
+    .status-label {
+        font-size: 8px;
+        margin-bottom: 1px;
+    }
+    .status-value {
+        font-size: 11px;
+    }
+    .status-detail {
+        font-size: 8px;
+        margin-top: 2px;
+    }
+}
+.control-panel {
+    width: 100%;
+    margin: 28px auto 18px auto;
+    border: 1px solid rgba(16, 33, 43, 0.14);
+    border-radius: 12px;
+    box-shadow: 0 8px 18px rgba(16, 33, 43, 0.08);
+    padding: 18px;
+    box-sizing: border-box;
+    text-align: left;
+}
+.control-panel h2 {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+}
+.control-note {
+    font-size: 13px;
+    color: #52636c;
+    margin-bottom: 12px;
+}
+.control-status {
+    font-size: 13px;
+    margin-bottom: 12px;
+    color: #184f8a;
+}
+.control-status.error {
+    color: #a12d2d;
+    font-weight: 700;
+}
+.control-status.ok {
+    color: #184f8a;
+    font-weight: 400;
+}
+.control-grid,
+.box-grid {
+    display: grid;
+    gap: 10px 14px;
+    align-items: start;
+}
+.control-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-bottom: 16px;
+}
+.box-grid {
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    margin-bottom: 16px;
+}
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.field-group label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    min-height: 16px;
+}
+.field-group input,
+.field-group select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(16, 33, 43, 0.18);
+    font-size: 14px;
+    color: #10212b;
+    background: #ffffff;
+}
+.checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 40px;
+    padding-top: 8px;
+    box-sizing: border-box;
+}
+.checkbox-row input[type="checkbox"] {
+    margin: 2px 0 0 0;
+    flex: 0 0 auto;
+}
+.checkbox-row span {
+    display: block;
+    line-height: 1.25;
+}
+.box-card {
+    border: 1px solid rgba(16, 33, 43, 0.12);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fbfcfd;
+    display: grid;
+    gap: 10px;
+    align-content: start;
+}
+.box-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 15px;
+}
+.box-card .field-group {
+    gap: 5px;
+}
+.button-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.button-row button {
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    background: #184f8a;
+    color: #ffffff;
+}
+.button-row button.secondary {
+    background: #5d6d76;
+}
+.control-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+}
+.manual-boxes-disabled {
+    opacity: 0.55;
+}
+</style>
+</head>
+<body>
+<div id="page-frame">
+<div id="status-banner">
+    <span class="status-label">Status</span>
+    <span id="status-value" class="status-value">Loading...</span>
+    <span id="status-detail" class="status-detail">Checking WAFFLE stream...</span>
+</div>
+<center>
+<img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:100%;max-width:100%;height:auto;">
+<br>
+<img id="image1" src="./latest_plots/em_goes_plot.png" style="width:100%;max-width:100%;height:auto;">
+</center>
+<div id="control-panel" class="control-panel">
+    <h2>Box Control</h2>
+    <div class="control-note">Updates submitted here are applied at the next WAFFLE cycle boundary, not mid-cycle.</div>
+    <div id="control-status" class="control-status">Loading control settings...</div>
+    <form id="box-control-form">
+        <div class="control-grid">
+            <div class="field-group">
+                <label for="region-source">Region source</label>
+                <select id="region-source">
+                    <option value="solarmonitor">solarmonitor</option>
+                    <option value="manual">manual</option>
+                </select>
+            </div>
+            <div class="field-group">
+                <label for="startup-box-recenter-arcsec">Startup recenter arcsec</label>
+                <input id="startup-box-recenter-arcsec" type="number" step="1">
+            </div>
+            <div class="field-group">
+                <label for="box-recenter-interval-hours">Recenter interval hours</label>
+                <input id="box-recenter-interval-hours" type="number" step="0.1">
+            </div>
+            <div class="field-group">
+                <label for="min-box-center-dx-pix">Min center DX pixels</label>
+                <input id="min-box-center-dx-pix" type="number" step="1">
+            </div>
+            <div class="field-group">
+                <label for="min-box-center-dy-pix">Min center DY pixels</label>
+                <input id="min-box-center-dy-pix" type="number" step="1">
+            </div>
+            <div class="field-group">
+                <label>Startup recenter</label>
+                <div class="checkbox-row"><input id="startup-box-recenter" type="checkbox"></div>
+            </div>
+            <div class="field-group">
+                <label>SolarMonitor UTC rollover refresh</label>
+                <div class="checkbox-row"><input id="sm-refresh-utc" type="checkbox"></div>
+            </div>
+            <div class="field-group">
+                <label>SolarMonitor local rollover refresh</label>
+                <div class="checkbox-row"><input id="sm-refresh-local" type="checkbox"></div>
+            </div>
+        </div>
+        <div class="box-grid">
+            <div class="box-card"><h3>Box A</h3><div class="field-group"><label for="box-A-arnum">AR number</label><input id="box-A-arnum" type="number" step="1"></div><div class="field-group"><label for="box-A-x">X arcsec</label><input id="box-A-x" type="number" step="1"></div><div class="field-group"><label for="box-A-y">Y arcsec</label><input id="box-A-y" type="number" step="1"></div></div>
+            <div class="box-card"><h3>Box B</h3><div class="field-group"><label for="box-B-arnum">AR number</label><input id="box-B-arnum" type="number" step="1"></div><div class="field-group"><label for="box-B-x">X arcsec</label><input id="box-B-x" type="number" step="1"></div><div class="field-group"><label for="box-B-y">Y arcsec</label><input id="box-B-y" type="number" step="1"></div></div>
+            <div class="box-card"><h3>Box C</h3><div class="field-group"><label for="box-C-arnum">AR number</label><input id="box-C-arnum" type="number" step="1"></div><div class="field-group"><label for="box-C-x">X arcsec</label><input id="box-C-x" type="number" step="1"></div><div class="field-group"><label for="box-C-y">Y arcsec</label><input id="box-C-y" type="number" step="1"></div></div>
+            <div class="box-card"><h3>Box D</h3><div class="field-group"><label for="box-D-arnum">AR number</label><input id="box-D-arnum" type="number" step="1"></div><div class="field-group"><label for="box-D-x">X arcsec</label><input id="box-D-x" type="number" step="1"></div><div class="field-group"><label for="box-D-y">Y arcsec</label><input id="box-D-y" type="number" step="1"></div></div>
+            <div class="box-card"><h3>Box E</h3><div class="field-group"><label for="box-E-arnum">AR number</label><input id="box-E-arnum" type="number" step="1"></div><div class="field-group"><label for="box-E-x">X arcsec</label><input id="box-E-x" type="number" step="1"></div><div class="field-group"><label for="box-E-y">Y arcsec</label><input id="box-E-y" type="number" step="1"></div></div>
+            <div class="box-card"><h3>Box F</h3><div class="field-group"><label for="box-F-arnum">AR number</label><input id="box-F-arnum" type="number" step="1"></div><div class="field-group"><label for="box-F-x">X arcsec</label><input id="box-F-x" type="number" step="1"></div><div class="field-group"><label for="box-F-y">Y arcsec</label><input id="box-F-y" type="number" step="1"></div></div>
+        </div>
+        <div class="button-row">
+            <button type="submit">Save for next cycle</button>
+            <button id="reload-control" type="button" class="secondary">Reload current settings</button>
+        </div>
+    </form>
+</div>
+<center>
+<script>
+var STATUS_STALE_SEC = 500;
+var lastStatusKey = null;
+var CONTROL_ENABLED = "__CONTROL_ENABLED__" === "true";
+var BOX_LABELS = ["A", "B", "C", "D", "E", "F"];
+var controlStatusTimer = null;
+
+function setStatusBanner(kind, title, detail) {
+    var banner = document.getElementById("status-banner");
+    var value = document.getElementById("status-value");
+    var detailNode = document.getElementById("status-detail");
+    var bg = "#1f7a45";
+    if (kind === "warn") bg = "#a66b00";
+    if (kind === "error") bg = "#a12d2d";
+    if (kind === "offline") bg = "#6b1f7d";
+    banner.style.background = bg;
+    value.textContent = title;
+    detailNode.textContent = detail || "";
+}
+
+function refreshStatus() {
+    fetch("./status.json?t=" + new Date().getTime(), {cache: "no-store"})
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            var nowSec = Date.now() / 1000.0;
+            var updated = Number(data.updated_unix || 0);
+            var age = updated > 0 ? (nowSec - updated) : 1e9;
+            if (age > STATUS_STALE_SEC) {
+                setStatusBanner("offline", "WKU Internet Offline", "Last update " + Math.round(age) + "s ago");
+                return;
+            }
+            var kind = String(data.kind || "ok");
+            var title = String(data.title || "Online");
+            var detail = String(data.detail || "");
+            var statusKey = kind + "|" + title + "|" + detail + "|" + String(updated);
+            lastStatusKey = statusKey;
+            setStatusBanner(kind, title, detail);
+        })
+        .catch(function() {
+            setStatusBanner("offline", "Status Unreachable", "Could not load status.json");
+        });
+}
+
+function setControlStatus(msg) {
+    var node = document.getElementById("control-status");
+    node.textContent = msg;
+    node.classList.remove("error");
+    node.classList.add("ok");
+}
+
+function setControlError(msg) {
+    if (controlStatusTimer !== null) {
+        clearTimeout(controlStatusTimer);
+        controlStatusTimer = null;
+    }
+    var node = document.getElementById("control-status");
+    node.textContent = msg;
+    node.classList.remove("ok");
+    node.classList.add("error");
+    controlStatusTimer = setTimeout(function() {
+        setControlStatus("Current control settings loaded. Save to apply on the next cycle.");
+        controlStatusTimer = null;
+    }, 10000);
+}
+
+function setTemporaryControlStatus(msg, holdMs, fallbackMsg) {
+    if (controlStatusTimer !== null) {
+        clearTimeout(controlStatusTimer);
+        controlStatusTimer = null;
+    }
+    setControlStatus(msg);
+    controlStatusTimer = setTimeout(function() {
+        setControlStatus(fallbackMsg || "Current control settings loaded. Save to apply on the next cycle.");
+        controlStatusTimer = null;
+    }, holdMs);
+}
+
+function setControlEnabled(enabled) {
+    var panel = document.getElementById("control-panel");
+    if (!enabled) {
+        panel.classList.add("control-disabled");
+    } else {
+        panel.classList.remove("control-disabled");
+    }
+}
+
+function fillControlForm(cfg) {
+    document.getElementById("region-source").value = cfg.region_source || "manual";
+    var s = cfg.box_settings || {};
+    document.getElementById("startup-box-recenter").checked = !!s.startup_box_recenter;
+    document.getElementById("startup-box-recenter-arcsec").value = s.startup_box_recenter_arcsec;
+    document.getElementById("box-recenter-interval-hours").value = s.box_recenter_interval_hours == null ? "" : s.box_recenter_interval_hours;
+    document.getElementById("min-box-center-dx-pix").value = s.min_box_center_dx_pix;
+    document.getElementById("min-box-center-dy-pix").value = s.min_box_center_dy_pix;
+    document.getElementById("sm-refresh-utc").checked = !!s.solarmonitor_refresh_on_utc_day_rollover;
+    document.getElementById("sm-refresh-local").checked = !!s.solarmonitor_refresh_on_timezone_day_rollover;
+    var boxes = cfg.manual_boxes || {};
+    BOX_LABELS.forEach(function(lab) {
+        var box = boxes[lab] || {};
+        document.getElementById("box-" + lab + "-arnum").value = box.arnum == null ? "" : box.arnum;
+        document.getElementById("box-" + lab + "-x").value = box.x == null ? "" : box.x;
+        document.getElementById("box-" + lab + "-y").value = box.y == null ? "" : box.y;
+    });
+    updateManualBoxInputs();
+}
+
+function buildControlPayload() {
+    var payload = {
+        region_source: document.getElementById("region-source").value,
+        manual_boxes: {},
+        box_settings: {
+            startup_box_recenter: document.getElementById("startup-box-recenter").checked,
+            startup_box_recenter_arcsec: Number(document.getElementById("startup-box-recenter-arcsec").value),
+            box_recenter_interval_hours: document.getElementById("box-recenter-interval-hours").value === "" ? null : Number(document.getElementById("box-recenter-interval-hours").value),
+            min_box_center_dx_pix: Number(document.getElementById("min-box-center-dx-pix").value),
+            min_box_center_dy_pix: Number(document.getElementById("min-box-center-dy-pix").value),
+            solarmonitor_refresh_on_utc_day_rollover: document.getElementById("sm-refresh-utc").checked,
+            solarmonitor_refresh_on_timezone_day_rollover: document.getElementById("sm-refresh-local").checked
+        }
+    };
+    BOX_LABELS.forEach(function(lab) {
+        payload.manual_boxes[lab] = {
+            arnum: Number(document.getElementById("box-" + lab + "-arnum").value || 0),
+            x: Number(document.getElementById("box-" + lab + "-x").value),
+            y: Number(document.getElementById("box-" + lab + "-y").value)
+        };
+    });
+    return payload;
+}
+
+function updateManualBoxInputs() {
+    var useManual = document.getElementById("region-source").value === "manual";
+    var cards = document.querySelectorAll(".box-card");
+    BOX_LABELS.forEach(function(lab, idx) {
+        ["arnum", "x", "y"].forEach(function(key) {
+            var node = document.getElementById("box-" + lab + "-" + key);
+            node.disabled = !useManual;
+        });
+        if (cards[idx]) {
+            if (useManual) {
+                cards[idx].classList.remove("manual-boxes-disabled");
+            } else {
+                cards[idx].classList.add("manual-boxes-disabled");
+            }
+        }
+    });
+}
+
+function loadControlConfig() {
+    if (!CONTROL_ENABLED) {
+        setControlStatus("Control panel is disabled on this published site.");
+        setControlEnabled(false);
+        return;
+    }
+    fetch("./api/box-control?t=" + new Date().getTime(), {cache: "no-store"})
+        .then(function(resp) {
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            return resp.json();
+        })
+        .then(function(cfg) {
+            fillControlForm(cfg);
+            if (!document.getElementById("control-status").classList.contains("error")) {
+                setControlStatus("Current control settings loaded. Save to apply on the next cycle.");
+            }
+            setControlEnabled(true);
+        })
+        .catch(function(err) {
+            setControlError("Control API unavailable: " + err.message);
+            setControlEnabled(false);
+        });
+}
+
+setInterval(function() {
+    var timestamp = new Date().getTime();
+    document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
+    document.getElementById("image1").src = "./latest_plots/em_goes_plot.png?t=" + timestamp;
+}, 15000);
+setInterval(refreshStatus, 5000);
+refreshStatus();
+
+document.getElementById("reload-control").addEventListener("click", function() {
+    loadControlConfig();
+});
+
+document.getElementById("region-source").addEventListener("change", function() {
+    updateManualBoxInputs();
+});
+
+document.getElementById("box-control-form").addEventListener("submit", function(evt) {
+    evt.preventDefault();
+    if (!CONTROL_ENABLED) {
+        setControlError("Control panel is disabled on this published site.");
+        return;
+    }
+    setControlStatus("Saving control update...");
+    fetch("./api/box-control", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(buildControlPayload())
+    })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (!data.ok) throw new Error(data.error || "save failed");
+            if (data.config) fillControlForm(data.config);
+            setTemporaryControlStatus(
+                "Saved. WAFFLE will apply these settings at the next cycle boundary.",
+                4000
+            );
+        })
+        .catch(function(err) {
+            setControlError(
+                "Save rejected. Reverting to the previous coordinates: " + err.message
+            );
+            setTimeout(function() {
+                loadControlConfig();
+            }, 150);
+        });
+});
+
+loadControlConfig();
+</script>
+</center>
+</div>
+</body>
+</html>
