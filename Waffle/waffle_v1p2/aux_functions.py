@@ -450,7 +450,7 @@ def load_global_control_config(path):
     cfg_path = Path(path)
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     default_cfg = {
-        "cloudflared_token": "",
+        "ngrok_authtoken": "",
         "external_control_url": "",
     }
     if not cfg_path.exists():
@@ -462,7 +462,7 @@ def load_global_control_config(path):
         return dict(default_cfg)
     out = dict(default_cfg)
     if isinstance(data, dict):
-        out["cloudflared_token"] = str(data.get("cloudflared_token", "") or "").strip()
+        out["ngrok_authtoken"] = str(data.get("ngrok_authtoken", "") or "").strip()
         out["external_control_url"] = str(data.get("external_control_url", "") or "").strip()
     return out
 
@@ -476,85 +476,49 @@ def start_global_control_tunnel(
     local_port,
     provider="auto",
     startup_timeout_sec=20.0,
-    cloudflared_token="",
+    ngrok_authtoken="",
     external_control_url="",
 ):
-    cloudflared_token = str(cloudflared_token or "").strip()
+    ngrok_authtoken = str(ngrok_authtoken or "").strip()
     external_control_url = str(external_control_url or "").strip()
-    if cloudflared_token:
-        cmd = [
-            sys.executable,
-            "-m",
-            "pycloudflared",
-            "tunnel",
-            "run",
-            "--token",
-            cloudflared_token,
-        ]
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        deadline = time.time() + float(startup_timeout_sec)
-        lines = []
-        while time.time() < deadline:
-            line = proc.stdout.readline() if proc.stdout is not None else ""
-            if line:
-                lines.append(line.rstrip())
-            if proc.poll() is not None:
-                break
-            if lines:
-                last_line = lines[-1].lower()
-                if "registered tunnel connection" in last_line or "connection" in last_line:
-                    break
-            time.sleep(0.1)
-        if proc.poll() is None:
-            public_url = external_control_url.rstrip("/") if external_control_url else ""
-            if public_url:
-                print(f"Global control tunnel started with token: {public_url}")
-            else:
-                print("Global control tunnel started with token.")
+    if ngrok_authtoken:
+        try:
+            import ngrok
+
+            listener = ngrok.forward(
+                int(local_port),
+                authtoken=ngrok_authtoken,
+            )
+            public_url = str(listener.url()).rstrip("/")
+            print(f"Global control tunnel started with ngrok sdk: {public_url}")
             return {
-                "proc": proc,
-                "provider": "pycloudflared-token",
+                "listener": listener,
+                "provider": "ngrok-sdk",
                 "public_url": public_url,
             }
-        if lines:
-            print(f"Global control tunnel token start failed: {lines[-1]}")
+        except Exception as exc:
+            print(f"Global control tunnel ngrok sdk failed to start: {exc}")
 
     provider_order = []
     provider = str(provider or "auto").strip().lower()
     if provider == "auto":
-        provider_order = ["cloudflared", "ngrok"]
-    elif provider in ("cloudflared", "ngrok"):
+        provider_order = ["ngrok", "cloudflared"]
+    elif provider in ("ngrok", "cloudflared"):
         provider_order = [provider]
     else:
         raise ValueError(
-            "global control provider must be 'auto', 'cloudflared', or 'ngrok'"
+            "global control provider must be 'auto', 'ngrok', or 'cloudflared'"
         )
 
     for name in provider_order:
-        if name == "cloudflared":
-            try:
-                from pycloudflared import try_cloudflare
-
-                urls = try_cloudflare(int(local_port), verbose=False)
-                url = str(urls.tunnel).rstrip("/")
-                print(f"Global control tunnel started with pycloudflared: {url}")
-                return {
-                    "proc": urls.process,
-                    "provider": "pycloudflared",
-                    "public_url": url,
-                }
-            except Exception:
-                pass
         binary = shutil.which(name)
         if not binary:
             continue
-        if name == "cloudflared":
+        if name == "ngrok":
+            cmd = [binary, "http", str(int(local_port)), "--log", "stdout"]
+            if ngrok_authtoken:
+                cmd.extend(["--authtoken", ngrok_authtoken])
+        elif name == "cloudflared":
             cmd = [binary, "tunnel", "--url", f"http://127.0.0.1:{int(local_port)}"]
         else:
             cmd = [binary, "http", str(int(local_port)), "--log", "stdout"]
@@ -604,6 +568,12 @@ def start_global_control_tunnel(
 def stop_global_control_tunnel(tunnel_info):
     if not tunnel_info:
         return
+    listener = tunnel_info.get("listener")
+    if listener is not None:
+        try:
+            listener.close()
+        except Exception:
+            pass
     proc = tunnel_info.get("proc")
     if proc is None:
         return

@@ -49,7 +49,7 @@ if __name__ == "__main__":
     local_web_host = "127.0.0.1"
     local_web_port = 8003
     enable_global_control = True
-    global_control_provider = "cloudflared"  # "auto", "cloudflared", or "ngrok"
+    global_control_provider = "ngrok"  # "auto", "ngrok", or "cloudflared"
     global_control_config_path = aux_functions.default_global_control_config_path()
     external_control_url = ""
     control_auth_user = "waffle"
@@ -160,8 +160,8 @@ if __name__ == "__main__":
     global_control_cfg = aux_functions.load_global_control_config(
         global_control_config_path
     )
-    cloudflared_token = str(global_control_cfg.get("cloudflared_token", "") or "").strip()
-    if cloudflared_token:
+    ngrok_authtoken = str(global_control_cfg.get("ngrok_authtoken", "") or "").strip()
+    if ngrok_authtoken:
         if not external_control_url:
             external_control_url = str(
                 global_control_cfg.get("external_control_url", "") or ""
@@ -184,7 +184,7 @@ if __name__ == "__main__":
             global_control_tunnel = aux_functions.start_global_control_tunnel(
                 local_web_port,
                 provider=global_control_provider,
-                cloudflared_token=cloudflared_token,
+                ngrok_authtoken=ngrok_authtoken,
                 external_control_url=external_control_url,
             )
             public_url = str(global_control_tunnel.get("public_url", "")).rstrip(
