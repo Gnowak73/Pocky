@@ -5273,6 +5273,27 @@ def stream_aia_data(
             ssh_user=ssh_user,
             ssh_password=ssh_password,
         )
+        if local_publish_dir is not None:
+            mkdir(local_publish_dir)
+            box_control_path = default_box_control_path(local_publish_dir)
+            initialize_box_control_file(
+                box_control_path,
+                build_box_control_config(
+                    region_source=region_source,
+                    arnum=arnum,
+                    ar_x=ar_x,
+                    ar_y=ar_y,
+                    startup_box_recenter=startup_box_recenter,
+                    startup_box_recenter_arcsec=startup_box_recenter_arcsec,
+                    box_recenter_interval_hours=box_recenter_interval_hours,
+                    min_box_center_dx_pix=min_box_center_dx_pix,
+                    min_box_center_dy_pix=min_box_center_dy_pix,
+                    solarmonitor_refresh_on_utc_day_rollover=solarmonitor_refresh_on_utc_day_rollover,
+                    solarmonitor_refresh_on_timezone_day_rollover=solarmonitor_refresh_on_timezone_day_rollover,
+                ),
+            )
+            if os.path.exists(box_control_path):
+                box_control_mtime = os.path.getmtime(box_control_path)
     elif publish_mode == "local":
         if local_publish_dir is None:
             local_publish_dir = os.path.join(data_folder, "local_web")
@@ -5313,7 +5334,7 @@ def stream_aia_data(
         )
 
     def sync_box_control_file():
-        if publish_mode != "local" or local_publish_dir is None:
+        if local_publish_dir is None:
             return None
         try:
             return write_box_control_file_and_get_mtime(
