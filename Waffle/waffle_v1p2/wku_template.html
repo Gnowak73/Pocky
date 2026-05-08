@@ -363,18 +363,17 @@ body.control-window .control-grid {
     margin-bottom: 10px;
 }
 body.control-window .box-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px 12px;
     margin-bottom: 10px;
 }
 body.control-window .box-card {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px 8px;
-    align-items: end;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    align-items: start;
     padding: 10px;
 }
 body.control-window .box-card h3 {
-    grid-column: 1 / -1;
     margin-bottom: 2px;
 }
 body.control-window .field-group label {
@@ -407,7 +406,12 @@ body.control-window .button-row button {
         grid-template-columns: repeat(2, minmax(150px, 1fr));
     }
     body.control-window .box-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+@media (max-width: 700px) {
+    body.control-window .box-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 </style>
@@ -674,7 +678,7 @@ function configurePageMode() {
     if (PAGE_MODE === "control") {
         document.body.classList.add("control-window");
         document.getElementById("status-banner").style.display = "none";
-        document.getElementById("page-frame").style.paddingTop = "3px";
+        document.getElementById("page-frame").style.paddingTop = "0";
         document.getElementById("image0").style.display = "none";
         document.querySelector(".detail-map-wrap").style.display = "none";
         launch.style.display = "none";
