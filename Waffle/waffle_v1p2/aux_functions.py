@@ -6417,8 +6417,19 @@ def stream_aia_data(
                 t_phase = time.time()
                 em_maps = [None] * n_ar
                 em_totals = [0.0] * n_ar
+                detail_aia_submaps = [None] * n_ar
 
                 def _compute_ar(i):
+                    detail_submaps = crop_full_disk_maps(
+                        calibrated_aia_maps,
+                        cycle_ar_lon[i],
+                        cycle_ar_lat[i],
+                        arnum[i],
+                        cropped_maps_folder,
+                        n_pix_x=n_pix_x,
+                        n_pix_y=n_pix_y,
+                        save_submaps=False,
+                    )
                     if em_processing_mode == 0:
                         aia_img, metadata = fast_crop_em_cube(
                             em_calibrated_full_maps,
@@ -6440,18 +6451,8 @@ def stream_aia_data(
                         )
                         aia_img, metadata = submaps_to_em_cube(aia_submaps)
                     else:
-                        aia_submaps_raw = crop_full_disk_maps(
-                            calibrated_aia_maps,
-                            cycle_ar_lon[i],
-                            cycle_ar_lat[i],
-                            arnum[i],
-                            cropped_maps_folder,
-                            n_pix_x=n_pix_x,
-                            n_pix_y=n_pix_y,
-                            save_submaps=False,
-                        )
                         aia_submaps_em = []
-                        for this_submap in aia_submaps_raw:
+                        for this_submap in detail_submaps:
                             this_submap_norm = normalize_exposure(this_submap)
                             this_submap_em = correct_degradation(
                                 this_submap_norm,
@@ -6465,14 +6466,15 @@ def stream_aia_data(
                     em_map_th[em_map_th < th_tot_em] = 0
                     # Match legacy WAFFLE scaling used in CSV totals.
                     total_em_current = float(np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y))
-                    return i, em_map_raw, total_em_current, aia_img
+                    return i, em_map_raw, total_em_current, detail_submaps
 
                 n_workers = max(1, min(int(worker_count), n_ar))
                 if n_workers == 1:
                     for i in range(n_ar):
-                        i_out, em_map_raw, total_em_current, aia_img = _compute_ar(i)
+                        i_out, em_map_raw, total_em_current, detail_submaps = _compute_ar(i)
                         em_maps[i_out] = em_map_raw
                         em_totals[i_out] = total_em_current
+                        detail_aia_submaps[i_out] = detail_submaps
                 else:
                     active_executor = shared_executor
                     if active_executor is None:
@@ -6481,17 +6483,19 @@ def stream_aia_data(
                                 executor.submit(_compute_ar, i) for i in range(n_ar)
                             ]
                             for fut in as_completed(futures):
-                                i_out, em_map_raw, total_em_current, aia_img = fut.result()
+                                i_out, em_map_raw, total_em_current, detail_submaps = fut.result()
                                 em_maps[i_out] = em_map_raw
                                 em_totals[i_out] = total_em_current
+                                detail_aia_submaps[i_out] = detail_submaps
                     else:
                         futures = [
                             active_executor.submit(_compute_ar, i) for i in range(n_ar)
                         ]
                         for fut in as_completed(futures):
-                            i_out, em_map_raw, total_em_current, aia_img = fut.result()
+                            i_out, em_map_raw, total_em_current, detail_submaps = fut.result()
                             em_maps[i_out] = em_map_raw
                             em_totals[i_out] = total_em_current
+                            detail_aia_submaps[i_out] = detail_submaps
 
                 # Optional FITS exports remain single-threaded I/O.
                 if save_maps:
@@ -6784,19 +6788,9 @@ def stream_aia_data(
                     detailed_analysis_folder, label[:n_ar], arnum[:n_ar]
                 )
                 for i in range(n_ar):
-                    aia_submaps_detail = crop_full_disk_maps(
-                        calibrated_aia_maps,
-                        cycle_ar_lon[i],
-                        cycle_ar_lat[i],
-                        arnum[i],
-                        cropped_maps_folder,
-                        n_pix_x=n_pix_x,
-                        n_pix_y=n_pix_y,
-                        save_submaps=False,
-                    )
                     plot_detailed_em_result(
                         detailed_analysis_folder,
-                        aia_submaps_detail,
+                        detail_aia_submaps[i],
                         em_maps[i],
                         xrsa_current,
                         xrsb_current,
