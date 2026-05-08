@@ -3156,13 +3156,13 @@ body {{
     font-family: "Trebuchet MS", "Avenir Next", sans-serif;
 }}
 #page {{
-    width: min(94vw, 1080px);
+    width: min(96vw, 1180px);
     margin: 0 auto;
     padding: 8px 0 12px 0;
 }}
 h1 {{
     margin: 0 0 4px 0;
-    font-size: 24px;
+    font-size: 21px;
 }}
 .subhead {{
     margin: 0 0 10px 0;
