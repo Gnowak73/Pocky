@@ -23,7 +23,7 @@ import astropy.units as u
 import numpy as np
 
 import glob
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 from paramiko import SSHClient
 from scp import SCPClient
@@ -5066,6 +5066,47 @@ def plot_detailed_em_result(
 # **********************************************************
 
 
+def _serialize_map_for_process(aia_map):
+    return {"data": np.asarray(aia_map.data), "meta": dict(aia_map.meta)}
+
+
+def _deserialize_map_from_process(payload):
+    return Map(np.asarray(payload["data"]), payload["meta"])
+
+
+def render_detailed_em_result_process(payload):
+    aia_submaps = [
+        _deserialize_map_from_process(item) for item in payload["aia_submaps"]
+    ]
+    em_map = _deserialize_map_from_process(payload["em_map"])
+    goes_plot_data = payload.get("goes_plot_data")
+    if goes_plot_data is not None:
+        goes_time_array, goes_xrsa_flux, goes_xrsb_flux = goes_plot_data
+        goes_plot_data = (
+            np.asarray(goes_time_array, dtype=object),
+            np.asarray(goes_xrsa_flux, dtype=float),
+            np.asarray(goes_xrsb_flux, dtype=float),
+        )
+    plot_detailed_em_result(
+        payload["plots_folder"],
+        aia_submaps,
+        em_map,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        payload["arnum"],
+        payload["label"],
+        payload["box_index"],
+        payload["file_name_em_csv"],
+        timezone=payload.get("timezone", "US/Central"),
+        em_cache=None,
+        ar_color=payload.get("ar_color", "red"),
+        goes_plot_data=goes_plot_data,
+    )
+
+
+# **********************************************************
+
+
 def plot_full_disk_images(
     calibrated_aia_maps,
     plots_folder,
@@ -6829,10 +6870,48 @@ def stream_aia_data(
                     n_ar,
                 )
                 if plot_workers > 1:
-                    with ThreadPoolExecutor(max_workers=plot_workers) as plot_executor:
-                        futures = [plot_executor.submit(_render_detail_plot, i) for i in range(n_ar)]
-                        for fut in as_completed(futures):
-                            fut.result()
+                    try:
+                        render_payloads = []
+                        for i in range(n_ar):
+                            render_payloads.append(
+                                {
+                                    "plots_folder": detailed_analysis_folder,
+                                    "aia_submaps": [
+                                        _serialize_map_for_process(m)
+                                        for m in detail_aia_submaps[i]
+                                    ],
+                                    "em_map": _serialize_map_for_process(em_maps[i]),
+                                    "arnum": arnum[i],
+                                    "label": label[i],
+                                    "box_index": i + 1,
+                                    "file_name_em_csv": os.path.join(
+                                        total_em_folder, "total_em_" + str(arnum[i]) + ".csv"
+                                    ),
+                                    "timezone": timezone,
+                                    "ar_color": color_arr[i],
+                                    "goes_plot_data": (
+                                        list(goes_plot_data[0]),
+                                        np.asarray(goes_plot_data[1], dtype=float),
+                                        np.asarray(goes_plot_data[2], dtype=float),
+                                    ),
+                                }
+                            )
+                        with ProcessPoolExecutor(max_workers=plot_workers) as plot_executor:
+                            futures = [
+                                plot_executor.submit(
+                                    render_detailed_em_result_process, payload
+                                )
+                                for payload in render_payloads
+                            ]
+                            for fut in as_completed(futures):
+                                fut.result()
+                    except Exception as exc:
+                        print(
+                            "Parallel detailed plot rendering failed; "
+                            f"retrying serially. Error: {exc}"
+                        )
+                        for i in range(n_ar):
+                            _render_detail_plot(i)
                 else:
                     for i in range(n_ar):
                         _render_detail_plot(i)
