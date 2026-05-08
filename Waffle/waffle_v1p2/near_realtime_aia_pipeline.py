@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # Detailed-analysis rendering:
     # - False -> render detailed plots serially
     # - True  -> allow parallel rendering
-    parallel_detailed_plot_renders = False
+    parallel_detailed_plot_renders = True
     # Number of workers for detailed-analysis plot rendering.
     # None -> auto-resolve inside aux_functions.py from worker_count / box count.
     detailed_plot_render_workers = None

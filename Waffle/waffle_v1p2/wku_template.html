@@ -76,6 +76,14 @@ body {
         width: 100%;
         padding-top: 48px;
     }
+    .control-launch {
+        right: 8px;
+    }
+    .control-launch a {
+        padding: 7px 11px 8px 11px;
+        font-size: 11px;
+        border-radius: 0 0 8px 8px;
+    }
     #status-banner {
         left: 8px;
         right: auto;
@@ -115,6 +123,13 @@ body {
         max-width: min(42vw, 198px);
         padding: 5px 10px 7px 10px;
     }
+    .control-launch {
+        right: 14px;
+    }
+    .control-launch a {
+        padding: 9px 14px 10px 14px;
+        font-size: 13px;
+    }
     .status-label {
         font-size: 9px;
     }
@@ -132,6 +147,13 @@ body {
         max-width: min(34vw, 156px);
         padding: 4px 8px 6px 8px;
         opacity: 0.94;
+    }
+    .control-launch {
+        right: 10px;
+    }
+    .control-launch a {
+        padding: 8px 12px 9px 12px;
+        font-size: 12px;
     }
     #status-banner::before,
     #status-banner::after {
@@ -176,19 +198,26 @@ body {
     text-align: left;
 }
 .control-launch {
-    width: 100%;
-    margin: 14px 0 4px 0;
+    position: absolute;
+    top: 0;
+    right: 22px;
+    z-index: 50;
+    margin: 0;
     text-align: right;
 }
 .control-launch a {
     display: inline-block;
-    border-radius: 8px;
-    padding: 9px 13px;
-    font-size: 13px;
+    border-radius: 0 0 10px 10px;
+    padding: 10px 16px 11px 16px;
+    font-size: 14px;
     font-weight: 700;
     text-decoration: none;
     background: #184f8a;
     color: #ffffff;
+    box-shadow: 0 8px 18px rgba(16, 33, 43, 0.16);
+    border: 1px solid rgba(16, 33, 43, 0.12);
+    border-top: 0;
+    transition: padding 0.18s ease, font-size 0.18s ease, transform 0.18s ease;
 }
 .detail-map-wrap {
     position: relative;
@@ -214,15 +243,15 @@ body {
 .detail-hotspot.box-d,
 .detail-hotspot.box-e,
 .detail-hotspot.box-f {
-    width: 13.5%;
+    width: 12.5%;
     height: 31.9%;
 }
-.detail-hotspot.box-a { left: 1.8%; top: 6.2%; }
-.detail-hotspot.box-b { left: 20.7%; top: 6.2%; }
-.detail-hotspot.box-c { left: 39.7%; top: 6.2%; }
-.detail-hotspot.box-d { left: 1.8%; top: 54.8%; }
-.detail-hotspot.box-e { left: 20.7%; top: 54.8%; }
-.detail-hotspot.box-f { left: 39.7%; top: 54.8%; }
+.detail-hotspot.box-a { left: 3.8%; top: 6.2%; }
+.detail-hotspot.box-b { left: 22.7%; top: 6.2%; }
+.detail-hotspot.box-c { left: 41.7%; top: 6.2%; }
+.detail-hotspot.box-d { left: 3.8%; top: 54.8%; }
+.detail-hotspot.box-e { left: 22.7%; top: 54.8%; }
+.detail-hotspot.box-f { left: 41.7%; top: 54.8%; }
 .control-launch.disabled a {
     background: #7a8790;
     pointer-events: none;

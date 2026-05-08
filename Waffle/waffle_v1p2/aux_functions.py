@@ -5143,16 +5143,16 @@ def _render_full_disk_aia_panel_process(payload):
     n_pix_x = int(payload["n_pix_x"])
     n_pix_y = int(payload["n_pix_y"])
 
-    fig = plt.figure(figsize=(5.2, 5.9))
+    fig = plt.figure(figsize=(4.7, 5.35))
     ax = fig.add_subplot(111, projection=aia_map)
     aia_map.plot_settings["norm"] = colors.LogNorm(vmin=0.3, vmax=16000.0 / 2.9, clip=True)
     aia_map.plot_settings["cmap"] = matplotlib.cm.get_cmap("gray")
     aia_map.plot(axes=ax)
     ax.set_title(f"AIA {int(aia_map.meta['wavelnth'])}Å", fontsize=16)
-    ax.set_xlabel("Solar X [arcsec]", fontsize=14)
-    ax.set_ylabel("Solar Y [arcsec]", fontsize=14, labelpad=-0.5)
-    ax.tick_params(axis="x", labelsize=14)
-    ax.tick_params(axis="y", labelsize=14, pad=0)
+    ax.set_xlabel("Solar X [arcsec]", fontsize=13)
+    ax.set_ylabel("Solar Y [arcsec]", fontsize=13, labelpad=-0.8)
+    ax.tick_params(axis="x", labelsize=13)
+    ax.tick_params(axis="y", labelsize=13, pad=2.0)
 
     ar_coords = [
         SkyCoord(ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst)
@@ -5178,19 +5178,33 @@ def _render_full_disk_aia_panel_process(payload):
             linewidth=2,
         )
 
-    fig.subplots_adjust(left=0.13, right=0.97, top=0.90, bottom=0.13)
+    fig.subplots_adjust(left=0.14, right=1.06, top=0.89, bottom=0.14)
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
+
+    # Trim only blank right-edge whitespace without changing the left-side axis area.
+    try:
+        panel = Image.open(out_path).convert("RGB")
+        arr = np.asarray(panel)
+        nonwhite = np.where(np.any(arr < 250, axis=2))[1]
+        if nonwhite.size:
+            right_edge = min(panel.width, int(nonwhite.max()) + 3)
+            if right_edge > 0 and right_edge < panel.width:
+                panel.crop((0, 0, right_edge, panel.height)).save(out_path)
+    except Exception:
+        pass
     return out_path
 
 
 def _render_suvi_panel_image(suvi_image, suvi_title, out_path, target_height):
-    width = int(round(target_height * 0.88))
+    width = int(round(target_height * 0.93))
     panel = Image.new("RGB", (width, target_height), "white")
     draw = ImageDraw.Draw(panel)
-    title_font = _load_font(20)
-    draw.text((10, 8), suvi_title, fill=(210, 0, 0), font=title_font)
-    top_pad = 44
+    title_font = _load_font(34)
+    bbox = draw.textbbox((0, 0), suvi_title, font=title_font)
+    title_w = bbox[2] - bbox[0]
+    draw.text((max(10, (width - title_w) / 2), 36), suvi_title, fill=(255, 0, 0), font=title_font)
+    top_pad = 76
     side_pad = 10
     bottom_pad = 8
     if suvi_image is None:
@@ -5283,9 +5297,9 @@ def plot_full_disk_images_parallel(
 
     gap = 18
     side_margin = 26
-    top_margin = 78
+    top_margin = 88
     bottom_margin = 12
-    title_font = _load_font(40)
+    title_font = _load_font(70)
     title = "AIA data " + current_time_local.strftime("%m/%d/%Y - %H:%M:%S") + " " + timezone
 
     total_width = (
