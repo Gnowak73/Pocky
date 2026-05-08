@@ -181,20 +181,25 @@ if __name__ == "__main__":
                 control_auth_password=control_auth_password,
             )
         if enable_global_control:
-            global_control_tunnel = aux_functions.start_global_control_tunnel(
-                local_web_port,
-                provider=global_control_provider,
-                ngrok_authtoken=ngrok_authtoken,
-                external_control_url=external_control_url,
-            )
-            public_url = str(global_control_tunnel.get("public_url", "")).rstrip("/")
-            external_control_url = (
-                public_url + "/control.html" if public_url else external_control_url
-            )
-            if external_control_url:
-                print(f"Global control link resolved: {external_control_url}")
-            else:
-                print("Global control link unresolved for this run.")
+            try:
+                global_control_tunnel = aux_functions.start_global_control_tunnel(
+                    local_web_port,
+                    provider=global_control_provider,
+                    ngrok_authtoken=ngrok_authtoken,
+                    external_control_url=external_control_url,
+                )
+                external_control_url = aux_functions.resolve_global_control_url(
+                    global_control_tunnel, external_control_url
+                )
+                if external_control_url:
+                    print(f"Global control link resolved: {external_control_url}")
+                else:
+                    print("Global control link unresolved for this run.")
+            except Exception as exc:
+                global_control_tunnel = None
+                if not ngrok_authtoken:
+                    external_control_url = ""
+                print(f"Global control tunnel startup failed: {exc}")
 
         # Start AIA data stream
         aux_functions.stream_aia_data(
@@ -216,6 +221,11 @@ if __name__ == "__main__":
             publish_mode=publish_mode,
             local_publish_dir=local_publish_dir,
             external_control_url=external_control_url,
+            enable_global_control=enable_global_control,
+            global_control_provider=global_control_provider,
+            local_web_port=local_web_port,
+            ngrok_authtoken=ngrok_authtoken,
+            global_control_tunnel=global_control_tunnel,
             drms_series=drms_series,
             drms_segment=drms_segment,
             query_start_ut=query_start_ut,

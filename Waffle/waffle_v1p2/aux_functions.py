@@ -31,6 +31,7 @@ from scp import SCPClient
 import pytz
 
 from urllib.request import urlopen
+from urllib.error import HTTPError
 
 import pandas as pd
 
@@ -472,6 +473,50 @@ def _extract_tunnel_url(line):
     return match.group(0) if match else None
 
 
+def resolve_global_control_url(tunnel_info, external_control_url=""):
+    configured = str(external_control_url or "").strip()
+    if configured:
+        return configured
+    if not tunnel_info:
+        return ""
+    public_url = str(tunnel_info.get("public_url", "") or "").rstrip("/")
+    return public_url + "/control.html" if public_url else ""
+
+
+def global_control_health_url(control_url):
+    control_url = str(control_url or "").strip()
+    if not control_url:
+        return ""
+    if control_url.endswith("/control.html"):
+        return control_url[: -len("/control.html")] + "/status.json"
+    return control_url.rstrip("/") + "/status.json"
+
+
+def is_global_control_tunnel_healthy(
+    tunnel_info,
+    external_control_url="",
+    timeout_sec=6.0,
+):
+    if not tunnel_info:
+        return False
+    proc = tunnel_info.get("proc")
+    if proc is not None and proc.poll() is not None:
+        return False
+    health_url = global_control_health_url(
+        resolve_global_control_url(tunnel_info, external_control_url)
+    )
+    if not health_url:
+        return False
+    try:
+        with urlopen(health_url, timeout=float(timeout_sec)) as r:
+            code = int(getattr(r, "status", 200) or 200)
+        return 200 <= code < 500
+    except HTTPError as exc:
+        return 200 <= int(exc.code) < 500
+    except Exception:
+        return False
+
+
 def start_global_control_tunnel(
     local_port,
     provider="auto",
@@ -570,6 +615,36 @@ def stop_global_control_tunnel(tunnel_info):
             proc.kill()
         except Exception:
             pass
+
+
+def ensure_global_control_tunnel(
+    tunnel_info,
+    local_port,
+    provider="auto",
+    ngrok_authtoken="",
+    external_control_url="",
+    startup_timeout_sec=20.0,
+    health_timeout_sec=6.0,
+):
+    if is_global_control_tunnel_healthy(
+        tunnel_info,
+        external_control_url=external_control_url,
+        timeout_sec=health_timeout_sec,
+    ):
+        resolved_url = resolve_global_control_url(tunnel_info, external_control_url)
+        return tunnel_info, resolved_url, False
+    if tunnel_info:
+        print("Global control tunnel unhealthy; restarting.")
+    stop_global_control_tunnel(tunnel_info)
+    new_info = start_global_control_tunnel(
+        local_port,
+        provider=provider,
+        startup_timeout_sec=startup_timeout_sec,
+        ngrok_authtoken=ngrok_authtoken,
+        external_control_url=external_control_url,
+    )
+    resolved_url = resolve_global_control_url(new_info, external_control_url)
+    return new_info, resolved_url, True
 
 def em_active_area_fraction(em_map, active_threshold=1.0e43):
     arr = np.asarray(em_map, dtype=np.float64)
@@ -4949,6 +5024,14 @@ def stream_aia_data(
     publish_mode="scp",
     local_publish_dir=None,
     external_control_url="",
+    enable_global_control=False,
+    global_control_provider="auto",
+    local_web_port=8003,
+    ngrok_authtoken="",
+    global_control_tunnel=None,
+    tunnel_health_check_interval_sec=60.0,
+    tunnel_restart_cooldown_sec=30.0,
+    tunnel_health_timeout_sec=6.0,
     drms_series="aia.lev1_nrt2",
     drms_segment="image_lev1",
     query_start_ut=None,
@@ -5265,6 +5348,13 @@ def stream_aia_data(
     startup_sms_sent = False
     last_successful_publish_unix = time.time()
     last_successful_goes_plot_data = None
+    configured_control_url = (
+        str(external_control_url).strip() if str(ngrok_authtoken or "").strip() else ""
+    )
+    tunnel_health_check_interval_sec = max(10.0, float(tunnel_health_check_interval_sec))
+    tunnel_restart_cooldown_sec = max(10.0, float(tunnel_restart_cooldown_sec))
+    tunnel_next_health_check_unix = 0.0
+    tunnel_next_restart_unix = 0.0
     box_control_path = None
     box_control_mtime = None
     if publish_mode == "scp":
@@ -5436,6 +5526,53 @@ def stream_aia_data(
                     if synced_mtime is not None:
                         box_control_mtime = synced_mtime
                     print("Applied website box-control update for next cycle.")
+            if enable_global_control:
+                now_unix = time.time()
+                if now_unix >= tunnel_next_health_check_unix:
+                    tunnel_next_health_check_unix = (
+                        now_unix + tunnel_health_check_interval_sec
+                    )
+                    if is_global_control_tunnel_healthy(
+                        global_control_tunnel,
+                        external_control_url=configured_control_url or external_control_url,
+                        timeout_sec=tunnel_health_timeout_sec,
+                    ):
+                        resolved_control_url = resolve_global_control_url(
+                            global_control_tunnel,
+                            configured_control_url or external_control_url,
+                        )
+                        if resolved_control_url and resolved_control_url != external_control_url:
+                            external_control_url = resolved_control_url
+                            print(f"Global control link resolved: {external_control_url}")
+                    elif now_unix >= tunnel_next_restart_unix:
+                        try:
+                            global_control_tunnel, resolved_control_url, _ = (
+                                ensure_global_control_tunnel(
+                                    global_control_tunnel,
+                                    local_web_port,
+                                    provider=global_control_provider,
+                                    ngrok_authtoken=ngrok_authtoken,
+                                    external_control_url=configured_control_url,
+                                    startup_timeout_sec=20.0,
+                                    health_timeout_sec=tunnel_health_timeout_sec,
+                                )
+                            )
+                            tunnel_next_restart_unix = (
+                                now_unix + tunnel_restart_cooldown_sec
+                            )
+                            if resolved_control_url:
+                                external_control_url = resolved_control_url
+                                print(
+                                    f"Global control link resolved: {external_control_url}"
+                                )
+                            elif not configured_control_url:
+                                external_control_url = ""
+                                print("Global control link unresolved for this run.")
+                        except Exception as exc:
+                            tunnel_next_restart_unix = (
+                                now_unix + tunnel_restart_cooldown_sec
+                            )
+                            print(f"Global control tunnel recovery failed: {exc}")
             publish_age = time.time() - float(last_successful_publish_unix)
             if publish_age > 500.0:
                 if not offline_sms_active:
@@ -6595,5 +6732,9 @@ def stream_aia_data(
             )
         except Exception as exc:
             print(f"Failed to publish offline runtime status: {exc}")
+        try:
+            stop_global_control_tunnel(global_control_tunnel)
+        except Exception as exc:
+            print(f"Failed to stop global control tunnel: {exc}")
         if shared_executor is not None:
             shared_executor.shutdown(wait=True)
