@@ -3230,6 +3230,22 @@ def publish_detailed_analysis_remote(
             scp.put(os.path.join(source_dir, name), remote_path=remote_dir, recursive=True)
 
 
+def resolve_detailed_plot_render_workers(
+    enabled, requested_workers, worker_count, n_boxes
+):
+    if not bool(enabled):
+        return 1
+    if n_boxes <= 1:
+        return 1
+    if requested_workers in (None, 0, "", "None"):
+        requested_workers = worker_count
+    try:
+        resolved = int(requested_workers)
+    except Exception:
+        resolved = int(worker_count)
+    return max(1, min(int(n_boxes), resolved))
+
+
 def _status_payload(kind, title, detail):
     return {
         "kind": str(kind),
@@ -6806,11 +6822,13 @@ def stream_aia_data(
                         goes_plot_data=goes_plot_data,
                     )
 
-                if bool(parallel_detailed_plot_renders) and n_ar > 1:
-                    plot_workers = detailed_plot_render_workers
-                    if plot_workers in (None, 0):
-                        plot_workers = worker_count
-                    plot_workers = max(1, min(int(plot_workers), n_ar))
+                plot_workers = resolve_detailed_plot_render_workers(
+                    parallel_detailed_plot_renders,
+                    detailed_plot_render_workers,
+                    worker_count,
+                    n_ar,
+                )
+                if plot_workers > 1:
                     with ThreadPoolExecutor(max_workers=plot_workers) as plot_executor:
                         futures = [plot_executor.submit(_render_detail_plot, i) for i in range(n_ar)]
                         for fut in as_completed(futures):
