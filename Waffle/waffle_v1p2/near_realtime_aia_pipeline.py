@@ -79,6 +79,8 @@ if __name__ == "__main__":
 
     # Performance / diagnostics.
     worker_count = 10
+    parallel_detailed_plot_renders = False
+    detailed_plot_render_workers = None
     print_phase_timing = True
 
     # Website image settings.
@@ -228,6 +230,8 @@ if __name__ == "__main__":
             ngrok_authtoken=ngrok_authtoken,
             global_control_tunnel=global_control_tunnel,
             detailed_analysis_subdir=detailed_analysis_subdir,
+            parallel_detailed_plot_renders=parallel_detailed_plot_renders,
+            detailed_plot_render_workers=detailed_plot_render_workers,
             drms_series=drms_series,
             drms_segment=drms_segment,
             query_start_ut=query_start_ut,

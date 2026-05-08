@@ -5288,6 +5288,8 @@ def stream_aia_data(
     ngrok_authtoken="",
     global_control_tunnel=None,
     detailed_analysis_subdir="detailed_analysis",
+    parallel_detailed_plot_renders=False,
+    detailed_plot_render_workers=None,
     tunnel_health_check_interval_sec=60.0,
     tunnel_restart_cooldown_sec=30.0,
     tunnel_health_timeout_sec=6.0,
@@ -6787,7 +6789,7 @@ def stream_aia_data(
                 write_detailed_analysis_pages(
                     detailed_analysis_folder, label[:n_ar], arnum[:n_ar]
                 )
-                for i in range(n_ar):
+                def _render_detail_plot(i):
                     plot_detailed_em_result(
                         detailed_analysis_folder,
                         detail_aia_submaps[i],
@@ -6803,6 +6805,19 @@ def stream_aia_data(
                         ar_color=color_arr[i],
                         goes_plot_data=goes_plot_data,
                     )
+
+                if bool(parallel_detailed_plot_renders) and n_ar > 1:
+                    plot_workers = detailed_plot_render_workers
+                    if plot_workers in (None, 0):
+                        plot_workers = worker_count
+                    plot_workers = max(1, min(int(plot_workers), n_ar))
+                    with ThreadPoolExecutor(max_workers=plot_workers) as plot_executor:
+                        futures = [plot_executor.submit(_render_detail_plot, i) for i in range(n_ar)]
+                        for fut in as_completed(futures):
+                            fut.result()
+                else:
+                    for i in range(n_ar):
+                        _render_detail_plot(i)
                 if print_phase_timing:
                     phase_times["detailed_analysis"] = time.time() - t_phase
 
