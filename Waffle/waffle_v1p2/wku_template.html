@@ -196,24 +196,17 @@ body {
 }
 .detail-hotspot {
     position: absolute;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    border: 2px solid rgba(24, 79, 138, 0.65);
-    background: rgba(255, 255, 255, 0.34);
-    color: #184f8a;
-    font-size: 18px;
-    font-weight: 700;
+    display: block;
     text-decoration: none;
-    backdrop-filter: blur(1px);
-    box-shadow: 0 6px 14px rgba(16, 33, 43, 0.10);
-    transition: transform 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+    background: transparent;
+    border: 0;
+    color: transparent;
+    font-size: 0;
+    box-shadow: none;
+    cursor: pointer;
 }
 .detail-hotspot:hover {
-    transform: scale(1.03);
-    background: rgba(255, 255, 255, 0.56);
-    box-shadow: 0 9px 18px rgba(16, 33, 43, 0.14);
+    background: transparent;
 }
 .detail-hotspot.box-a,
 .detail-hotspot.box-b,
@@ -222,7 +215,7 @@ body {
 .detail-hotspot.box-e,
 .detail-hotspot.box-f {
     width: 13.5%;
-    height: 27%;
+    height: 31.9%;
 }
 .detail-hotspot.box-a { left: 1.8%; top: 6.2%; }
 .detail-hotspot.box-b { left: 20.7%; top: 6.2%; }
@@ -230,17 +223,6 @@ body {
 .detail-hotspot.box-d { left: 1.8%; top: 54.8%; }
 .detail-hotspot.box-e { left: 20.7%; top: 54.8%; }
 .detail-hotspot.box-f { left: 39.7%; top: 54.8%; }
-@media (max-width: 900px) {
-    .detail-hotspot {
-        font-size: 14px;
-    }
-}
-@media (max-width: 640px) {
-    .detail-hotspot {
-        font-size: 12px;
-        border-width: 1px;
-    }
-}
 .control-launch.disabled a {
     background: #7a8790;
     pointer-events: none;
@@ -717,8 +699,8 @@ function openDetailedWindow(evt) {
     var boxLabel = evt.currentTarget.getAttribute("data-detail-label") || "detail";
     var features = [
         "popup=yes",
-        "width=1460",
-        "height=880",
+        "width=1220",
+        "height=735",
         "resizable=yes",
         "scrollbars=yes"
     ].join(",");
