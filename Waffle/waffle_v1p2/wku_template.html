@@ -190,6 +190,57 @@ body {
     background: #184f8a;
     color: #ffffff;
 }
+.detail-map-wrap {
+    position: relative;
+    width: 100%;
+}
+.detail-hotspot {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 2px solid rgba(24, 79, 138, 0.65);
+    background: rgba(255, 255, 255, 0.34);
+    color: #184f8a;
+    font-size: 18px;
+    font-weight: 700;
+    text-decoration: none;
+    backdrop-filter: blur(1px);
+    box-shadow: 0 6px 14px rgba(16, 33, 43, 0.10);
+    transition: transform 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+}
+.detail-hotspot:hover {
+    transform: scale(1.03);
+    background: rgba(255, 255, 255, 0.56);
+    box-shadow: 0 9px 18px rgba(16, 33, 43, 0.14);
+}
+.detail-hotspot.box-a,
+.detail-hotspot.box-b,
+.detail-hotspot.box-c,
+.detail-hotspot.box-d,
+.detail-hotspot.box-e,
+.detail-hotspot.box-f {
+    width: 13.5%;
+    height: 27%;
+}
+.detail-hotspot.box-a { left: 1.8%; top: 6.2%; }
+.detail-hotspot.box-b { left: 20.7%; top: 6.2%; }
+.detail-hotspot.box-c { left: 39.7%; top: 6.2%; }
+.detail-hotspot.box-d { left: 1.8%; top: 54.8%; }
+.detail-hotspot.box-e { left: 20.7%; top: 54.8%; }
+.detail-hotspot.box-f { left: 39.7%; top: 54.8%; }
+@media (max-width: 900px) {
+    .detail-hotspot {
+        font-size: 14px;
+    }
+}
+@media (max-width: 640px) {
+    .detail-hotspot {
+        font-size: 12px;
+        border-width: 1px;
+    }
+}
 .control-launch.disabled a {
     background: #7a8790;
     pointer-events: none;
@@ -364,7 +415,15 @@ body.control-window .checkbox-row {
 <center>
 <img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:100%;max-width:100%;height:auto;">
 <br>
+<div class="detail-map-wrap">
 <img id="image1" src="./latest_plots/em_goes_plot.png" style="width:100%;max-width:100%;height:auto;">
+<a class="detail-hotspot box-a" href="./detailed_analysis/box_A.html" data-detail-label="A">A</a>
+<a class="detail-hotspot box-b" href="./detailed_analysis/box_B.html" data-detail-label="B">B</a>
+<a class="detail-hotspot box-c" href="./detailed_analysis/box_C.html" data-detail-label="C">C</a>
+<a class="detail-hotspot box-d" href="./detailed_analysis/box_D.html" data-detail-label="D">D</a>
+<a class="detail-hotspot box-e" href="./detailed_analysis/box_E.html" data-detail-label="E">E</a>
+<a class="detail-hotspot box-f" href="./detailed_analysis/box_F.html" data-detail-label="F">F</a>
+</div>
 </center>
 <div id="control-launch" class="control-launch">
     <a id="control-link" href="__CONTROL_PAGE_HREF__" target="_blank" rel="noopener">Open Box Control Window</a>
@@ -608,7 +667,7 @@ function configurePageMode() {
     if (PAGE_MODE === "control") {
         document.body.classList.add("control-window");
         document.getElementById("image0").style.display = "none";
-        document.getElementById("image1").style.display = "none";
+        document.querySelector(".detail-map-wrap").style.display = "none";
         launch.style.display = "none";
         document.querySelector("#control-panel h2").textContent = "Remote Box Control";
         document.querySelector(".control-note").textContent =
@@ -646,6 +705,31 @@ function openControlWindow(evt) {
     }
 }
 
+function openDetailedWindow(evt) {
+    if (PAGE_MODE === "control") {
+        return;
+    }
+    var href = evt.currentTarget.getAttribute("href");
+    if (!href || href === "#") {
+        return;
+    }
+    evt.preventDefault();
+    var boxLabel = evt.currentTarget.getAttribute("data-detail-label") || "detail";
+    var features = [
+        "popup=yes",
+        "width=1460",
+        "height=880",
+        "resizable=yes",
+        "scrollbars=yes"
+    ].join(",");
+    var win = window.open(href, "waffleDetailWindow" + boxLabel, features);
+    if (win) {
+        try {
+            win.focus();
+        } catch (err) {}
+    }
+}
+
 setInterval(function() {
     var timestamp = new Date().getTime();
     document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
@@ -655,6 +739,9 @@ setInterval(refreshStatus, 5000);
 refreshStatus();
 
 document.getElementById("control-link").addEventListener("click", openControlWindow);
+document.querySelectorAll(".detail-hotspot").forEach(function(node) {
+    node.addEventListener("click", openDetailedWindow);
+});
 
 document.getElementById("reload-control").addEventListener("click", function() {
     loadControlConfig();

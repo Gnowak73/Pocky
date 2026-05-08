@@ -3112,6 +3112,124 @@ def publish_local_files(
         f.write(control_html)
 
 
+def _mirror_directory(source_dir, dest_dir):
+    mkdir(dest_dir)
+    source_names = set(os.listdir(source_dir))
+    dest_names = set(os.listdir(dest_dir))
+
+    for stale_name in dest_names - source_names:
+        stale_path = os.path.join(dest_dir, stale_name)
+        if os.path.isdir(stale_path):
+            shutil.rmtree(stale_path)
+        else:
+            os.remove(stale_path)
+
+    for name in source_names:
+        src = os.path.join(source_dir, name)
+        dst = os.path.join(dest_dir, name)
+        if os.path.isdir(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst)
+        else:
+            if (
+                os.path.exists(dst)
+                and os.path.getsize(src) == os.path.getsize(dst)
+                and int(os.path.getmtime(src)) == int(os.path.getmtime(dst))
+            ):
+                continue
+            shutil.copy2(src, dst)
+
+
+def build_detailed_analysis_box_html(box_label, arnum, image_name):
+    title = f"WAFFLE Detailed Analysis - Box {box_label}"
+    return f"""<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>{title}</title>
+<style>
+body {{
+    margin: 0;
+    background: #ffffff;
+    color: #10212b;
+    font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+}}
+#page {{
+    width: min(98vw, 1380px);
+    margin: 0 auto;
+    padding: 10px 0 16px 0;
+}}
+h1 {{
+    margin: 0 0 4px 0;
+    font-size: 24px;
+}}
+.subhead {{
+    margin: 0 0 10px 0;
+    color: #52636c;
+    font-size: 13px;
+}}
+.plot-frame {{
+    border: 1px solid rgba(16, 33, 43, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(16, 33, 43, 0.08);
+    overflow: hidden;
+    background: #ffffff;
+}}
+.plot-frame img {{
+    display: block;
+    width: 100%;
+    height: auto;
+}}
+</style>
+</head>
+<body>
+<div id="page">
+<h1>Detailed Analysis - Box {box_label}</h1>
+<div class="subhead">AR {int(arnum)} | Auto-refresh every 15 seconds</div>
+<div class="plot-frame">
+<img id="detail-image" src="./{image_name}" alt="Detailed analysis plot for box {box_label}">
+</div>
+</div>
+<script>
+setInterval(function() {{
+    var timestamp = new Date().getTime();
+    document.getElementById("detail-image").src = "./{image_name}?t=" + timestamp;
+}}, 15000);
+</script>
+</body>
+</html>"""
+
+
+def write_detailed_analysis_pages(detail_dir, labels, arnums):
+    mkdir(detail_dir)
+    for idx, box_label in enumerate(labels):
+        image_name = f"aia_em_{idx + 1}.png"
+        html_name = f"box_{box_label}.html"
+        arnum = arnums[idx] if idx < len(arnums) else 0
+        with open(os.path.join(detail_dir, html_name), "w", encoding="utf-8") as f:
+            f.write(build_detailed_analysis_box_html(box_label, arnum, image_name))
+
+
+def publish_detailed_analysis_local(source_dir, destination_volume, subdir="detailed_analysis"):
+    if not source_dir or not os.path.isdir(source_dir):
+        return
+    dest_dir = os.path.join(destination_volume, subdir)
+    _mirror_directory(source_dir, dest_dir)
+
+
+def publish_detailed_analysis_remote(
+    ssh_client, source_dir, destination_volume, subdir="detailed_analysis"
+):
+    if not source_dir or not os.path.isdir(source_dir):
+        return
+    remote_dir = os.path.join(destination_volume, subdir)
+    ssh_client.exec_command(f'mkdir -p "{remote_dir}"')
+    with SCPClient(ssh_client.get_transport()) as scp:
+        for name in os.listdir(source_dir):
+            scp.put(os.path.join(source_dir, name), remote_path=remote_dir, recursive=True)
+
+
 def _status_payload(kind, title, detail):
     return {
         "kind": str(kind),
@@ -4792,6 +4910,146 @@ def plot_em_maps_and_curves(
 # **********************************************************
 
 
+def plot_detailed_em_result(
+    plots_folder,
+    aia_submaps,
+    em_map,
+    xrsa_current,
+    xrsb_current,
+    arnum,
+    label,
+    box_index,
+    file_name_em_csv,
+    timezone="US/Central",
+    em_cache=None,
+    ar_color="red",
+    goes_plot_data=None,
+):
+    ordered_wav = [171, 193, 211, 131, 94]
+    map_by_wav = {int(m.meta["wavelnth"]): m for m in aia_submaps}
+    ordered_aia_maps = [map_by_wav[w] for w in ordered_wav]
+
+    if goes_plot_data is None:
+        goes_time_array, goes_xrsa_flux, goes_xrsb_flux = prepare_goes_plot_arrays(
+            xrsa_current, xrsb_current, timezone=timezone
+        )
+    else:
+        goes_time_array, goes_xrsa_flux, goes_xrsb_flux = goes_plot_data
+
+    fig = plt.figure(figsize=(22, 10))
+
+    ax1 = plt.subplot2grid((2, 5), (0, 0), colspan=1, projection=ordered_aia_maps[0])
+    ax2 = plt.subplot2grid((2, 5), (0, 1), colspan=1, projection=ordered_aia_maps[1])
+    ax3 = plt.subplot2grid((2, 5), (0, 2), colspan=1, projection=ordered_aia_maps[2])
+    ax4 = plt.subplot2grid((2, 5), (0, 3), colspan=1, projection=ordered_aia_maps[3])
+    ax5 = plt.subplot2grid((2, 5), (0, 4), colspan=1, projection=ordered_aia_maps[4])
+    ax6 = plt.subplot2grid((2, 5), (1, 0), colspan=2, projection=em_map)
+    ax7 = plt.subplot2grid((2, 5), (1, 2), colspan=3)
+
+    plt.subplots_adjust(
+        left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0.4, hspace=0.4
+    )
+
+    labelsize = 15
+    ticksize = 15
+    chsize = 15
+    legsize = 15
+    xlabel = "Solar X [arcsec]"
+    ylabel = "Solar Y [arcsec]"
+
+    for jj, aia_map in enumerate(ordered_aia_maps):
+        aia_map.plot(axes=[ax1, ax2, ax3, ax4, ax5][jj])
+        ax = [ax1, ax2, ax3, ax4, ax5][jj]
+        ax.set_title("AIA " + str(aia_map.meta["wavelnth"]) + "A", fontsize=labelsize)
+        ax.set_xlabel(xlabel, fontsize=labelsize)
+        ax.set_ylabel(ylabel, fontsize=labelsize)
+        ax.tick_params(axis="x", labelsize=ticksize)
+        ax.tick_params(axis="y", labelsize=ticksize)
+
+    title = "AIA Emission Measure \n (T $\\geq 10^{6.6}$ K)"
+    em_map.plot_settings["norm"] = colors.LogNorm(vmin=1e42, vmax=1e45, clip=True)
+    em_map.plot_settings["cmap"] = matplotlib.cm.get_cmap("CMRmap")
+
+    im = em_map.plot(axes=ax6)
+    ax6.grid(False)
+    ax6.set_title(title, fontsize=labelsize)
+    ax6.set_xlabel(xlabel, fontsize=labelsize)
+    ax6.set_ylabel(ylabel, fontsize=labelsize)
+    ax6.tick_params(axis="x", labelsize=ticksize)
+    ax6.tick_params(axis="y", labelsize=ticksize)
+
+    cax = fig.add_axes(
+        [ax6.get_position().x1 + 0.01, ax6.get_position().y0, 0.01, ax6.get_position().height]
+    )
+    cbar = fig.colorbar(im, cax=cax)
+    cbar.ax.tick_params(labelsize=labelsize)
+    cbar.ax.set_ylabel("EM [cm$^{-3}$ pixel$^{-1}$]", fontsize=labelsize)
+
+    time_em_array, total_em = load_em_series(
+        file_name_em_csv,
+        timezone=timezone,
+        em_cache=em_cache,
+    )
+    min_time = time_em_array[-1] - timedelta(minutes=150)
+    max_time = time_em_array[-1]
+    if len(goes_time_array) > 0:
+        goes_mask = (goes_time_array >= min_time) & (goes_time_array <= max_time)
+        goes_time_array = goes_time_array[goes_mask]
+        goes_xrsa_flux = np.asarray(goes_xrsa_flux)[goes_mask]
+        goes_xrsb_flux = np.asarray(goes_xrsb_flux)[goes_mask]
+
+    if len(goes_time_array) > 0:
+        ax7.plot(goes_time_array, goes_xrsa_flux, "gray", label="GOES XRSA", linestyle="-.")
+        ax7.plot(goes_time_array, goes_xrsb_flux, "black", label="GOES XRSB", linestyle="dashed")
+    ax7.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz.gettz(timezone)))
+    ax7.xaxis.set_major_locator(mdates.MinuteLocator(interval=20))
+    ax7.set_yscale("log")
+    ax7.tick_params(axis="x", labelsize=chsize)
+    ax7.tick_params(axis="y", labelsize=chsize)
+    ax7.set(xlabel="Time (" + time_em_array[-1].strftime("%m/%d/%Y") + ")")
+    ax7.set(ylabel="GOES level")
+    ax7.xaxis.label.set_size(chsize)
+    ax7.yaxis.label.set_size(chsize)
+    ax7.set_xlim((min_time, max_time))
+    ax7.set_ylim(1e-8, 1e-4)
+    ax7.set_yticks([1e-8, 1e-7, 1e-6, 1e-5, 1e-4])
+    ax7.set_yticklabels(["A", "B", "C", "M", "X"])
+    ax7.grid(True)
+    ax7.tick_params(axis="y", labelcolor="black")
+    ax7.yaxis.label.set_color("black")
+
+    ax8 = ax7.twinx()
+    em_mask = time_em_array >= min_time
+    ax8.plot(time_em_array[em_mask], total_em[em_mask], ar_color, label="AIA EM")
+    ax8.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz.gettz(timezone)))
+    ax8.set_yscale("log")
+    ax8.set_ylim(1e46, 1e50)
+    ax8.set_xlim((min_time, max_time))
+    ax8.tick_params(axis="x", labelsize=chsize)
+    ax8.set(ylabel="EM [cm$^{-3}$]")
+    ax8.tick_params(axis="y", labelsize=chsize)
+    ax8.yaxis.label.set_size(chsize)
+    ax8.tick_params(axis="y", labelcolor=ar_color)
+    ax8.yaxis.label.set_color(ar_color)
+    ax8.spines["right"].set_color(ar_color)
+
+    fig.legend(bbox_to_anchor=(0.09, 0.05, 0.45, 0.38), fontsize=legsize)
+    fig.suptitle(
+        label + " " + str(arnum) + " - " + time_em_array[-1].strftime("%H:%M:%S") + " " + timezone,
+        fontsize=25,
+    )
+
+    plt.savefig(
+        os.path.join(plots_folder, "aia_em_" + str(box_index)),
+        dpi=85,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+# **********************************************************
+
+
 def plot_full_disk_images(
     calibrated_aia_maps,
     plots_folder,
@@ -5029,6 +5287,7 @@ def stream_aia_data(
     local_web_port=8003,
     ngrok_authtoken="",
     global_control_tunnel=None,
+    detailed_analysis_subdir="detailed_analysis",
     tunnel_health_check_interval_sec=60.0,
     tunnel_restart_cooldown_sec=30.0,
     tunnel_health_timeout_sec=6.0,
@@ -5192,6 +5451,9 @@ def stream_aia_data(
     # Latest results folder
     latest_plots_folder = os.path.join(data_folder, "latest_plots")
     mkdir(latest_plots_folder)
+    detailed_analysis_folder = os.path.join(data_folder, detailed_analysis_subdir)
+    mkdir(detailed_analysis_folder)
+    write_detailed_analysis_pages(detailed_analysis_folder, label[:n_ar], arnum[:n_ar])
 
     # AIA data folder
     aia_data_folder = os.path.join(data_folder, "aia_data_folder")
@@ -6517,6 +6779,39 @@ def stream_aia_data(
                 if print_phase_timing:
                     phase_times["em_goes_plot"] = time.time() - t_phase
 
+                t_phase = time.time()
+                write_detailed_analysis_pages(
+                    detailed_analysis_folder, label[:n_ar], arnum[:n_ar]
+                )
+                for i in range(n_ar):
+                    aia_submaps_detail = crop_full_disk_maps(
+                        calibrated_aia_maps,
+                        cycle_ar_lon[i],
+                        cycle_ar_lat[i],
+                        arnum[i],
+                        cropped_maps_folder,
+                        n_pix_x=n_pix_x,
+                        n_pix_y=n_pix_y,
+                        save_submaps=False,
+                    )
+                    plot_detailed_em_result(
+                        detailed_analysis_folder,
+                        aia_submaps_detail,
+                        em_maps[i],
+                        xrsa_current,
+                        xrsb_current,
+                        arnum[i],
+                        label[i],
+                        i + 1,
+                        os.path.join(total_em_folder, "total_em_" + str(arnum[i]) + ".csv"),
+                        timezone=timezone,
+                        em_cache=em_cache,
+                        ar_color=color_arr[i],
+                        goes_plot_data=goes_plot_data,
+                    )
+                if print_phase_timing:
+                    phase_times["detailed_analysis"] = time.time() - t_phase
+
                 if cycle_fai_trigger_record is not None:
                     (
                         fai_trigger_time_utc,
@@ -6574,7 +6869,18 @@ def stream_aia_data(
                                 else "./control.html"
                             ),
                         )
+                        publish_detailed_analysis_local(
+                            detailed_analysis_folder,
+                            local_publish_dir,
+                            subdir=detailed_analysis_subdir,
+                        )
                     ssh_scp_files(ssh_client, latest_plots_folder, destination_volume)
+                    publish_detailed_analysis_remote(
+                        ssh_client,
+                        detailed_analysis_folder,
+                        destination_volume,
+                        subdir=detailed_analysis_subdir,
+                    )
                     publish_remote_index_html(
                         ssh_client,
                         destination_volume,
@@ -6603,6 +6909,11 @@ def stream_aia_data(
                             if str(external_control_url).strip()
                             else "./control.html"
                         ),
+                    )
+                    publish_detailed_analysis_local(
+                        detailed_analysis_folder,
+                        local_publish_dir,
+                        subdir=detailed_analysis_subdir,
                     )
                 if goes_available:
                     publish_runtime_status(

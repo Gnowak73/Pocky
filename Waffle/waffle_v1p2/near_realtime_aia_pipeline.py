@@ -52,6 +52,7 @@ if __name__ == "__main__":
     global_control_provider = "cloudflared"  # "auto", "ngrok", or "cloudflared"
     global_control_config_path = aux_functions.default_global_control_config_path()
     external_control_url = ""
+    detailed_analysis_subdir = "detailed_analysis"
     control_auth_user = "waffle"
     control_auth_password = "waffle"
     ssh_host = "physics.wku.edu"
@@ -226,6 +227,7 @@ if __name__ == "__main__":
             local_web_port=local_web_port,
             ngrok_authtoken=ngrok_authtoken,
             global_control_tunnel=global_control_tunnel,
+            detailed_analysis_subdir=detailed_analysis_subdir,
             drms_series=drms_series,
             drms_segment=drms_segment,
             query_start_ut=query_start_ut,
