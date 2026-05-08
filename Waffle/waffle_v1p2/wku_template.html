@@ -252,6 +252,48 @@ body {
 .manual-boxes-disabled {
     opacity: 0.55;
 }
+body.control-window {
+    background: #f4f7f9;
+}
+body.control-window #page-frame {
+    width: min(96vw, 1280px);
+    padding-top: 44px;
+}
+body.control-window .control-panel {
+    margin-top: 12px;
+    padding: 16px 18px 18px 18px;
+}
+body.control-window .control-grid {
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+body.control-window .box-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 14px;
+}
+body.control-window .box-card {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 10px;
+    align-items: end;
+}
+body.control-window .box-card h3 {
+    grid-column: 1 / -1;
+    margin-bottom: 4px;
+}
+body.control-window .field-group label {
+    min-height: 0;
+}
+body.control-window .checkbox-row {
+    min-height: 0;
+    padding-top: 10px;
+}
+@media (max-width: 980px) {
+    body.control-window .control-grid {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+    body.control-window .box-grid {
+        grid-template-columns: 1fr;
+    }
+}
 </style>
 </head>
 <body>
@@ -267,7 +309,7 @@ body {
 <img id="image1" src="./latest_plots/em_goes_plot.png" style="width:100%;max-width:100%;height:auto;">
 </center>
 <div id="control-launch" class="control-launch">
-    <a id="control-link" href="__CONTROL_PAGE_HREF__" target="_blank" rel="noopener">Open Box Control in New Tab</a>
+    <a id="control-link" href="__CONTROL_PAGE_HREF__" target="_blank" rel="noopener">Open Box Control Window</a>
 </div>
 <div id="control-panel" class="control-panel">
     <h2>Box Control</h2>
@@ -506,6 +548,7 @@ function configurePageMode() {
         launch.classList.add("disabled");
     }
     if (PAGE_MODE === "control") {
+        document.body.classList.add("control-window");
         document.getElementById("image0").style.display = "none";
         document.getElementById("image1").style.display = "none";
         launch.style.display = "none";
@@ -517,6 +560,34 @@ function configurePageMode() {
     }
 }
 
+function openControlWindow(evt) {
+    if (!CONTROL_ENABLED) {
+        return;
+    }
+    if (PAGE_MODE === "control") {
+        return;
+    }
+    var link = document.getElementById("control-link");
+    var href = link ? link.getAttribute("href") : "";
+    if (!href || href === "#") {
+        return;
+    }
+    evt.preventDefault();
+    var features = [
+        "popup=yes",
+        "width=1180",
+        "height=620",
+        "resizable=yes",
+        "scrollbars=yes"
+    ].join(",");
+    var win = window.open(href, "waffleControlWindow", features);
+    if (win) {
+        try {
+            win.focus();
+        } catch (err) {}
+    }
+}
+
 setInterval(function() {
     var timestamp = new Date().getTime();
     document.getElementById("image0").src = "./latest_plots/full_disk_maps.gif?t=" + timestamp;
@@ -524,6 +595,8 @@ setInterval(function() {
 }, 15000);
 setInterval(refreshStatus, 5000);
 refreshStatus();
+
+document.getElementById("control-link").addEventListener("click", openControlWindow);
 
 document.getElementById("reload-control").addEventListener("click", function() {
     loadControlConfig();

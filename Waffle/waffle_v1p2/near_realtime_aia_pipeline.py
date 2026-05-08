@@ -49,7 +49,7 @@ if __name__ == "__main__":
     local_web_host = "127.0.0.1"
     local_web_port = 8003
     enable_global_control = True
-    global_control_provider = "auto"  # "auto", "ngrok", or "cloudflared"
+    global_control_provider = "cloudflared"  # "auto", "ngrok", or "cloudflared"
     global_control_config_path = aux_functions.default_global_control_config_path()
     external_control_url = ""
     control_auth_user = "waffle"
