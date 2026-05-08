@@ -670,6 +670,7 @@ function configurePageMode() {
     if (PAGE_MODE === "control") {
         document.body.classList.add("control-window");
         document.getElementById("status-banner").style.display = "none";
+        document.getElementById("page-frame").style.paddingTop = "8px";
         document.getElementById("image0").style.display = "none";
         document.querySelector(".detail-map-wrap").style.display = "none";
         launch.style.display = "none";
