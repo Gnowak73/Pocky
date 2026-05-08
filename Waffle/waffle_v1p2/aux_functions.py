@@ -4963,7 +4963,7 @@ def plot_detailed_em_result(
     ax7 = plt.subplot2grid((2, 5), (1, 2), colspan=3)
 
     plt.subplots_adjust(
-        left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0.4, hspace=0.4
+        left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0.48, hspace=0.4
     )
 
     labelsize = 15
@@ -5049,18 +5049,47 @@ def plot_detailed_em_result(
     ax8.yaxis.label.set_color(ar_color)
     ax8.spines["right"].set_color(ar_color)
 
+    # Lock left-side y-axis titles to fixed offsets relative to each subplot box.
+    top_ylabel_offset = 0.041
+    em_ylabel_offset = 0.038
+    for ax in [ax1, ax2, ax3, ax4, ax5]:
+        ax.set_ylabel("")
+        pos = ax.get_position()
+        fig.text(
+            pos.x0 - top_ylabel_offset,
+            pos.y0 + pos.height / 2.0,
+            ylabel,
+            rotation='vertical',
+            va='center',
+            ha='center',
+            fontsize=labelsize,
+        )
+    ax6.set_ylabel("")
+    pos = ax6.get_position()
+    fig.text(
+        pos.x0 - em_ylabel_offset,
+        pos.y0 + pos.height / 2.0,
+        ylabel,
+        rotation='vertical',
+        va='center',
+        ha='center',
+        fontsize=labelsize,
+    )
+
     fig.legend(bbox_to_anchor=(0.09, 0.05, 0.45, 0.38), fontsize=legsize)
     fig.suptitle(
         label + " " + str(arnum) + " - " + time_em_array[-1].strftime("%H:%M:%S") + " " + timezone,
         fontsize=25,
     )
 
+    out_path = os.path.join(plots_folder, "aia_em_" + str(box_index))
     plt.savefig(
-        os.path.join(plots_folder, "aia_em_" + str(box_index)),
+        out_path,
         dpi=85,
-        bbox_inches="tight",
+        facecolor="white",
     )
     plt.close(fig)
+
 
 
 # **********************************************************
@@ -5122,13 +5151,15 @@ def resolve_full_disk_render_workers(enabled, requested_workers, worker_count, n
 
 
 def _load_font(size):
-    for path in (
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Helvetica.ttc",
+    # Prefer broadly available font names before falling back to Pillow's bitmap default.
+    for font_name in (
+        "DejaVuSans.ttf",
+        "Arial.ttf",
+        "LiberationSans-Regular.ttf",
+        "FreeSans.ttf",
     ):
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(font_name, size)
         except Exception:
             continue
     return ImageFont.load_default()
@@ -5295,36 +5326,36 @@ def plot_full_disk_images_parallel(
     _render_suvi_panel_image(suvi_image, suvi_panel_title, suvi_path, target_height)
     suvi_panel = Image.open(suvi_path).convert("RGB")
 
-    gap = 18
+    gap = 18.2
     side_margin = 26
     top_margin = 88
     bottom_margin = 12
     title_font = _load_font(70)
     title = "AIA data " + current_time_local.strftime("%m/%d/%Y - %H:%M:%S") + " " + timezone
 
-    total_width = (
+    total_width = int(round(
         side_margin * 2
         + sum(img.width for img in panel_images)
         + suvi_panel.width
         + gap * 5
-    )
-    total_height = top_margin + target_height + bottom_margin
+    ))
+    total_height = int(round(top_margin + target_height + bottom_margin))
     canvas = Image.new("RGB", (total_width, total_height), "white")
     draw = ImageDraw.Draw(canvas)
     bbox = draw.textbbox((0, 0), title, font=title_font)
     draw.text(
-        ((total_width - (bbox[2] - bbox[0])) / 2, 10),
+        (int(round((total_width - (bbox[2] - bbox[0])) / 2)), 10),
         title,
         fill=(0, 0, 0),
         font=title_font,
     )
 
-    x = side_margin
-    y = top_margin
+    x = float(side_margin)
+    y = int(round(top_margin))
     for img in panel_images:
-        canvas.paste(img, (x, y))
+        canvas.paste(img, (int(round(x)), y))
         x += img.width + gap
-    canvas.paste(suvi_panel, (x, y))
+    canvas.paste(suvi_panel, (int(round(x)), y))
 
     out_path = os.path.join(
         plots_folder,
@@ -5723,7 +5754,7 @@ def stream_aia_data(
         raise ValueError("em_processing_mode must be 0, 1, or 2")
 
     # Define colors that will be used for plotting the boxes and the corresponding curves
-    color_arr = ["red", "gold", "blue", "lime", "cyan", "magenta"]
+    color_arr = ["#FF0000", "#FFD700", "#0000FF", "#00FF00", "#00FFFF", "#FF00FF"]
     arnum = list(arnum)
     ar_x = np.array(ar_x, dtype=float)
     ar_y = np.array(ar_y, dtype=float)
