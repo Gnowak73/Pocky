@@ -5121,29 +5121,45 @@ def resolve_full_disk_render_workers(enabled, requested_workers, worker_count, n
     return max(1, min(int(n_maps), resolved))
 
 
-def _save_full_disk_aia_panel_process(payload):
+def _load_font(size):
+    for path in (
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Helvetica.ttc",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _render_full_disk_aia_panel_process(payload):
     aia_map = _deserialize_map_from_process(payload["map"])
     out_path = payload["out_path"]
-    title = payload["title"]
-    color_boxes = payload["color_boxes"]
     ar_lon = payload["ar_lon"]
     ar_lat = payload["ar_lat"]
+    color_arr = payload["color_arr"]
     n_pix_x = int(payload["n_pix_x"])
     n_pix_y = int(payload["n_pix_y"])
 
-    fig = plt.figure(figsize=(5.5, 5.8))
+    fig = plt.figure(figsize=(5.2, 5.9))
     ax = fig.add_subplot(111, projection=aia_map)
     aia_map.plot_settings["norm"] = colors.LogNorm(vmin=0.3, vmax=16000.0 / 2.9, clip=True)
     aia_map.plot_settings["cmap"] = matplotlib.cm.get_cmap("gray")
     aia_map.plot(axes=ax)
-    ax.set_title(title, fontsize=16)
-    ax.set_xlabel("Solar X [arcsec]", fontsize=13)
-    ax.set_ylabel("Solar Y [arcsec]", fontsize=13, labelpad=-0.5)
-    ax.tick_params(axis="x", labelsize=12)
-    ax.tick_params(axis="y", labelsize=12, pad=0)
+    ax.set_title(f"AIA {int(aia_map.meta['wavelnth'])}Å", fontsize=16)
+    ax.set_xlabel("Solar X [arcsec]", fontsize=14)
+    ax.set_ylabel("Solar Y [arcsec]", fontsize=14, labelpad=-0.5)
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14, pad=0)
 
-    for lon, lat, color_box in zip(ar_lon, ar_lat, color_boxes):
-        this_coord = SkyCoord(lon * u.deg, lat * u.deg, frame=frames.HeliographicStonyhurst)
+    ar_coords = [
+        SkyCoord(ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst)
+        for ii in range(len(ar_lon))
+    ]
+    for ii in range(len(ar_lon)):
+        this_coord = ar_coords[ii]
         pix_x = aia_map.world_to_pixel(this_coord).x.value
         pix_y = aia_map.world_to_pixel(this_coord).y.value
         top_right = aia_map.pixel_to_world(
@@ -5158,55 +5174,53 @@ def _save_full_disk_aia_panel_process(payload):
             new_bl,
             axes=ax,
             top_right=new_tr,
-            color=color_box,
+            color=color_arr[ii],
             linewidth=2,
         )
-    fig.subplots_adjust(left=0.12, right=0.97, top=0.90, bottom=0.14)
+
+    fig.subplots_adjust(left=0.13, right=0.97, top=0.90, bottom=0.13)
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
     return out_path
 
 
-def _load_font(size):
-    try:
-        return ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", size)
-    except Exception:
-        try:
-            return ImageFont.truetype("/Library/Fonts/Arial.ttf", size)
-        except Exception:
-            return ImageFont.load_default()
-
-
-def _build_suvi_panel_image(suvi_image, suvi_title, target_size):
-    width, height = target_size
-    panel = Image.new("RGB", (width, height), "white")
+def _render_suvi_panel_image(suvi_image, suvi_title, out_path, target_height):
+    width = int(round(target_height * 0.88))
+    panel = Image.new("RGB", (width, target_height), "white")
     draw = ImageDraw.Draw(panel)
-    title_font = _load_font(22)
-    draw.text((12, 10), suvi_title, fill=(180, 0, 0), font=title_font)
-    img_top = 48
-    img_bottom = 10
+    title_font = _load_font(20)
+    draw.text((10, 8), suvi_title, fill=(210, 0, 0), font=title_font)
+    top_pad = 44
+    side_pad = 10
+    bottom_pad = 8
     if suvi_image is None:
-        draw.rectangle([10, img_top, width - 10, height - img_bottom], fill=(0, 0, 0))
+        draw.rectangle([side_pad, top_pad, width - side_pad, target_height - bottom_pad], fill=(0, 0, 0))
+        msg_font = _load_font(16)
         msg = "SUVI data not available"
-        msg_font = _load_font(18)
         bbox = draw.textbbox((0, 0), msg, font=msg_font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
-        draw.text(((width - tw) / 2, img_top + (height - img_top - img_bottom - th) / 2), msg, fill=(255, 255, 255), font=msg_font)
-        return panel
-    src = suvi_image
-    if not isinstance(src, Image.Image):
-        src = Image.fromarray(np.asarray(src))
-    src = src.convert("RGB")
-    avail_w = width - 20
-    avail_h = height - img_top - img_bottom
-    scale = min(avail_w / src.width, avail_h / src.height)
-    new_size = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
-    resized = src.resize(new_size, Image.Resampling.LANCZOS)
-    x0 = (width - resized.width) // 2
-    y0 = img_top + (avail_h - resized.height) // 2
-    panel.paste(resized, (x0, y0))
-    return panel
+        draw.text(
+            ((width - tw) / 2, top_pad + (target_height - top_pad - bottom_pad - th) / 2),
+            msg,
+            fill=(255, 255, 255),
+            font=msg_font,
+        )
+    else:
+        src = suvi_image
+        if not isinstance(src, Image.Image):
+            src = Image.fromarray(np.asarray(src))
+        src = src.convert("RGB")
+        avail_w = width - 2 * side_pad
+        avail_h = target_height - top_pad - bottom_pad
+        scale = min(avail_w / src.width, avail_h / src.height)
+        new_size = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+        resized = src.resize(new_size, Image.Resampling.LANCZOS)
+        x0 = (width - resized.width) // 2
+        y0 = top_pad + (avail_h - resized.height) // 2
+        panel.paste(resized, (x0, y0))
+    panel.save(out_path)
+    return out_path
 
 
 def plot_full_disk_images_parallel(
@@ -5247,48 +5261,65 @@ def plot_full_disk_images_parallel(
             {
                 "map": _serialize_map_for_process(aia_map),
                 "out_path": panel_paths[idx],
-                "title": f"AIA {int(aia_map.meta['wavelnth'])}Å",
-                "color_boxes": list(color_arr),
                 "ar_lon": [float(v) for v in ar_lon],
                 "ar_lat": [float(v) for v in ar_lat],
+                "color_arr": list(color_arr),
                 "n_pix_x": int(n_pix_x),
                 "n_pix_y": int(n_pix_y),
             }
         )
+
     with ProcessPoolExecutor(max_workers=render_workers) as ex:
-        futures = [ex.submit(_save_full_disk_aia_panel_process, payload) for payload in payloads]
+        futures = [ex.submit(_render_full_disk_aia_panel_process, payload) for payload in payloads]
         for fut in as_completed(futures):
             fut.result()
 
     panel_images = [Image.open(path).convert("RGB") for path in panel_paths]
-    panel_height = max(img.height for img in panel_images)
-    suvi_width = int(round(panel_images[0].width * 1.2))
-    suvi_panel = _build_suvi_panel_image(suvi_image, suvi_panel_title, (suvi_width, panel_height))
+    panel_heights = [img.height for img in panel_images]
+    target_height = max(panel_heights)
+    suvi_path = os.path.join(temp_dir, "panel_suvi.png")
+    _render_suvi_panel_image(suvi_image, suvi_panel_title, suvi_path, target_height)
+    suvi_panel = Image.open(suvi_path).convert("RGB")
+
     gap = 18
-    side_margin = 24
-    top_title_h = 72
+    side_margin = 26
+    top_margin = 78
     bottom_margin = 12
-    total_width = side_margin * 2 + sum(img.width for img in panel_images) + suvi_panel.width + gap * 5
-    canvas = Image.new("RGB", (total_width, top_title_h + panel_height + bottom_margin), "white")
-    draw = ImageDraw.Draw(canvas)
-    title_font = _load_font(38)
+    title_font = _load_font(40)
     title = "AIA data " + current_time_local.strftime("%m/%d/%Y - %H:%M:%S") + " " + timezone
+
+    total_width = (
+        side_margin * 2
+        + sum(img.width for img in panel_images)
+        + suvi_panel.width
+        + gap * 5
+    )
+    total_height = top_margin + target_height + bottom_margin
+    canvas = Image.new("RGB", (total_width, total_height), "white")
+    draw = ImageDraw.Draw(canvas)
     bbox = draw.textbbox((0, 0), title, font=title_font)
-    tw = bbox[2] - bbox[0]
-    draw.text(((total_width - tw) / 2, 14), title, fill=(0, 0, 0), font=title_font)
+    draw.text(
+        ((total_width - (bbox[2] - bbox[0])) / 2, 10),
+        title,
+        fill=(0, 0, 0),
+        font=title_font,
+    )
+
     x = side_margin
-    y = top_title_h
+    y = top_margin
     for img in panel_images:
         canvas.paste(img, (x, y))
         x += img.width + gap
     canvas.paste(suvi_panel, (x, y))
 
     out_path = os.path.join(
-        plots_folder, "aia_full_disk_" + current_time_local.strftime("%Y-%m-%dT%H%M%S") + ".png"
+        plots_folder,
+        "aia_full_disk_" + current_time_local.strftime("%Y-%m-%dT%H%M%S") + ".png",
     )
     canvas.save(out_path)
     for img in panel_images:
         img.close()
+    suvi_panel.close()
     prune_full_disk_images(plots_folder, keep_last=30)
 
 
