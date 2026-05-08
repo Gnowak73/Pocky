@@ -61,7 +61,7 @@ import matplotlib.colors as colors
 
 import shutil
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 logging.getLogger("parfive").setLevel(logging.WARNING)
 
@@ -5107,6 +5107,194 @@ def render_detailed_em_result_process(payload):
 # **********************************************************
 
 
+def resolve_full_disk_render_workers(enabled, requested_workers, worker_count, n_maps):
+    if not bool(enabled):
+        return 1
+    if n_maps <= 1:
+        return 1
+    if requested_workers in (None, 0, "", "None"):
+        requested_workers = worker_count
+    try:
+        resolved = int(requested_workers)
+    except Exception:
+        resolved = int(worker_count)
+    return max(1, min(int(n_maps), resolved))
+
+
+def _save_full_disk_aia_panel_process(payload):
+    aia_map = _deserialize_map_from_process(payload["map"])
+    out_path = payload["out_path"]
+    title = payload["title"]
+    color_boxes = payload["color_boxes"]
+    ar_lon = payload["ar_lon"]
+    ar_lat = payload["ar_lat"]
+    n_pix_x = int(payload["n_pix_x"])
+    n_pix_y = int(payload["n_pix_y"])
+
+    fig = plt.figure(figsize=(5.5, 5.8))
+    ax = fig.add_subplot(111, projection=aia_map)
+    aia_map.plot_settings["norm"] = colors.LogNorm(vmin=0.3, vmax=16000.0 / 2.9, clip=True)
+    aia_map.plot_settings["cmap"] = matplotlib.cm.get_cmap("gray")
+    aia_map.plot(axes=ax)
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Solar X [arcsec]", fontsize=13)
+    ax.set_ylabel("Solar Y [arcsec]", fontsize=13, labelpad=-0.5)
+    ax.tick_params(axis="x", labelsize=12)
+    ax.tick_params(axis="y", labelsize=12, pad=0)
+
+    for lon, lat, color_box in zip(ar_lon, ar_lat, color_boxes):
+        this_coord = SkyCoord(lon * u.deg, lat * u.deg, frame=frames.HeliographicStonyhurst)
+        pix_x = aia_map.world_to_pixel(this_coord).x.value
+        pix_y = aia_map.world_to_pixel(this_coord).y.value
+        top_right = aia_map.pixel_to_world(
+            (pix_x + n_pix_x // 2 - 1) * u.pix, (pix_y + n_pix_y // 2 - 1) * u.pix
+        )
+        bottom_left = aia_map.pixel_to_world(
+            (pix_x - n_pix_x // 2) * u.pix, (pix_y - n_pix_y // 2) * u.pix
+        )
+        new_bl = SkyCoord(bottom_left.Tx, bottom_left.Ty, frame=aia_map.coordinate_frame)
+        new_tr = SkyCoord(top_right.Tx, top_right.Ty, frame=aia_map.coordinate_frame)
+        aia_map.draw_quadrangle(
+            new_bl,
+            axes=ax,
+            top_right=new_tr,
+            color=color_box,
+            linewidth=2,
+        )
+    fig.subplots_adjust(left=0.12, right=0.97, top=0.90, bottom=0.14)
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+    return out_path
+
+
+def _load_font(size):
+    try:
+        return ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", size)
+    except Exception:
+        try:
+            return ImageFont.truetype("/Library/Fonts/Arial.ttf", size)
+        except Exception:
+            return ImageFont.load_default()
+
+
+def _build_suvi_panel_image(suvi_image, suvi_title, target_size):
+    width, height = target_size
+    panel = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(panel)
+    title_font = _load_font(22)
+    draw.text((12, 10), suvi_title, fill=(180, 0, 0), font=title_font)
+    img_top = 48
+    img_bottom = 10
+    if suvi_image is None:
+        draw.rectangle([10, img_top, width - 10, height - img_bottom], fill=(0, 0, 0))
+        msg = "SUVI data not available"
+        msg_font = _load_font(18)
+        bbox = draw.textbbox((0, 0), msg, font=msg_font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        draw.text(((width - tw) / 2, img_top + (height - img_top - img_bottom - th) / 2), msg, fill=(255, 255, 255), font=msg_font)
+        return panel
+    src = suvi_image
+    if not isinstance(src, Image.Image):
+        src = Image.fromarray(np.asarray(src))
+    src = src.convert("RGB")
+    avail_w = width - 20
+    avail_h = height - img_top - img_bottom
+    scale = min(avail_w / src.width, avail_h / src.height)
+    new_size = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+    resized = src.resize(new_size, Image.Resampling.LANCZOS)
+    x0 = (width - resized.width) // 2
+    y0 = img_top + (avail_h - resized.height) // 2
+    panel.paste(resized, (x0, y0))
+    return panel
+
+
+def plot_full_disk_images_parallel(
+    calibrated_aia_maps,
+    plots_folder,
+    t_rec,
+    arnum,
+    ar_lon,
+    ar_lat,
+    color_arr,
+    timezone="US/Central",
+    n_pix_x=1000,
+    n_pix_y=1000,
+    suvi_image=None,
+    suvi_title="SUVI",
+    suvi_obs_time_utc=None,
+    render_workers=5,
+):
+    ordered_wav = [171, 193, 211, 131, 94]
+    map_by_wav = {int(m.meta["wavelnth"]): m for m in calibrated_aia_maps}
+    ordered_aia_maps = [map_by_wav[w] for w in ordered_wav]
+    current_time_utc = datetime.datetime.strptime(
+        t_rec[0], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=datetime.timezone.utc)
+    current_time_local = convert_utc_to_timezone(current_time_utc, timezone=timezone)
+    if suvi_obs_time_utc is not None:
+        suvi_time_local = convert_utc_to_timezone(suvi_obs_time_utc, timezone=timezone)
+        suvi_panel_title = f"{suvi_title} | {suvi_time_local.strftime('%Y-%m-%d %H:%M:%S')}"
+    else:
+        suvi_panel_title = suvi_title
+
+    temp_dir = os.path.join(plots_folder, "_full_disk_panel_cache")
+    mkdir(temp_dir)
+    panel_paths = [os.path.join(temp_dir, f"panel_{wav}.png") for wav in ordered_wav]
+    payloads = []
+    for idx, aia_map in enumerate(ordered_aia_maps):
+        payloads.append(
+            {
+                "map": _serialize_map_for_process(aia_map),
+                "out_path": panel_paths[idx],
+                "title": f"AIA {int(aia_map.meta['wavelnth'])}Å",
+                "color_boxes": list(color_arr),
+                "ar_lon": [float(v) for v in ar_lon],
+                "ar_lat": [float(v) for v in ar_lat],
+                "n_pix_x": int(n_pix_x),
+                "n_pix_y": int(n_pix_y),
+            }
+        )
+    with ProcessPoolExecutor(max_workers=render_workers) as ex:
+        futures = [ex.submit(_save_full_disk_aia_panel_process, payload) for payload in payloads]
+        for fut in as_completed(futures):
+            fut.result()
+
+    panel_images = [Image.open(path).convert("RGB") for path in panel_paths]
+    panel_height = max(img.height for img in panel_images)
+    suvi_width = int(round(panel_images[0].width * 1.2))
+    suvi_panel = _build_suvi_panel_image(suvi_image, suvi_panel_title, (suvi_width, panel_height))
+    gap = 18
+    side_margin = 24
+    top_title_h = 72
+    bottom_margin = 12
+    total_width = side_margin * 2 + sum(img.width for img in panel_images) + suvi_panel.width + gap * 5
+    canvas = Image.new("RGB", (total_width, top_title_h + panel_height + bottom_margin), "white")
+    draw = ImageDraw.Draw(canvas)
+    title_font = _load_font(38)
+    title = "AIA data " + current_time_local.strftime("%m/%d/%Y - %H:%M:%S") + " " + timezone
+    bbox = draw.textbbox((0, 0), title, font=title_font)
+    tw = bbox[2] - bbox[0]
+    draw.text(((total_width - tw) / 2, 14), title, fill=(0, 0, 0), font=title_font)
+    x = side_margin
+    y = top_title_h
+    for img in panel_images:
+        canvas.paste(img, (x, y))
+        x += img.width + gap
+    canvas.paste(suvi_panel, (x, y))
+
+    out_path = os.path.join(
+        plots_folder, "aia_full_disk_" + current_time_local.strftime("%Y-%m-%dT%H%M%S") + ".png"
+    )
+    canvas.save(out_path)
+    for img in panel_images:
+        img.close()
+    prune_full_disk_images(plots_folder, keep_last=30)
+
+
+# **********************************************************
+
+
 def plot_full_disk_images(
     calibrated_aia_maps,
     plots_folder,
@@ -5356,6 +5544,8 @@ def stream_aia_data(
     time_step_minutes=None,
     worker_count=4,
     print_phase_timing=False,
+    parallel_full_disk_render=False,
+    full_disk_render_workers=None,
     em_processing_mode=0,
     suvi_top_wavelength=131,
     suvi_use_realtime=False,
@@ -6382,21 +6572,66 @@ def stream_aia_data(
                     suvi_day_utc=suvi_day_key,
                     suvi_use_realtime=suvi_use_realtime,
                 )
-                plot_full_disk_images(
-                    normalized_aia_maps,
-                    plots_folder,
-                    grouped_t_rec,
-                    arnum,
-                    cycle_ar_lon,
-                    cycle_ar_lat,
-                    color_arr,
-                    timezone=timezone,
-                    n_pix_x=n_pix_x,
-                    n_pix_y=n_pix_y,
-                    suvi_image=suvi_img,
-                    suvi_title=suvi_title,
-                    suvi_obs_time_utc=suvi_obs_time_utc,
+                full_disk_workers = resolve_full_disk_render_workers(
+                    parallel_full_disk_render,
+                    full_disk_render_workers,
+                    worker_count,
+                    len(normalized_aia_maps),
                 )
+                if full_disk_workers > 1:
+                    try:
+                        plot_full_disk_images_parallel(
+                            normalized_aia_maps,
+                            plots_folder,
+                            grouped_t_rec,
+                            arnum,
+                            cycle_ar_lon,
+                            cycle_ar_lat,
+                            color_arr,
+                            timezone=timezone,
+                            n_pix_x=n_pix_x,
+                            n_pix_y=n_pix_y,
+                            suvi_image=suvi_img,
+                            suvi_title=suvi_title,
+                            suvi_obs_time_utc=suvi_obs_time_utc,
+                            render_workers=full_disk_workers,
+                        )
+                    except Exception as exc:
+                        print(
+                            "Parallel full-disk rendering failed; "
+                            f"retrying serially. Error: {exc}"
+                        )
+                        plot_full_disk_images(
+                            normalized_aia_maps,
+                            plots_folder,
+                            grouped_t_rec,
+                            arnum,
+                            cycle_ar_lon,
+                            cycle_ar_lat,
+                            color_arr,
+                            timezone=timezone,
+                            n_pix_x=n_pix_x,
+                            n_pix_y=n_pix_y,
+                            suvi_image=suvi_img,
+                            suvi_title=suvi_title,
+                            suvi_obs_time_utc=suvi_obs_time_utc,
+                        )
+                else:
+                    plot_full_disk_images(
+                        normalized_aia_maps,
+                        plots_folder,
+                        grouped_t_rec,
+                        arnum,
+                        cycle_ar_lon,
+                        cycle_ar_lat,
+                        color_arr,
+                        timezone=timezone,
+                        n_pix_x=n_pix_x,
+                        n_pix_y=n_pix_y,
+                        suvi_image=suvi_img,
+                        suvi_title=suvi_title,
+                        suvi_obs_time_utc=suvi_obs_time_utc,
+                    )
                 if print_phase_timing:
                     phase_times["full_disk_render"] = time.time() - t_phase
 

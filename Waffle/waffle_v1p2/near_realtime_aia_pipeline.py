@@ -79,6 +79,8 @@ if __name__ == "__main__":
 
     # Performance / diagnostics.
     worker_count = 10
+    parallel_full_disk_render = True
+    full_disk_render_workers = None
     # Detailed-analysis rendering:
     # - False -> render detailed plots serially
     # - True  -> allow parallel rendering
@@ -244,6 +246,8 @@ if __name__ == "__main__":
             time_step_minutes=time_step_minutes,
             worker_count=worker_count,
             print_phase_timing=print_phase_timing,
+            parallel_full_disk_render=parallel_full_disk_render,
+            full_disk_render_workers=full_disk_render_workers,
             suvi_top_wavelength=suvi_top_wavelength,
             suvi_use_realtime=suvi_use_realtime,
             fai_trigger_cooldown_frames=fai_trigger_cooldown_frames,
