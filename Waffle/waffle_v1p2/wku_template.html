@@ -350,6 +350,10 @@ body.control-window #page-frame {
     width: min(96vw, 1280px);
     padding-top: 34px;
 }
+body.control-window center {
+    margin: 0;
+    padding: 0;
+}
 body.control-window .control-panel {
     margin-top: 6px;
     padding: 12px 16px 14px 16px;
@@ -670,7 +674,7 @@ function configurePageMode() {
     if (PAGE_MODE === "control") {
         document.body.classList.add("control-window");
         document.getElementById("status-banner").style.display = "none";
-        document.getElementById("page-frame").style.paddingTop = "8px";
+        document.getElementById("page-frame").style.paddingTop = "3px";
         document.getElementById("image0").style.display = "none";
         document.querySelector(".detail-map-wrap").style.display = "none";
         launch.style.display = "none";
