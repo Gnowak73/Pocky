@@ -32,6 +32,7 @@ body {
     background: #1f7a45;
     color: #ffffff;
     text-align: left;
+    transition: max-width 0.18s ease, padding 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
 }
 #status-banner::before,
 #status-banner::after {
@@ -105,6 +106,63 @@ body {
     .status-detail {
         font-size: 8px;
         margin-top: 2px;
+    }
+}
+@media (max-width: 1200px) {
+    #status-banner {
+        left: 14px;
+        min-width: 128px;
+        max-width: min(42vw, 198px);
+        padding: 5px 10px 7px 10px;
+    }
+    .status-label {
+        font-size: 9px;
+    }
+    .status-value {
+        font-size: 12px;
+    }
+    .status-detail {
+        font-size: 9px;
+    }
+}
+@media (max-width: 900px) {
+    #status-banner {
+        left: 10px;
+        min-width: 104px;
+        max-width: min(34vw, 156px);
+        padding: 4px 8px 6px 8px;
+        opacity: 0.94;
+    }
+    #status-banner::before,
+    #status-banner::after {
+        width: 10px;
+        height: 10px;
+    }
+    #status-banner::before {
+        left: -7px;
+    }
+    #status-banner::after {
+        right: -7px;
+    }
+    .status-label {
+        font-size: 8px;
+        letter-spacing: 0.14em;
+    }
+    .status-value {
+        font-size: 11px;
+    }
+    .status-detail {
+        font-size: 8px;
+        margin-top: 2px;
+    }
+}
+@media (max-width: 760px) {
+    #status-banner {
+        max-width: 132px;
+        min-width: 96px;
+    }
+    .status-detail {
+        display: none;
     }
 }
 .control-panel {
