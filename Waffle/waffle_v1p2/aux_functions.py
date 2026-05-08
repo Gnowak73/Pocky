@@ -5151,18 +5151,10 @@ def resolve_full_disk_render_workers(enabled, requested_workers, worker_count, n
 
 
 def _load_font(size):
-    # Prefer broadly available font names before falling back to Pillow's bitmap default.
-    for font_name in (
-        "DejaVuSans.ttf",
-        "Arial.ttf",
-        "LiberationSans-Regular.ttf",
-        "FreeSans.ttf",
-    ):
-        try:
-            return ImageFont.truetype(font_name, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
+    from matplotlib import font_manager
+
+    font_path = font_manager.findfont("DejaVu Sans", fallback_to_default=True)
+    return ImageFont.truetype(font_path, size)
 
 
 def _render_full_disk_aia_panel_process(payload):
