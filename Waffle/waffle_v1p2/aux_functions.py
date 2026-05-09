@@ -3547,6 +3547,37 @@ def create_animation_from_images(
     image_files.append(image_files[-1])
 
     duration_ms = max(1, int(1000 / max(1, fps)))
+
+    # Build one shared GIF palette per animation and reserve exact box colors first.
+    reserved_box_colors = [
+        (255, 0, 0),
+        (255, 215, 0),
+        (0, 0, 255),
+        (0, 255, 0),
+        (0, 255, 255),
+        (255, 0, 255),
+    ]
+    with Image.open(image_files[0]) as first_img:
+        first_rgb = first_img.convert("RGB")
+        adaptive = first_rgb.quantize(colors=250, method=Image.Quantize.MEDIANCUT)
+        adaptive_palette = adaptive.getpalette()[: 250 * 3]
+    palette_entries = []
+    seen = set()
+    for color in reserved_box_colors:
+        if color not in seen:
+            palette_entries.extend(color)
+            seen.add(color)
+    for idx in range(0, len(adaptive_palette), 3):
+        color = tuple(adaptive_palette[idx:idx + 3])
+        if len(color) == 3 and color not in seen:
+            palette_entries.extend(color)
+            seen.add(color)
+        if len(palette_entries) >= 256 * 3:
+            break
+    palette_entries.extend([0] * (256 * 3 - len(palette_entries)))
+    palette_img = Image.new("P", (16, 16))
+    palette_img.putpalette(palette_entries)
+
     frames = []
     for file_name in image_files:
         try:
@@ -3558,7 +3589,10 @@ def create_animation_from_images(
         cached_img = _GIF_FRAME_CACHE.get(cache_key)
         if cached_img is None:
             with Image.open(file_name) as img:
-                cached_img = img.convert("P", palette=Image.Palette.ADAPTIVE)
+                cached_img = img.convert("RGB").quantize(
+                    palette=palette_img,
+                    dither=Image.Dither.NONE,
+                )
             # Keep only recent entries to avoid unbounded cache growth.
             if len(_GIF_FRAME_CACHE) > 64:
                 _GIF_FRAME_CACHE.clear()
