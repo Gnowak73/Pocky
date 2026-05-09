@@ -5061,7 +5061,7 @@ def plot_em_maps_and_curves(
     ax8.spines["right"].set_color(color)
     # ax8.spines['left'].set_color('blue')
 
-    fig.legend(bbox_to_anchor=(0.4, -0.05, 0.45, 0.38), fontsize=legsize, ncol=2)
+    fig.legend(bbox_to_anchor=(0.44, -0.05, 0.45, 0.38), fontsize=legsize, ncol=2)
 
     if trigger_states is None:
         trigger_states = []
