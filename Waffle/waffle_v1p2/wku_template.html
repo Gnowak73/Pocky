@@ -6,16 +6,10 @@
 <style>
 body {
     margin: 0;
+    padding-top: 22px;
     background: #ffffff;
     color: #10212b;
     font-family: "Trebuchet MS", "Avenir Next", sans-serif;
-}
-#page-frame {
-    width: 97.5%;
-    margin: 0 auto;
-    padding-top: 22px;
-    background: #ffffff;
-    position: relative;
 }
 #status-banner {
     position: absolute;
@@ -72,8 +66,7 @@ body {
     margin-top: 3px;
 }
 @media (max-width: 700px) {
-    #page-frame {
-        width: 100%;
+    body {
         padding-top: 48px;
     }
     .control-launch {
@@ -221,13 +214,17 @@ body {
 }
 .detail-map-wrap {
     position: relative;
-    width: 100%;
+    display: inline-block;
+    width: fit-content;
+    max-width: 100%;
+    line-height: 0;
+    vertical-align: top;
 }
 #image1 {
     display: block;
+    width: auto;
     max-width: 100%;
     height: auto;
-    margin-top: 10px;
 }
 .detail-hotspot {
     position: absolute;
@@ -455,14 +452,13 @@ body.control-window .button-row {
 </style>
 </head>
 <body>
-<div id="page-frame">
 <div id="status-banner">
     <span class="status-label">Status</span>
     <span id="status-value" class="status-value">Loading...</span>
     <span id="status-detail" class="status-detail">Checking WAFFLE stream...</span>
 </div>
 <center>
-<img id="image0" src="./latest_plots/full_disk_maps.gif" style="width:100%;max-width:100%;height:auto;">
+<img id="image0" src="./latest_plots/full_disk_maps.gif" style="max-width:100%;height:auto;">
 <br>
 <div class="detail-map-wrap">
 <img id="image1" src="./latest_plots/em_goes_plot.png" style="max-width:100%;height:auto;">
@@ -716,8 +712,8 @@ function configurePageMode() {
     if (PAGE_MODE === "control") {
         document.body.classList.add("control-window");
         document.getElementById("status-banner").style.display = "none";
-        document.getElementById("page-frame").style.paddingTop = "0";
         document.body.style.margin = "0";
+        document.body.style.paddingTop = "0";
         document.getElementById("image0").style.display = "none";
         document.querySelector(".detail-map-wrap").style.display = "none";
         launch.style.display = "none";
@@ -838,6 +834,5 @@ configurePageMode();
 loadControlConfig();
 </script>
 </center>
-</div>
 </body>
 </html>

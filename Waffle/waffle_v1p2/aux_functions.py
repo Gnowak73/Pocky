@@ -1549,7 +1549,7 @@ def _runtime_compute_goes_paper_feature_frame(goes_df: pd.DataFrame) -> pd.DataF
     temp_em = _runtime_compute_temp_em(
         diff_for_tem,
         "fai_T_mk",
-        "faiwage-nation-specifics-module.trycloudflare.com/control.html_EM49",
+        "fai_EM49",
     )
     df = pd.concat([df, temp_em], axis=1)
     df["fai_T_in_6_20"] = ((df["fai_T_mk"] > 6.0) & (df["fai_T_mk"] < 20.0)).astype(
@@ -5061,7 +5061,7 @@ def plot_em_maps_and_curves(
     ax8.spines["right"].set_color(color)
     # ax8.spines['left'].set_color('blue')
 
-    fig.legend(bbox_to_anchor=(0.46, -0.05, 0.45, 0.38), fontsize=legsize, ncol=2)
+    fig.legend(bbox_to_anchor=(0.4, -0.05, 0.45, 0.38), fontsize=legsize, ncol=2)
 
     if trigger_states is None:
         trigger_states = []
@@ -5080,7 +5080,7 @@ def plot_em_maps_and_curves(
     face_size = 0.085
     face_ax = fig.add_axes(
         [
-            ax7_pos.x1 - (3 * face_size) - 0.015,
+            ax7_pos.x1 - (3.2 * face_size) - 0.015,
             max(0.005, ax7_pos.y0 - (2 * face_size) - 0.04),
             face_size,
             face_size,
@@ -5186,7 +5186,7 @@ def plot_detailed_em_result(
     ax7 = plt.subplot2grid((2, 5), (1, 2), colspan=3)
 
     plt.subplots_adjust(
-        left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0.48, hspace=0.4
+        left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0.42, hspace=0.4
     )
 
     labelsize = 15
@@ -5410,9 +5410,9 @@ def _render_full_disk_aia_panel_process(payload):
     panel_index = int(payload.get("panel_index", 0))
 
     if panel_index == 0:
-        fig = plt.figure(figsize=(5.26, 5.35))
+        fig = plt.figure(figsize=(5.79, 5.89))
     else:
-        fig = plt.figure(figsize=(4.7, 5.35))
+        fig = plt.figure(figsize=(5.334, 5.89))
 
     ax = fig.add_subplot(111, projection=aia_map)
     aia_map.plot_settings["norm"] = colors.LogNorm(
@@ -5462,7 +5462,11 @@ def _render_full_disk_aia_panel_process(payload):
             linewidth=2,
         )
 
-    fig.subplots_adjust(left=0.14, right=0.98, top=0.89, bottom=0.14)
+    if panel_index == 0:
+        fig.subplots_adjust(left=0.22, right=0.98, top=0.89, bottom=0.14)
+    else:
+        fig.subplots_adjust(left=0.155, right=0.98, top=0.89, bottom=0.14)
+
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
 
@@ -5493,7 +5497,7 @@ def _render_suvi_panel_image(suvi_image, suvi_title, out_path, target_height):
         fill=(255, 0, 0),
         font=title_font,
     )
-    top_pad = 76
+    top_pad = 84
     side_pad = 10
     bottom_pad = 8
     if suvi_image is None:
@@ -5596,8 +5600,8 @@ def plot_full_disk_images_parallel(
     _render_suvi_panel_image(suvi_image, suvi_panel_title, suvi_path, target_height)
     suvi_panel = Image.open(suvi_path).convert("RGB")
 
-    gap = 13
-    side_margin = 26
+    gap = 9.5
+    side_margin = 28
     top_margin = 88
     bottom_margin = 12
     title_font = _load_font(70)
@@ -5711,7 +5715,7 @@ def plot_full_disk_images(
     map_by_wav = {int(m.meta["wavelnth"]): m for m in calibrated_aia_maps}
     ordered_aia_maps = [map_by_wav[w] for w in ordered_wav]
 
-    fig = plt.figure(figsize=(32.0, 6.4))
+    fig = plt.figure(figsize=(25.5, 5.7))
     gs = fig.add_gridspec(
         1, 6, width_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 1.2], wspace=0.23
     )
