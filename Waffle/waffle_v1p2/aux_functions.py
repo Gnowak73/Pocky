@@ -54,6 +54,7 @@ from urllib.parse import urljoin
 from dateutil import tz
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -213,19 +214,40 @@ def _load_json_file(path):
 def _coerce_box_control_payload(payload, fallback_payload):
     out = build_box_control_config(
         region_source=fallback_payload.get("region_source", "manual"),
-        arnum=[fallback_payload["manual_boxes"][lab]["arnum"] for lab in ["A", "B", "C", "D", "E", "F"]],
-        ar_x=[fallback_payload["manual_boxes"][lab]["x"] for lab in ["A", "B", "C", "D", "E", "F"]],
-        ar_y=[fallback_payload["manual_boxes"][lab]["y"] for lab in ["A", "B", "C", "D", "E", "F"]],
+        arnum=[
+            fallback_payload["manual_boxes"][lab]["arnum"]
+            for lab in ["A", "B", "C", "D", "E", "F"]
+        ],
+        ar_x=[
+            fallback_payload["manual_boxes"][lab]["x"]
+            for lab in ["A", "B", "C", "D", "E", "F"]
+        ],
+        ar_y=[
+            fallback_payload["manual_boxes"][lab]["y"]
+            for lab in ["A", "B", "C", "D", "E", "F"]
+        ],
         startup_box_recenter=fallback_payload["box_settings"]["startup_box_recenter"],
-        startup_box_recenter_arcsec=fallback_payload["box_settings"]["startup_box_recenter_arcsec"],
-        box_recenter_interval_hours=fallback_payload["box_settings"]["box_recenter_interval_hours"],
+        startup_box_recenter_arcsec=fallback_payload["box_settings"][
+            "startup_box_recenter_arcsec"
+        ],
+        box_recenter_interval_hours=fallback_payload["box_settings"][
+            "box_recenter_interval_hours"
+        ],
         min_box_center_dx_pix=fallback_payload["box_settings"]["min_box_center_dx_pix"],
         min_box_center_dy_pix=fallback_payload["box_settings"]["min_box_center_dy_pix"],
-        solarmonitor_refresh_on_utc_day_rollover=fallback_payload["box_settings"]["solarmonitor_refresh_on_utc_day_rollover"],
-        solarmonitor_refresh_on_timezone_day_rollover=fallback_payload["box_settings"]["solarmonitor_refresh_on_timezone_day_rollover"],
+        solarmonitor_refresh_on_utc_day_rollover=fallback_payload["box_settings"][
+            "solarmonitor_refresh_on_utc_day_rollover"
+        ],
+        solarmonitor_refresh_on_timezone_day_rollover=fallback_payload["box_settings"][
+            "solarmonitor_refresh_on_timezone_day_rollover"
+        ],
     )
-    region_source = str(payload.get("region_source", out["region_source"])).strip().lower()
-    out["region_source"] = "solarmonitor" if region_source == "solarmonitor" else "manual"
+    region_source = (
+        str(payload.get("region_source", out["region_source"])).strip().lower()
+    )
+    out["region_source"] = (
+        "solarmonitor" if region_source == "solarmonitor" else "manual"
+    )
     box_settings = payload.get("box_settings", {}) if isinstance(payload, dict) else {}
     manual_boxes = payload.get("manual_boxes", {}) if isinstance(payload, dict) else {}
     for key in (
@@ -242,7 +264,9 @@ def _coerce_box_control_payload(payload, fallback_payload):
         if key in box_settings:
             try:
                 value = box_settings[key]
-                out["box_settings"][key] = None if value in (None, "", "None") else float(value)
+                out["box_settings"][key] = (
+                    None if value in (None, "", "None") else float(value)
+                )
             except Exception:
                 pass
     for key in ("min_box_center_dx_pix", "min_box_center_dy_pix"):
@@ -264,7 +288,9 @@ def _coerce_box_control_payload(payload, fallback_payload):
             if key in box:
                 try:
                     value = box[key]
-                    out["manual_boxes"][lab][key] = None if value in (None, "", "None") else float(value)
+                    out["manual_boxes"][lab][key] = (
+                        None if value in (None, "", "None") else float(value)
+                    )
                 except Exception:
                     pass
     out["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime(
@@ -347,9 +373,9 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
         user, sep, password = raw.partition(":")
         if not sep:
             return False
-        return secrets.compare_digest(user, self._control_auth_user) and secrets.compare_digest(
-            password, self._control_auth_password
-        )
+        return secrets.compare_digest(
+            user, self._control_auth_user
+        ) and secrets.compare_digest(password, self._control_auth_password)
 
     def _request_auth(self):
         self.send_response(401)
@@ -363,7 +389,9 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._request_auth()
             return
         if parsed.path == "/api/box-control":
-            if not self._control_config_path or not os.path.exists(self._control_config_path):
+            if not self._control_config_path or not os.path.exists(
+                self._control_config_path
+            ):
                 self._send_json(404, {"ok": False, "error": "box control unavailable"})
                 return
             try:
@@ -464,7 +492,9 @@ def load_global_control_config(path):
     out = dict(default_cfg)
     if isinstance(data, dict):
         out["ngrok_authtoken"] = str(data.get("ngrok_authtoken", "") or "").strip()
-        out["external_control_url"] = str(data.get("external_control_url", "") or "").strip()
+        out["external_control_url"] = str(
+            data.get("external_control_url", "") or ""
+        ).strip()
     return out
 
 
@@ -492,6 +522,23 @@ def global_control_health_url(control_url):
     return control_url.rstrip("/") + "/status.json"
 
 
+def local_control_health_url(local_port):
+    return f"http://127.0.0.1:{int(local_port)}/status.json"
+
+
+def is_local_control_server_healthy(local_port, timeout_sec=3.0):
+    try:
+        with urlopen(
+            local_control_health_url(local_port), timeout=float(timeout_sec)
+        ) as r:
+            code = int(getattr(r, "status", 200) or 200)
+        return 200 <= code < 500
+    except HTTPError as exc:
+        return 200 <= int(exc.code) < 500
+    except Exception:
+        return False
+
+
 def is_global_control_tunnel_healthy(
     tunnel_info,
     external_control_url="",
@@ -515,6 +562,16 @@ def is_global_control_tunnel_healthy(
         return 200 <= int(exc.code) < 500
     except Exception:
         return False
+
+
+def global_control_tunnel_needs_immediate_restart(tunnel_info):
+    if not tunnel_info:
+        return True
+    listener = tunnel_info.get("listener")
+    if listener is not None:
+        return False
+    proc = tunnel_info.get("proc")
+    return proc is None or proc.poll() is not None
 
 
 def start_global_control_tunnel(
@@ -626,7 +683,16 @@ def ensure_global_control_tunnel(
     startup_timeout_sec=20.0,
     health_timeout_sec=6.0,
 ):
-    if is_global_control_tunnel_healthy(
+    provider_name = str((tunnel_info or {}).get("provider", "") or "").strip()
+    if provider_name == "pycloudflared":
+        if not global_control_tunnel_needs_immediate_restart(
+            tunnel_info
+        ) and is_local_control_server_healthy(
+            local_port, timeout_sec=min(float(health_timeout_sec), 3.0)
+        ):
+            resolved_url = resolve_global_control_url(tunnel_info, external_control_url)
+            return tunnel_info, resolved_url, False
+    elif is_global_control_tunnel_healthy(
         tunnel_info,
         external_control_url=external_control_url,
         timeout_sec=health_timeout_sec,
@@ -646,6 +712,7 @@ def ensure_global_control_tunnel(
     resolved_url = resolve_global_control_url(new_info, external_control_url)
     return new_info, resolved_url, True
 
+
 def em_active_area_fraction(em_map, active_threshold=1.0e43):
     arr = np.asarray(em_map, dtype=np.float64)
     if arr.size == 0 or not np.isfinite(arr).any():
@@ -663,7 +730,9 @@ def _runtime_state_path(data_folder):
     return os.path.join(data_folder, "waffle_v1p2_runtime_state.pkl")
 
 
-def load_solarmonitor_regions(date_yyyymmdd, image_type="shmi_maglc", indexnum=1, timeout=15):
+def load_solarmonitor_regions(
+    date_yyyymmdd, image_type="shmi_maglc", indexnum=1, timeout=15
+):
     """
     Load NOAA active-region centers from SolarMonitor for a given UTC date.
 
@@ -691,7 +760,7 @@ def load_solarmonitor_regions(date_yyyymmdd, image_type="shmi_maglc", indexnum=1
         scale = {"A": 1e-3, "B": 1e-2, "C": 1.0, "M": 10.0, "X": 100.0}
         return scale[m.group(1).upper()] * float(m.group(2))
 
-    row_pattern = re.compile(r'<tr class=noaaresults align=center>(.*?)</tr>', re.S)
+    row_pattern = re.compile(r"<tr class=noaaresults align=center>(.*?)</tr>", re.S)
     for row_html in row_pattern.findall(html):
         m_region = re.search(r'href="index\.php\?date=\d+&region=(\d+)"', row_html)
         m_pos = re.search(
@@ -704,10 +773,16 @@ def load_solarmonitor_regions(date_yyyymmdd, image_type="shmi_maglc", indexnum=1
         region = m_region.group(1)
         lat_txt, lon_txt, x_txt, y_txt = m_pos.groups()
         m_hale = re.search(r'<td[^>]*id="hale"[^>]*>\s*(.*?)\s*</td>', row_html, re.S)
-        m_mcintosh = re.search(r'<td[^>]*id="mcintosh"[^>]*>\s*(.*?)\s*</td>', row_html, re.S)
+        m_mcintosh = re.search(
+            r'<td[^>]*id="mcintosh"[^>]*>\s*(.*?)\s*</td>', row_html, re.S
+        )
         m_area = re.search(r'<td[^>]*id="area"[^>]*>\s*(.*?)\s*</td>', row_html, re.S)
-        m_spots = re.search(r'<td[^>]*id="nspots"[^>]*>\s*(.*?)\s*</td>', row_html, re.S)
-        m_events = re.search(r'<td[^>]*id="events"[^>]*>\s*(.*?)\s*</td>', row_html, re.S)
+        m_spots = re.search(
+            r'<td[^>]*id="nspots"[^>]*>\s*(.*?)\s*</td>', row_html, re.S
+        )
+        m_events = re.search(
+            r'<td[^>]*id="events"[^>]*>\s*(.*?)\s*</td>', row_html, re.S
+        )
 
         hale_html = m_hale.group(1) if m_hale else ""
         mcintosh_html = m_mcintosh.group(1) if m_mcintosh else ""
@@ -715,13 +790,21 @@ def load_solarmonitor_regions(date_yyyymmdd, image_type="shmi_maglc", indexnum=1
         spots_html = m_spots.group(1) if m_spots else ""
         events_html = m_events.group(1) if m_events else ""
 
-        recent_flares = re.findall(r'([ABCMX]\d+(?:\.\d+)?)', events_html, re.I)
+        recent_flares = re.findall(r"([ABCMX]\d+(?:\.\d+)?)", events_html, re.I)
         flare_score = sum(_flare_strength(tok) for tok in recent_flares)
         area_val = _parse_first_int(area_html, default=0)
         spots_val = _parse_first_int(spots_html, default=0)
-        hale_score = 2.0 * hale_html.lower().count("delta") + 1.0 * hale_html.lower().count("gamma")
+        hale_score = 2.0 * hale_html.lower().count(
+            "delta"
+        ) + 1.0 * hale_html.lower().count("gamma")
         mcintosh_score = 0.5 * len(re.findall(r"[A-Za-z]", mcintosh_html.split("/")[0]))
-        activity_score = 1000.0 * flare_score + area_val + 2.0 * spots_val + 10.0 * hale_score + mcintosh_score
+        activity_score = (
+            1000.0 * flare_score
+            + area_val
+            + 2.0 * spots_val
+            + 10.0 * hale_score
+            + mcintosh_score
+        )
 
         regions.append(
             {
@@ -771,9 +854,10 @@ def select_solarmonitor_box_layout(
 
     def overlaps(candidate, selected_regions):
         for other in selected_regions:
-            if (
-                abs(float(candidate["x_arcsec"]) - float(other["x_arcsec"])) < float(min_dx_arcsec)
-                and abs(float(candidate["y_arcsec"]) - float(other["y_arcsec"])) < float(min_dy_arcsec)
+            if abs(float(candidate["x_arcsec"]) - float(other["x_arcsec"])) < float(
+                min_dx_arcsec
+            ) and abs(float(candidate["y_arcsec"]) - float(other["y_arcsec"])) < float(
+                min_dy_arcsec
             ):
                 return True
         return False
@@ -806,12 +890,20 @@ def select_solarmonitor_box_layout(
             picked.add(region["region"])
             picked_locs.add(key)
 
-    top = sorted([r for r in selected if r["y_arcsec"] >= 0.0], key=lambda r: r["x_arcsec"])
-    bottom = sorted([r for r in selected if r["y_arcsec"] < 0.0], key=lambda r: r["x_arcsec"])
+    top = sorted(
+        [r for r in selected if r["y_arcsec"] >= 0.0], key=lambda r: r["x_arcsec"]
+    )
+    bottom = sorted(
+        [r for r in selected if r["y_arcsec"] < 0.0], key=lambda r: r["x_arcsec"]
+    )
     if len(top) < per_row or len(bottom) < per_row:
-        selected_sorted = sorted(selected, key=lambda r: (r["y_arcsec"] < 0.0, r["x_arcsec"]))
+        selected_sorted = sorted(
+            selected, key=lambda r: (r["y_arcsec"] < 0.0, r["x_arcsec"])
+        )
         top = sorted(selected_sorted[:per_row], key=lambda r: r["x_arcsec"])
-        bottom = sorted(selected_sorted[per_row : 2 * per_row], key=lambda r: r["x_arcsec"])
+        bottom = sorted(
+            selected_sorted[per_row : 2 * per_row], key=lambda r: r["x_arcsec"]
+        )
     else:
         top = top[:per_row]
         bottom = bottom[:per_row]
@@ -986,9 +1078,9 @@ def apply_box_control_runtime_config(
             return np.nan
         return float(value)
 
-    requested_region_source = str(
-        control_cfg.get("region_source", current_region_source)
-    ).strip().lower()
+    requested_region_source = (
+        str(control_cfg.get("region_source", current_region_source)).strip().lower()
+    )
     if requested_region_source != "solarmonitor":
         requested_region_source = "manual"
     box_settings = control_cfg.get("box_settings", {})
@@ -1002,9 +1094,7 @@ def apply_box_control_runtime_config(
         "box_recenter_interval_hours", box_recenter_interval_hours
     )
     box_recenter_interval_hours = (
-        None
-        if interval_value in (None, "", "None")
-        else float(interval_value)
+        None if interval_value in (None, "", "None") else float(interval_value)
     )
     min_box_center_dx_pix = int(
         float(box_settings.get("min_box_center_dx_pix", min_box_center_dx_pix))
@@ -1046,10 +1136,16 @@ def apply_box_control_runtime_config(
     else:
         if requested_region_source == "manual":
             boxes = control_cfg.get("manual_boxes", {})
-            arnum_top = [int(float(boxes.get(lab, {}).get("arnum", 0) or 0)) for lab in ["A", "B", "C"]]
+            arnum_top = [
+                int(float(boxes.get(lab, {}).get("arnum", 0) or 0))
+                for lab in ["A", "B", "C"]
+            ]
             x_top = [_box_float(boxes, lab, "x") for lab in ["A", "B", "C"]]
             y_top = [_box_float(boxes, lab, "y") for lab in ["A", "B", "C"]]
-            arnum_bottom = [int(float(boxes.get(lab, {}).get("arnum", 0) or 0)) for lab in ["D", "E", "F"]]
+            arnum_bottom = [
+                int(float(boxes.get(lab, {}).get("arnum", 0) or 0))
+                for lab in ["D", "E", "F"]
+            ]
             x_bottom = [_box_float(boxes, lab, "x") for lab in ["D", "E", "F"]]
             y_bottom = [_box_float(boxes, lab, "y") for lab in ["D", "E", "F"]]
             resolved = resolve_initial_region_layout(
@@ -1077,7 +1173,10 @@ def apply_box_control_runtime_config(
                 "y_bottom": np.array([], dtype=float),
             }
 
-    if requested_region_source == "solarmonitor" and str(current_region_source).strip().lower() == "solarmonitor":
+    if (
+        requested_region_source == "solarmonitor"
+        and str(current_region_source).strip().lower() == "solarmonitor"
+    ):
         arnum = None
         ar_x = None
         ar_y = None
@@ -1139,7 +1238,9 @@ def find_em_hotspot_boxes(
     span_y = 2 * half_h + 1
 
     # Rank candidate centers by integrated EM inside a box-sized window.
-    integ = np.pad(em_data, ((1, 0), (1, 0)), mode="constant").cumsum(axis=0).cumsum(axis=1)
+    integ = (
+        np.pad(em_data, ((1, 0), (1, 0)), mode="constant").cumsum(axis=0).cumsum(axis=1)
+    )
     y_idx = np.arange(ny)
     x_idx = np.arange(nx)
     y0 = np.clip(y_idx - half_h, 0, ny)
@@ -1178,7 +1279,8 @@ def find_em_hotspot_boxes(
             disk_margin_arcsec=disk_margin_arcsec,
         )
         overlaps = any(
-            abs(x_arcsec - ox) < float(min_dx_arcsec) and abs(y_arcsec - oy) < float(min_dy_arcsec)
+            abs(x_arcsec - ox) < float(min_dx_arcsec)
+            and abs(y_arcsec - oy) < float(min_dy_arcsec)
             for ox, oy in occupied
         )
         iy0 = max(0, ypix - span_y + 1)
@@ -1194,7 +1296,9 @@ def find_em_hotspot_boxes(
 
 
 def assign_fallback_arnums(current_arnum, slots):
-    used = {int(v) for i, v in enumerate(current_arnum) if i not in slots and np.isfinite(v)}
+    used = {
+        int(v) for i, v in enumerate(current_arnum) if i not in slots and np.isfinite(v)
+    }
     next_id = 1
     assigned = {}
     for slot in slots:
@@ -1224,14 +1328,18 @@ def reorder_box_layout(arnum, ar_x, ar_y, ar_priority=None):
                 "y": float(ar_y[i]),
                 "priority": (
                     float(ar_priority[i])
-                    if ar_priority is not None and i < len(ar_priority) and np.isfinite(ar_priority[i])
+                    if ar_priority is not None
+                    and i < len(ar_priority)
+                    and np.isfinite(ar_priority[i])
                     else 0.0
                 ),
             }
         )
 
     valid = [it for it in items if np.isfinite(it["x"]) and np.isfinite(it["y"])]
-    invalid = [it for it in items if not (np.isfinite(it["x"]) and np.isfinite(it["y"]))]
+    invalid = [
+        it for it in items if not (np.isfinite(it["x"]) and np.isfinite(it["y"]))
+    ]
     by_y = sorted(valid, key=lambda it: (-it["y"], it["x"], -it["priority"]))
     top_seed = by_y[:3]
     bottom_seed = by_y[3:]
@@ -1255,9 +1363,13 @@ def reorder_box_layout(arnum, ar_x, ar_y, ar_priority=None):
     return out_arnum, out_x, out_y, out_priority
 
 
-def _solarmonitor_rollover_key(this_time_ut, timezone="US/Central", use_local_day=False):
+def _solarmonitor_rollover_key(
+    this_time_ut, timezone="US/Central", use_local_day=False
+):
     if use_local_day:
-        return convert_utc_to_timezone(this_time_ut, timezone=timezone).strftime("%Y%m%d")
+        return convert_utc_to_timezone(this_time_ut, timezone=timezone).strftime(
+            "%Y%m%d"
+        )
     return this_time_ut.astimezone(datetime.timezone.utc).strftime("%Y%m%d")
 
 
@@ -1318,7 +1430,9 @@ def _load_runtime_stream_state(data_folder, labels):
         print(f"Failed to load waffle_v1p2 runtime state: {exc}")
         return None
     if list(state.get("labels", [])) != list(labels):
-        print("Ignoring waffle_v1p2 runtime state: box labels do not match current run.")
+        print(
+            "Ignoring waffle_v1p2 runtime state: box labels do not match current run."
+        )
         return None
     return state
 
@@ -1385,7 +1499,9 @@ def _runtime_make_xrs_timeseries(df: pd.DataFrame, observatory: str):
     return TimeSeries(df[["xrsa", "xrsb"]], meta, units, source="XRS")
 
 
-def _runtime_compute_temp_em(flux_df: pd.DataFrame, temp_col: str, em_col: str) -> pd.DataFrame:
+def _runtime_compute_temp_em(
+    flux_df: pd.DataFrame, temp_col: str, em_col: str
+) -> pd.DataFrame:
     from sunkit_instruments.goes_xrs.goes_chianti_tem import calculate_temperature_em
 
     out = pd.DataFrame(index=flux_df.index, data={temp_col: np.nan, em_col: np.nan})
@@ -1405,7 +1521,10 @@ def _runtime_compute_temp_em(flux_df: pd.DataFrame, temp_col: str, em_col: str) 
         temp_em["temperature"], errors="coerce"
     ).to_numpy(dtype=np.float64)
     out.loc[temp_em.index, em_col] = (
-        pd.to_numeric(temp_em["emission_measure"], errors="coerce").to_numpy(dtype=np.float64) / 1.0e49
+        pd.to_numeric(temp_em["emission_measure"], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        / 1.0e49
     )
     return out
 
@@ -1427,9 +1546,15 @@ def _runtime_compute_goes_paper_feature_frame(goes_df: pd.DataFrame) -> pd.DataF
     diff_for_tem = df[["dxrsa_5", "dxrsb_5", "goes_satellite"]].rename(
         columns={"dxrsa_5": "xrsa", "dxrsb_5": "xrsb"}
     )
-    temp_em = _runtime_compute_temp_em(diff_for_tem, "fai_T_mk", "fai_EM49")
+    temp_em = _runtime_compute_temp_em(
+        diff_for_tem,
+        "fai_T_mk",
+        "faiwage-nation-specifics-module.trycloudflare.com/control.html_EM49",
+    )
     df = pd.concat([df, temp_em], axis=1)
-    df["fai_T_in_6_20"] = ((df["fai_T_mk"] > 6.0) & (df["fai_T_mk"] < 20.0)).astype(np.float64)
+    df["fai_T_in_6_20"] = ((df["fai_T_mk"] > 6.0) & (df["fai_T_mk"] < 20.0)).astype(
+        np.float64
+    )
     df["fai_EM_gt_005"] = (df["fai_EM49"] > 0.005).astype(np.float64)
     df["fai_EM_gt_01"] = (df["fai_EM49"] > 0.1).astype(np.float64)
     df["fai_flag_6_20_005"] = (
@@ -1502,7 +1627,11 @@ def _print_runtime_goes_cursor_snapshot(
     t_txt = f"{float(t_mk):.3f}" if np.isfinite(t_mk) else "NA"
     em_txt = f"{float(em49):.6f}" if np.isfinite(em49) else "NA"
     print(f"XRS cursor ({mode_label}) {ts_txt}: T_mk={t_txt} EM_49={em_txt}")
-    return cursor_ts, float(t_mk) if np.isfinite(t_mk) else np.nan, float(em49) if np.isfinite(em49) else np.nan
+    return (
+        cursor_ts,
+        float(t_mk) if np.isfinite(t_mk) else np.nan,
+        float(em49) if np.isfinite(em49) else np.nan,
+    )
 
 
 def _c5_fai_trigger_condition(
@@ -1526,13 +1655,17 @@ def _c5_fai_trigger_condition(
     return False
 
 
-def _estimate_realtime_from_aia(trigger_time_utc, timezone="US/Central", delay_minutes=4.5):
+def _estimate_realtime_from_aia(
+    trigger_time_utc, timezone="US/Central", delay_minutes=4.5
+):
     est_utc = trigger_time_utc + datetime.timedelta(minutes=float(delay_minutes))
     est_local = convert_utc_to_timezone(est_utc, timezone=timezone)
     return est_utc, est_local
 
 
-def _estimate_realtime_from_utc(base_time_utc, timezone="US/Central", delay_minutes=0.0):
+def _estimate_realtime_from_utc(
+    base_time_utc, timezone="US/Central", delay_minutes=0.0
+):
     est_utc = base_time_utc + datetime.timedelta(minutes=float(delay_minutes))
     est_local = convert_utc_to_timezone(est_utc, timezone=timezone)
     return est_utc, est_local
@@ -1648,7 +1781,6 @@ def update_flare_trigger_em_goes_plot(
         )
 
 
-
 def _write_fai_box_stats(file_obj, box_stats):
     if not box_stats:
         file_obj.write("  none\n")
@@ -1705,7 +1837,9 @@ def _make_fai_box_stats(
                 if np.isfinite(em_prev) and em_prev > 0
                 else float("nan"),
                 "active_area_frac": float(area_vals[-1]) if area_vals else float("nan"),
-                "fai_trigger": bool(trigger_flags[i]) if i < len(trigger_flags) else False,
+                "fai_trigger": bool(trigger_flags[i])
+                if i < len(trigger_flags)
+                else False,
                 "status": statuses_by_label.get(lab, "watch"),
             }
         )
@@ -1763,20 +1897,19 @@ def configure_jsoc_server(use_nrt2_server=True):
 
 def is_nrt2_auth_error(err: Exception) -> bool:
     text = str(err).lower()
-    return (
-        "aia.lev1_nrt2" in text
-        and (
-            "auth" in text
-            or "authorized" in text
-            or "not allowed" in text
-            or "permission" in text
-            or "forbidden" in text
-            or "denied" in text
-        )
+    return "aia.lev1_nrt2" in text and (
+        "auth" in text
+        or "authorized" in text
+        or "not allowed" in text
+        or "permission" in text
+        or "forbidden" in text
+        or "denied" in text
     )
 
 
-def print_query_wait_message(use_nrt2_server: bool, err: Exception | None = None) -> None:
+def print_query_wait_message(
+    use_nrt2_server: bool, err: Exception | None = None
+) -> None:
     if use_nrt2_server and err is not None and is_nrt2_auth_error(err):
         print(
             "NRT2 authorization error: this IP is not authorized for the Stanford "
@@ -1878,9 +2011,10 @@ def download_aia_data(
         max_attempts = max(1, int(download_retry_attempts))
         for attempt in range(1, max_attempts + 1):
             try:
-                with urlopen(fits_file_url, timeout=float(download_timeout_sec)) as src, open(
-                    filename, "wb"
-                ) as dst:
+                with (
+                    urlopen(fits_file_url, timeout=float(download_timeout_sec)) as src,
+                    open(filename, "wb") as dst,
+                ):
                     shutil.copyfileobj(src, dst)
                 return i, filename, False
             except Exception:
@@ -2220,7 +2354,11 @@ def refine_box_centers_from_em_map(
     out_y = np.array(ar_y, dtype=float, copy=True)
     orig_x = np.array(ar_x, dtype=float, copy=True)
     orig_y = np.array(ar_y, dtype=float, copy=True)
-    priority = np.zeros(len(out_x), dtype=float) if ar_priority is None else np.asarray(ar_priority, dtype=float)
+    priority = (
+        np.zeros(len(out_x), dtype=float)
+        if ar_priority is None
+        else np.asarray(ar_priority, dtype=float)
+    )
     shifts = []
     occupied = []
 
@@ -2228,7 +2366,11 @@ def refine_box_centers_from_em_map(
     ny, nx = em_data.shape
     order = sorted(
         range(len(out_x)),
-        key=lambda i: (np.isfinite(priority[i]), float(priority[i]) if np.isfinite(priority[i]) else float("-inf"), -i),
+        key=lambda i: (
+            np.isfinite(priority[i]),
+            float(priority[i]) if np.isfinite(priority[i]) else float("-inf"),
+            -i,
+        ),
         reverse=True,
     )
 
@@ -2237,13 +2379,17 @@ def refine_box_centers_from_em_map(
         own_y = orig_y[slot_idx]
         if not np.isfinite(own_x) or not np.isfinite(own_y):
             return False
-        own_dist2 = (float(candidate_x) - float(own_x)) ** 2 + (float(candidate_y) - float(own_y)) ** 2
+        own_dist2 = (float(candidate_x) - float(own_x)) ** 2 + (
+            float(candidate_y) - float(own_y)
+        ) ** 2
         for j in range(len(orig_x)):
             if j == slot_idx:
                 continue
             if not np.isfinite(orig_x[j]) or not np.isfinite(orig_y[j]):
                 continue
-            other_dist2 = (float(candidate_x) - float(orig_x[j])) ** 2 + (float(candidate_y) - float(orig_y[j])) ** 2
+            other_dist2 = (float(candidate_x) - float(orig_x[j])) ** 2 + (
+                float(candidate_y) - float(orig_y[j])
+            ) ** 2
             if other_dist2 < own_dist2:
                 return True
         return False
@@ -2251,8 +2397,12 @@ def refine_box_centers_from_em_map(
     for i in order:
         if not np.isfinite(out_x[i]) or not np.isfinite(out_y[i]):
             continue
-        if not _is_valid_hpc_center(ref_map, out_x[i], out_y[i], disk_margin_arcsec=0.0):
-            shifts.append((i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan")))
+        if not _is_valid_hpc_center(
+            ref_map, out_x[i], out_y[i], disk_margin_arcsec=0.0
+        ):
+            shifts.append(
+                (i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan"))
+            )
             out_x[i] = np.nan
             out_y[i] = np.nan
             continue
@@ -2272,7 +2422,9 @@ def refine_box_centers_from_em_map(
         for _ in range(64):
             if not np.any(np.isfinite(window)):
                 break
-            wy, wx = _bright_region_centroid_masked(window, percentile=percentile, min_pixels=min_pixels)
+            wy, wx = _bright_region_centroid_masked(
+                window, percentile=percentile, min_pixels=min_pixels
+            )
             new_xpix = x0 + wx
             new_ypix = y0 + wy
             new_x, new_y = _pixel_to_hpc_xy(ref_map, new_xpix, new_ypix)
@@ -2308,8 +2460,12 @@ def refine_box_centers_from_em_map(
             window[wy0:wy1, wx0:wx1] = -np.inf
         if chosen is None:
             orig = (float(out_x[i]), float(out_y[i]))
-            if not _is_valid_hpc_center(ref_map, orig[0], orig[1], disk_margin_arcsec=0.0):
-                shifts.append((i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan")))
+            if not _is_valid_hpc_center(
+                ref_map, orig[0], orig[1], disk_margin_arcsec=0.0
+            ):
+                shifts.append(
+                    (i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan"))
+                )
                 out_x[i] = np.nan
                 out_y[i] = np.nan
                 continue
@@ -2319,7 +2475,9 @@ def refine_box_centers_from_em_map(
                 for ox, oy in occupied
             )
             if orig_overlaps:
-                shifts.append((i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan")))
+                shifts.append(
+                    (i, float(out_x[i]), float(out_y[i]), float("nan"), float("nan"))
+                )
                 out_x[i] = np.nan
                 out_y[i] = np.nan
                 continue
@@ -2752,9 +2910,9 @@ def _latest_xrsb_derivative(xrsb_current, reference_time_ut=None):
         return np.nan
     try:
         time_tag = pd.to_datetime(xrsb_current["time_tag"], utc=True, errors="coerce")
-        flux = pd.to_numeric(
-            xrsb_current["flux"], errors="coerce"
-        ).to_numpy(dtype=np.float64)
+        flux = pd.to_numeric(xrsb_current["flux"], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
     except Exception:
         return np.nan
     valid = np.isfinite(flux) & (~pd.isna(time_tag).to_numpy())
@@ -2783,7 +2941,9 @@ def _latest_xrsb_derivative(xrsb_current, reference_time_ut=None):
 # **********************************************************
 
 
-def define_ssh_client(ssh_host="physics.wku.edu", ssh_user="emslie", ssh_password="waffle"):
+def define_ssh_client(
+    ssh_host="physics.wku.edu", ssh_user="emslie", ssh_password="waffle"
+):
     """
 
     Function for defining an ssh client object
@@ -2899,7 +3059,7 @@ def resolve_suvi_day_url(day_utc, wavelength=131, spacecraft="primary"):
         refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         # Also capture bare .png tokens from directory listings.
-        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        refs += re.findall(r"([A-Za-z0-9_./-]+\.png)", html, flags=re.IGNORECASE)
         seen = set()
         refs = [x for x in refs if not (x in seen or seen.add(x))]
         dated = []
@@ -2945,7 +3105,7 @@ def resolve_suvi_latest_dated_url(wavelength=131, spacecraft="primary"):
             html = r.read().decode("utf-8", errors="ignore")
         refs = re.findall(r'href=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
         refs += re.findall(r'src=["\']([^"\']+\.png)["\']', html, flags=re.IGNORECASE)
-        refs += re.findall(r'([A-Za-z0-9_./-]+\.png)', html, flags=re.IGNORECASE)
+        refs += re.findall(r"([A-Za-z0-9_./-]+\.png)", html, flags=re.IGNORECASE)
         seen = set()
         refs = [x for x in refs if not (x in seen or seen.add(x))]
         # Prefer the dated entry immediately before latest.png in listing order.
@@ -3211,7 +3371,9 @@ def write_detailed_analysis_pages(detail_dir, labels, arnums):
             f.write(build_detailed_analysis_box_html(box_label, arnum, image_name))
 
 
-def publish_detailed_analysis_local(source_dir, destination_volume, subdir="detailed_analysis"):
+def publish_detailed_analysis_local(
+    source_dir, destination_volume, subdir="detailed_analysis"
+):
     if not source_dir or not os.path.isdir(source_dir):
         return
     dest_dir = os.path.join(destination_volume, subdir)
@@ -3227,7 +3389,9 @@ def publish_detailed_analysis_remote(
     ssh_client.exec_command(f'mkdir -p "{remote_dir}"')
     with SCPClient(ssh_client.get_transport()) as scp:
         for name in os.listdir(source_dir):
-            scp.put(os.path.join(source_dir, name), remote_path=remote_dir, recursive=True)
+            scp.put(
+                os.path.join(source_dir, name), remote_path=remote_dir, recursive=True
+            )
 
 
 def resolve_detailed_plot_render_workers(
@@ -3251,7 +3415,9 @@ def _status_payload(kind, title, detail):
         "kind": str(kind),
         "title": str(title),
         "detail": str(detail),
-        "updated_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
         "updated_unix": time.time(),
     }
 
@@ -3337,7 +3503,9 @@ def load_sms_smtp_config(path: Path) -> dict:
 def send_sms_alert(message: str, recipients: list[str], smtp_cfg: dict) -> bool:
     from_email = str(smtp_cfg.get("from_email", "")).strip()
     app_password = str(smtp_cfg.get("app_password", "")).strip()
-    smtp_host = str(smtp_cfg.get("smtp_host", "smtp.gmail.com")).strip() or "smtp.gmail.com"
+    smtp_host = (
+        str(smtp_cfg.get("smtp_host", "smtp.gmail.com")).strip() or "smtp.gmail.com"
+    )
     smtp_port = int(smtp_cfg.get("smtp_port", 465) or 465)
     if not from_email or not app_password or not recipients:
         return False
@@ -3568,7 +3736,7 @@ def create_animation_from_images(
             palette_entries.extend(color)
             seen.add(color)
     for idx in range(0, len(adaptive_palette), 3):
-        color = tuple(adaptive_palette[idx:idx + 3])
+        color = tuple(adaptive_palette[idx : idx + 3])
         if len(color) == 3 and color not in seen:
             palette_entries.extend(color)
             seen.add(color)
@@ -3900,7 +4068,9 @@ def _load_goes_cache_day(cache_root: Path, day: datetime.date) -> pd.DataFrame:
         xrsb = d["xrsb"].astype(np.float64)
     idx = pd.to_datetime(time_utc, utc=True, errors="coerce")
     good = ~idx.isna()
-    return pd.DataFrame({"xrsa": xrsa[good], "xrsb": xrsb[good]}, index=idx[good]).sort_index()
+    return pd.DataFrame(
+        {"xrsa": xrsa[good], "xrsb": xrsb[good]}, index=idx[good]
+    ).sort_index()
 
 
 def _load_goes_cache_window(cache_root: Path, start_time, end_time) -> pd.DataFrame:
@@ -3916,7 +4086,9 @@ def _load_goes_cache_window(cache_root: Path, start_time, end_time) -> pd.DataFr
         except FileNotFoundError:
             continue
     if not frames:
-        raise FileNotFoundError(f"no GOES cache files found in {cache_root} for {start_time}..{end_time}")
+        raise FileNotFoundError(
+            f"no GOES cache files found in {cache_root} for {start_time}..{end_time}"
+        )
     df = pd.concat(frames, axis=0).sort_index()
     return df[(df.index >= start_time) & (df.index <= end_time)].copy()
 
@@ -3925,11 +4097,15 @@ def _goes_cache_day_path(cache_root: Path, day: datetime.date) -> Path:
     return cache_root / "minute" / f"{day:%Y}" / f"{day:%Y%m%d}.npz"
 
 
-def _save_goes_cache_day(cache_root: Path, day: datetime.date, df: pd.DataFrame) -> Path:
+def _save_goes_cache_day(
+    cache_root: Path, day: datetime.date, df: pd.DataFrame
+) -> Path:
     path = _goes_cache_day_path(cache_root, day)
     path.parent.mkdir(parents=True, exist_ok=True)
     day_start = pd.Timestamp(
-        datetime.datetime.combine(day, datetime.time(0, 0, tzinfo=datetime.timezone.utc))
+        datetime.datetime.combine(
+            day, datetime.time(0, 0, tzinfo=datetime.timezone.utc)
+        )
     )
     day_end = day_start + pd.Timedelta(days=1) - pd.Timedelta(minutes=1)
     minute_index = pd.date_range(day_start, day_end, freq="1min", tz="UTC")
@@ -4171,7 +4347,9 @@ def _fetch_goes_xrs_from_candidates(
     return None, None, last_status, attempt_log
 
 
-def _fetch_goes_day_dataframe(day: datetime.date, download_root: Path, goes_folder) -> pd.DataFrame:
+def _fetch_goes_day_dataframe(
+    day: datetime.date, download_root: Path, goes_folder
+) -> pd.DataFrame:
     from sunpy.net import Fido
     from sunpy.net import attrs as a
     from sunpy.timeseries import TimeSeries
@@ -4266,10 +4444,7 @@ def _load_goes_satellite_hints(goes_folder):
         with path.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict) and "good" in data:
-            good = {
-                str(k): int(v)
-                for k, v in data.get("good", {}).items()
-            }
+            good = {str(k): int(v) for k, v in data.get("good", {}).items()}
             bad = {}
             for day_key, per_day in data.get("bad", {}).items():
                 if isinstance(per_day, dict):
@@ -4309,11 +4484,18 @@ def _remember_good_goes_satellite(goes_folder, day: datetime.date, sat_num: int)
     _save_goes_satellite_hints(goes_folder, hints)
 
 
-def _mark_bad_goes_satellite(goes_folder, day: datetime.date, sat_num: int, cooldown_seconds=_GOES_SATELLITE_FAIL_COOLDOWN_SEC):
+def _mark_bad_goes_satellite(
+    goes_folder,
+    day: datetime.date,
+    sat_num: int,
+    cooldown_seconds=_GOES_SATELLITE_FAIL_COOLDOWN_SEC,
+):
     hints = _load_goes_satellite_hints(goes_folder)
     day_key = f"{day:%Y%m%d}"
     bad = hints.setdefault("bad", {})
-    bad.setdefault(day_key, {})[str(int(sat_num))] = time.time() + float(cooldown_seconds)
+    bad.setdefault(day_key, {})[str(int(sat_num))] = time.time() + float(
+        cooldown_seconds
+    )
     _save_goes_satellite_hints(goes_folder, hints)
 
 
@@ -4344,7 +4526,12 @@ def _save_goes_day_failures(goes_folder, failures):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as fh:
-        json.dump({str(k): float(v) for k, v in failures.items()}, fh, indent=2, sort_keys=True)
+        json.dump(
+            {str(k): float(v) for k, v in failures.items()},
+            fh,
+            indent=2,
+            sort_keys=True,
+        )
     tmp_path.replace(path)
 
 
@@ -4373,10 +4560,7 @@ def _ordered_goes_satellite_candidates(day: datetime.date, goes_folder):
     hinted = hints.get("good", {}).get(day_key)
     now = time.time()
     bad_today = hints.get("bad", {}).get(day_key, {})
-    allowed = [
-        sat for sat in base
-        if float(bad_today.get(str(int(sat)), 0.0)) <= now
-    ]
+    allowed = [sat for sat in base if float(bad_today.get(str(int(sat)), 0.0)) <= now]
     if not allowed:
         allowed = base
     if hinted is not None and hinted in base:
@@ -4384,7 +4568,9 @@ def _ordered_goes_satellite_candidates(day: datetime.date, goes_folder):
     return allowed
 
 
-def _load_archive_xrs_window_legacy(start_time, end_time, cache_dir, timeout_seconds=12):
+def _load_archive_xrs_window_legacy(
+    start_time, end_time, cache_dir, timeout_seconds=12
+):
     script = f"""
 import json
 import os
@@ -4507,7 +4693,9 @@ print(json.dumps({{
     )
 
 
-def load_archive_XRS(reference_time_ut, goes_folder, lookback_hours=6, lead_minutes=3.0):
+def load_archive_XRS(
+    reference_time_ut, goes_folder, lookback_hours=6, lead_minutes=3.0
+):
     """
     Load historical GOES XRS data for archive/replay mode.
 
@@ -4781,9 +4969,7 @@ def plot_em_maps_and_curves(
             max_time = time_em_array[-1]
     else:
         aia_now_local = goes_anchor_time_local
-        max_time = aia_now_local + timedelta(
-            minutes=float(archive_goes_offset_minutes)
-        )
+        max_time = aia_now_local + timedelta(minutes=float(archive_goes_offset_minutes))
         min_time = max_time - timedelta(minutes=60)
 
     if len(goes_time_array) > 0:
@@ -4804,7 +4990,10 @@ def plot_em_maps_and_curves(
     ax7.tick_params(axis="y", labelsize=chsize)
     display_time_local = time_em_array[-1]
     ax7.set_title(
-        "Latest AIA data: - " + display_time_local.strftime("%H:%M:%S") + " " + timezone,
+        "Latest AIA data: - "
+        + display_time_local.strftime("%H:%M:%S")
+        + " "
+        + timezone,
         fontsize=chsize * 1.5,
     )
     ax7.set(xlabel="Time (" + display_time_local.strftime("%m/%d/%Y") + ")")
@@ -5029,7 +5218,12 @@ def plot_detailed_em_result(
     ax6.tick_params(axis="y", labelsize=ticksize)
 
     cax = fig.add_axes(
-        [ax6.get_position().x1 + 0.01, ax6.get_position().y0, 0.01, ax6.get_position().height]
+        [
+            ax6.get_position().x1 + 0.01,
+            ax6.get_position().y0,
+            0.01,
+            ax6.get_position().height,
+        ]
     )
     cbar = fig.colorbar(im, cax=cax)
     cbar.ax.tick_params(labelsize=labelsize)
@@ -5049,8 +5243,16 @@ def plot_detailed_em_result(
         goes_xrsb_flux = np.asarray(goes_xrsb_flux)[goes_mask]
 
     if len(goes_time_array) > 0:
-        ax7.plot(goes_time_array, goes_xrsa_flux, "gray", label="GOES XRSA", linestyle="-.")
-        ax7.plot(goes_time_array, goes_xrsb_flux, "black", label="GOES XRSB", linestyle="dashed")
+        ax7.plot(
+            goes_time_array, goes_xrsa_flux, "gray", label="GOES XRSA", linestyle="-."
+        )
+        ax7.plot(
+            goes_time_array,
+            goes_xrsb_flux,
+            "black",
+            label="GOES XRSB",
+            linestyle="dashed",
+        )
     ax7.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz.gettz(timezone)))
     ax7.xaxis.set_major_locator(mdates.MinuteLocator(interval=20))
     ax7.set_yscale("log")
@@ -5093,9 +5295,9 @@ def plot_detailed_em_result(
             pos.x0 - top_ylabel_offset,
             pos.y0 + pos.height / 2.0,
             ylabel,
-            rotation='vertical',
-            va='center',
-            ha='center',
+            rotation="vertical",
+            va="center",
+            ha="center",
             fontsize=labelsize,
         )
     ax6.set_ylabel("")
@@ -5104,26 +5306,32 @@ def plot_detailed_em_result(
         pos.x0 - em_ylabel_offset,
         pos.y0 + pos.height / 2.0,
         ylabel,
-        rotation='vertical',
-        va='center',
-        ha='center',
+        rotation="vertical",
+        va="center",
+        ha="center",
         fontsize=labelsize,
     )
 
     fig.legend(bbox_to_anchor=(0.09, 0.05, 0.45, 0.38), fontsize=legsize)
     fig.suptitle(
-        label + " " + str(arnum) + " - " + time_em_array[-1].strftime("%H:%M:%S") + " " + timezone,
+        label
+        + " "
+        + str(arnum)
+        + " - "
+        + time_em_array[-1].strftime("%H:%M:%S")
+        + " "
+        + timezone,
         fontsize=25,
     )
 
     out_path = os.path.join(plots_folder, "aia_em_" + str(box_index))
     plt.savefig(
         out_path,
-        dpi=85,
+        dpi=100,
         facecolor="white",
+        bbox_inches="tight",
     )
     plt.close(fig)
-
 
 
 # **********************************************************
@@ -5199,20 +5407,37 @@ def _render_full_disk_aia_panel_process(payload):
     color_arr = payload["color_arr"]
     n_pix_x = int(payload["n_pix_x"])
     n_pix_y = int(payload["n_pix_y"])
+    panel_index = int(payload.get("panel_index", 0))
 
-    fig = plt.figure(figsize=(4.7, 5.35))
+    if panel_index == 0:
+        fig = plt.figure(figsize=(5.26, 5.35))
+    else:
+        fig = plt.figure(figsize=(4.7, 5.35))
+
     ax = fig.add_subplot(111, projection=aia_map)
-    aia_map.plot_settings["norm"] = colors.LogNorm(vmin=0.3, vmax=16000.0 / 2.9, clip=True)
+    aia_map.plot_settings["norm"] = colors.LogNorm(
+        vmin=0.3, vmax=16000.0 / 2.9, clip=True
+    )
     aia_map.plot_settings["cmap"] = matplotlib.cm.get_cmap("gray")
     aia_map.plot(axes=ax)
     ax.set_title(f"AIA {int(aia_map.meta['wavelnth'])}Å", fontsize=16)
-    ax.set_xlabel("Solar X [arcsec]", fontsize=13)
-    ax.set_ylabel("Solar Y [arcsec]", fontsize=13, labelpad=-0.8)
-    ax.tick_params(axis="x", labelsize=13)
-    ax.tick_params(axis="y", labelsize=13, pad=2.0)
+    if panel_index == 2:
+        ax.set_xlabel("Solar X [arcsec]", fontsize=18)
+        ax.tick_params(axis="x", labelsize=14)
+    else:
+        ax.set_xlabel("")
+        ax.tick_params(axis="x", labelsize=14)
+    if panel_index == 0:
+        ax.set_ylabel("Solar Y [arcsec]", fontsize=18, labelpad=0)
+        ax.tick_params(axis="y", labelsize=14, pad=2.0)
+    else:
+        ax.set_ylabel("")
+        ax.tick_params(axis="y", labelsize=14)
 
     ar_coords = [
-        SkyCoord(ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst)
+        SkyCoord(
+            ar_lon[ii] * u.deg, ar_lat[ii] * u.deg, frame=frames.HeliographicStonyhurst
+        )
         for ii in range(len(ar_lon))
     ]
     for ii in range(len(ar_lon)):
@@ -5225,7 +5450,9 @@ def _render_full_disk_aia_panel_process(payload):
         bottom_left = aia_map.pixel_to_world(
             (pix_x - n_pix_x // 2) * u.pix, (pix_y - n_pix_y // 2) * u.pix
         )
-        new_bl = SkyCoord(bottom_left.Tx, bottom_left.Ty, frame=aia_map.coordinate_frame)
+        new_bl = SkyCoord(
+            bottom_left.Tx, bottom_left.Ty, frame=aia_map.coordinate_frame
+        )
         new_tr = SkyCoord(top_right.Tx, top_right.Ty, frame=aia_map.coordinate_frame)
         aia_map.draw_quadrangle(
             new_bl,
@@ -5235,7 +5462,7 @@ def _render_full_disk_aia_panel_process(payload):
             linewidth=2,
         )
 
-    fig.subplots_adjust(left=0.14, right=1.06, top=0.89, bottom=0.14)
+    fig.subplots_adjust(left=0.14, right=0.98, top=0.89, bottom=0.14)
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
 
@@ -5260,19 +5487,30 @@ def _render_suvi_panel_image(suvi_image, suvi_title, out_path, target_height):
     title_font = _load_font(34)
     bbox = draw.textbbox((0, 0), suvi_title, font=title_font)
     title_w = bbox[2] - bbox[0]
-    draw.text((max(10, (width - title_w) / 2), 36), suvi_title, fill=(255, 0, 0), font=title_font)
+    draw.text(
+        (max(10, (width - title_w) / 2), 36),
+        suvi_title,
+        fill=(255, 0, 0),
+        font=title_font,
+    )
     top_pad = 76
     side_pad = 10
     bottom_pad = 8
     if suvi_image is None:
-        draw.rectangle([side_pad, top_pad, width - side_pad, target_height - bottom_pad], fill=(0, 0, 0))
+        draw.rectangle(
+            [side_pad, top_pad, width - side_pad, target_height - bottom_pad],
+            fill=(0, 0, 0),
+        )
         msg_font = _load_font(16)
         msg = "SUVI data not available"
         bbox = draw.textbbox((0, 0), msg, font=msg_font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
         draw.text(
-            ((width - tw) / 2, top_pad + (target_height - top_pad - bottom_pad - th) / 2),
+            (
+                (width - tw) / 2,
+                top_pad + (target_height - top_pad - bottom_pad - th) / 2,
+            ),
             msg,
             fill=(255, 255, 255),
             font=msg_font,
@@ -5319,7 +5557,9 @@ def plot_full_disk_images_parallel(
     current_time_local = convert_utc_to_timezone(current_time_utc, timezone=timezone)
     if suvi_obs_time_utc is not None:
         suvi_time_local = convert_utc_to_timezone(suvi_obs_time_utc, timezone=timezone)
-        suvi_panel_title = f"{suvi_title} | {suvi_time_local.strftime('%Y-%m-%d %H:%M:%S')}"
+        suvi_panel_title = (
+            f"{suvi_title} | {suvi_time_local.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
     else:
         suvi_panel_title = suvi_title
 
@@ -5337,11 +5577,15 @@ def plot_full_disk_images_parallel(
                 "color_arr": list(color_arr),
                 "n_pix_x": int(n_pix_x),
                 "n_pix_y": int(n_pix_y),
+                "panel_index": idx,
             }
         )
 
     with ProcessPoolExecutor(max_workers=render_workers) as ex:
-        futures = [ex.submit(_render_full_disk_aia_panel_process, payload) for payload in payloads]
+        futures = [
+            ex.submit(_render_full_disk_aia_panel_process, payload)
+            for payload in payloads
+        ]
         for fut in as_completed(futures):
             fut.result()
 
@@ -5352,19 +5596,26 @@ def plot_full_disk_images_parallel(
     _render_suvi_panel_image(suvi_image, suvi_panel_title, suvi_path, target_height)
     suvi_panel = Image.open(suvi_path).convert("RGB")
 
-    gap = 18.2
+    gap = 13
     side_margin = 26
     top_margin = 88
     bottom_margin = 12
     title_font = _load_font(70)
-    title = "AIA data " + current_time_local.strftime("%m/%d/%Y - %H:%M:%S") + " " + timezone
+    title = (
+        "AIA data "
+        + current_time_local.strftime("%m/%d/%Y - %H:%M:%S")
+        + " "
+        + timezone
+    )
 
-    total_width = int(round(
-        side_margin * 2
-        + sum(img.width for img in panel_images)
-        + suvi_panel.width
-        + gap * 5
-    ))
+    total_width = int(
+        round(
+            side_margin * 2
+            + sum(img.width for img in panel_images)
+            + suvi_panel.width
+            + gap * 5
+        )
+    )
     total_height = int(round(top_margin + target_height + bottom_margin))
     canvas = Image.new("RGB", (total_width, total_height), "white")
     draw = ImageDraw.Draw(canvas)
@@ -5471,7 +5722,7 @@ def plot_full_disk_images(
     ax4 = fig.add_subplot(gs[0, 3], projection=ordered_aia_maps[3])
     ax5 = fig.add_subplot(gs[0, 4], projection=ordered_aia_maps[4])
     ax6 = fig.add_subplot(gs[0, 5])
-    fig.subplots_adjust(left=0.03, right=0.995, top=0.85, bottom=0.08, wspace=0.21)
+    fig.subplots_adjust(left=0.03, right=0.98, top=0.85, bottom=0.08, wspace=0.21)
 
     # Reduce only the gap between panel 5 and panel 6 (keep panel 5 fixed).
     panel56_tighten = 0.0215
@@ -5817,6 +6068,7 @@ def stream_aia_data(
     # Total EM folder
     total_em_folder = os.path.join(data_folder, "total_em")
     mkdir(total_em_folder)
+
     def ensure_total_em_files(current_arnum):
         for i in range(len(current_arnum)):
             file_name_csv = os.path.join(
@@ -5840,13 +6092,14 @@ def stream_aia_data(
     startup_boxes_refined = False
     last_solarmonitor_day = None
     last_box_recenter_ut = None
-    if box_recenter_interval_hours is not None and float(box_recenter_interval_hours) <= 0:
+    if (
+        box_recenter_interval_hours is not None
+        and float(box_recenter_interval_hours) <= 0
+    ):
         box_recenter_interval_hours = None
     resumed_state = _load_runtime_stream_state(data_folder, label[:n_ar])
     if resumed_state is not None:
-        fai_history.update(
-            resumed_state.get("fai_history", {})
-        )
+        fai_history.update(resumed_state.get("fai_history", {}))
         active_area_fraction_history.update(
             resumed_state.get("active_area_fraction_history", {})
         )
@@ -5854,12 +6107,8 @@ def stream_aia_data(
         fai_trigger_cooldown_remaining.update(
             resumed_state.get("fai_trigger_cooldown_remaining", {})
         )
-        persistent_fai_active = bool(
-            resumed_state.get("persistent_fai_active", False)
-        )
-        persistent_fai_label = resumed_state.get(
-            "persistent_fai_label"
-        )
+        persistent_fai_active = bool(resumed_state.get("persistent_fai_active", False))
+        persistent_fai_label = resumed_state.get("persistent_fai_label")
         saved_arnum = resumed_state.get("arnum")
         saved_ar_x = resumed_state.get("ar_x")
         saved_ar_y = resumed_state.get("ar_y")
@@ -5930,12 +6179,16 @@ def stream_aia_data(
     sms_recipients_path = Path(
         sms_recipients_file.strip()
         if str(sms_recipients_file).strip()
-        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "sms_recipients.txt")
+        else os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "sms_recipients.txt"
+        )
     )
     sms_smtp_config_path = Path(
         sms_smtp_config_file.strip()
         if str(sms_smtp_config_file).strip()
-        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "sms_smtp_config.json")
+        else os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "sms_smtp_config.json"
+        )
     )
     sms_recipients = load_sms_recipients(sms_recipients_path)
     sms_smtp_cfg = load_sms_smtp_config(sms_smtp_config_path)
@@ -5949,10 +6202,7 @@ def stream_aia_data(
         if not str(sms_smtp_cfg.get("app_password", "")).strip():
             sms_missing.append(f"missing app_password in {sms_smtp_config_path}")
         if sms_missing:
-            print(
-                "SMS disabled: "
-                + "; ".join(sms_missing)
-            )
+            print("SMS disabled: " + "; ".join(sms_missing))
             sms_enabled = False
     c5_sms_active = False
     goes_sms_active = False
@@ -5964,10 +6214,13 @@ def stream_aia_data(
     configured_control_url = (
         str(external_control_url).strip() if str(ngrok_authtoken or "").strip() else ""
     )
-    tunnel_health_check_interval_sec = max(10.0, float(tunnel_health_check_interval_sec))
+    tunnel_health_check_interval_sec = max(
+        10.0, float(tunnel_health_check_interval_sec)
+    )
     tunnel_restart_cooldown_sec = max(10.0, float(tunnel_restart_cooldown_sec))
     tunnel_next_health_check_unix = 0.0
     tunnel_next_restart_unix = 0.0
+    tunnel_consecutive_health_failures = 0
     box_control_path = None
     box_control_mtime = None
     if publish_mode == "scp":
@@ -6021,7 +6274,9 @@ def stream_aia_data(
         )
         if os.path.exists(box_control_path):
             box_control_mtime = os.path.getmtime(box_control_path)
-        publish_status_local(local_publish_dir, "warn", "Waiting", "WAFFLE stream is initializing")
+        publish_status_local(
+            local_publish_dir, "warn", "Waiting", "WAFFLE stream is initializing"
+        )
     else:
         raise ValueError("publish_mode must be either 'scp' or 'local'")
 
@@ -6145,19 +6400,71 @@ def stream_aia_data(
                     tunnel_next_health_check_unix = (
                         now_unix + tunnel_health_check_interval_sec
                     )
-                    if is_global_control_tunnel_healthy(
+                    tunnel_provider = str(
+                        (global_control_tunnel or {}).get("provider", "") or ""
+                    ).strip()
+                    if tunnel_provider == "pycloudflared":
+                        process_ok = not global_control_tunnel_needs_immediate_restart(
+                            global_control_tunnel
+                        )
+                        local_ok = is_local_control_server_healthy(
+                            local_web_port,
+                            timeout_sec=min(float(tunnel_health_timeout_sec), 3.0),
+                        )
+                        public_ok = is_global_control_tunnel_healthy(
+                            global_control_tunnel,
+                            external_control_url=configured_control_url
+                            or external_control_url,
+                            timeout_sec=tunnel_health_timeout_sec,
+                        )
+                        if process_ok and local_ok:
+                            tunnel_consecutive_health_failures = 0
+                            if not public_ok:
+                                print(
+                                    "Global control public tunnel check failed, but "
+                                    "local control server and cloudflared process are "
+                                    "healthy; keeping current temporary Cloudflare "
+                                    "tunnel."
+                                )
+                            resolved_control_url = resolve_global_control_url(
+                                global_control_tunnel,
+                                configured_control_url or external_control_url,
+                            )
+                            if (
+                                resolved_control_url
+                                and resolved_control_url != external_control_url
+                            ):
+                                external_control_url = resolved_control_url
+                                print(
+                                    f"Global control link resolved: {external_control_url}"
+                                )
+                            continue
+                        tunnel_consecutive_health_failures += 1
+                    elif is_global_control_tunnel_healthy(
                         global_control_tunnel,
-                        external_control_url=configured_control_url or external_control_url,
+                        external_control_url=configured_control_url
+                        or external_control_url,
                         timeout_sec=tunnel_health_timeout_sec,
                     ):
+                        tunnel_consecutive_health_failures = 0
                         resolved_control_url = resolve_global_control_url(
                             global_control_tunnel,
                             configured_control_url or external_control_url,
                         )
-                        if resolved_control_url and resolved_control_url != external_control_url:
+                        if (
+                            resolved_control_url
+                            and resolved_control_url != external_control_url
+                        ):
                             external_control_url = resolved_control_url
-                            print(f"Global control link resolved: {external_control_url}")
-                    elif now_unix >= tunnel_next_restart_unix:
+                            print(
+                                f"Global control link resolved: {external_control_url}"
+                            )
+                    else:
+                        tunnel_consecutive_health_failures += 1
+                    if (
+                        tunnel_consecutive_health_failures >= 1
+                        and now_unix >= tunnel_next_restart_unix
+                    ):
                         try:
                             global_control_tunnel, resolved_control_url, _ = (
                                 ensure_global_control_tunnel(
@@ -6170,6 +6477,7 @@ def stream_aia_data(
                                     health_timeout_sec=tunnel_health_timeout_sec,
                                 )
                             )
+                            tunnel_consecutive_health_failures = 0
                             tunnel_next_restart_unix = (
                                 now_unix + tunnel_restart_cooldown_sec
                             )
@@ -6228,9 +6536,7 @@ def stream_aia_data(
                         )
                         print_query_wait_message(use_nrt2_server, err)
                         time.sleep(2)
-                        client = configure_jsoc_server(
-                            use_nrt2_server=use_nrt2_server
-                        )
+                        client = configure_jsoc_server(use_nrt2_server=use_nrt2_server)
                         continue
                     publish_runtime_status(
                         publish_mode,
@@ -6274,7 +6580,9 @@ def stream_aia_data(
                         "No usable DRMS rows yet; WAFFLE is still polling",
                         local_mirror_destination=local_publish_dir,
                     )
-                    cols = list(getattr(query, "columns", [])) if query is not None else []
+                    cols = (
+                        list(getattr(query, "columns", [])) if query is not None else []
+                    )
                     rows = len(query) if query is not None else 0
                     print_query_wait_message(use_nrt2_server)
                     print(
@@ -6507,7 +6815,9 @@ def stream_aia_data(
                     executor=shared_executor,
                 )
                 missing_box_idx = [
-                    i for i in range(n_ar) if (not np.isfinite(ar_x[i])) or (not np.isfinite(ar_y[i]))
+                    i
+                    for i in range(n_ar)
+                    if (not np.isfinite(ar_x[i])) or (not np.isfinite(ar_y[i]))
                 ]
                 if missing_box_idx:
                     fallback_xy = find_em_hotspot_boxes(
@@ -6535,7 +6845,11 @@ def stream_aia_data(
                         )
                     # If SolarMonitor gave us no usable boxes, assign the initial
                     # fallback-only layout into WAFFLE's top/bottom slot order once.
-                    if np.sum(np.isfinite(ar_priority)) == 0 and np.all(np.isfinite(ar_x)) and np.all(np.isfinite(ar_y)):
+                    if (
+                        np.sum(np.isfinite(ar_priority)) == 0
+                        and np.all(np.isfinite(ar_x))
+                        and np.all(np.isfinite(ar_y))
+                    ):
                         arnum, ar_x, ar_y, ar_priority = reorder_box_layout(
                             arnum, ar_x, ar_y, ar_priority
                         )
@@ -6547,9 +6861,7 @@ def stream_aia_data(
                 elif (
                     box_recenter_interval_hours is not None
                     and last_box_recenter_ut is not None
-                    and (
-                        start_time_series - last_box_recenter_ut
-                    ).total_seconds()
+                    and (start_time_series - last_box_recenter_ut).total_seconds()
                     >= float(box_recenter_interval_hours) * 3600.0
                 ):
                     should_recenter_now = True
@@ -6565,10 +6877,14 @@ def stream_aia_data(
                         min_dy_arcsec=min_center_dy_arcsec,
                     )
                     recenter_missing_idx = [
-                        i for i in range(n_ar) if (not np.isfinite(ar_x[i])) or (not np.isfinite(ar_y[i]))
+                        i
+                        for i in range(n_ar)
+                        if (not np.isfinite(ar_x[i])) or (not np.isfinite(ar_y[i]))
                     ]
                     if recenter_missing_idx:
-                        fallback_arnums = assign_fallback_arnums(arnum, recenter_missing_idx)
+                        fallback_arnums = assign_fallback_arnums(
+                            arnum, recenter_missing_idx
+                        )
                         for slot, fallback_id in fallback_arnums.items():
                             arnum[slot] = int(fallback_id)
                         ensure_total_em_files(arnum)
@@ -6584,7 +6900,9 @@ def stream_aia_data(
                             min_dx_arcsec=min_center_dx_arcsec,
                             min_dy_arcsec=min_center_dy_arcsec,
                         )
-                        for slot, (x_fill, y_fill) in zip(recenter_missing_idx, fallback_xy):
+                        for slot, (x_fill, y_fill) in zip(
+                            recenter_missing_idx, fallback_xy
+                        ):
                             ar_x[slot] = float(x_fill)
                             ar_y[slot] = float(y_fill)
                         if fallback_xy:
@@ -6602,7 +6920,8 @@ def stream_aia_data(
                         box_control_mtime = synced_mtime
                     if refined_shifts:
                         print(
-                            recenter_kind + ": "
+                            recenter_kind
+                            + ": "
                             + ", ".join(
                                 (
                                     f"{arnum[i]} ({x0:.0f},{y0:.0f})->dropped"
@@ -6861,13 +7180,17 @@ def stream_aia_data(
                     em_map_th = em_map_raw.data.copy()
                     em_map_th[em_map_th < th_tot_em] = 0
                     # Match legacy WAFFLE scaling used in CSV totals.
-                    total_em_current = float(np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y))
+                    total_em_current = float(
+                        np.sum(em_map_th) * 1.0e6 / (n_pix_x * n_pix_y)
+                    )
                     return i, em_map_raw, total_em_current, detail_submaps
 
                 n_workers = max(1, min(int(worker_count), n_ar))
                 if n_workers == 1:
                     for i in range(n_ar):
-                        i_out, em_map_raw, total_em_current, detail_submaps = _compute_ar(i)
+                        i_out, em_map_raw, total_em_current, detail_submaps = (
+                            _compute_ar(i)
+                        )
                         em_maps[i_out] = em_map_raw
                         em_totals[i_out] = total_em_current
                         detail_aia_submaps[i_out] = detail_submaps
@@ -6879,7 +7202,9 @@ def stream_aia_data(
                                 executor.submit(_compute_ar, i) for i in range(n_ar)
                             ]
                             for fut in as_completed(futures):
-                                i_out, em_map_raw, total_em_current, detail_submaps = fut.result()
+                                i_out, em_map_raw, total_em_current, detail_submaps = (
+                                    fut.result()
+                                )
                                 em_maps[i_out] = em_map_raw
                                 em_totals[i_out] = total_em_current
                                 detail_aia_submaps[i_out] = detail_submaps
@@ -6888,7 +7213,9 @@ def stream_aia_data(
                             active_executor.submit(_compute_ar, i) for i in range(n_ar)
                         ]
                         for fut in as_completed(futures):
-                            i_out, em_map_raw, total_em_current, detail_submaps = fut.result()
+                            i_out, em_map_raw, total_em_current, detail_submaps = (
+                                fut.result()
+                            )
                             em_maps[i_out] = em_map_raw
                             em_totals[i_out] = total_em_current
                             detail_aia_submaps[i_out] = detail_submaps
@@ -6962,16 +7289,13 @@ def stream_aia_data(
                         fai_trigger_t_mk_thresholds,
                         fai_trigger_em49_thresholds,
                     )
-                    fai_history[box_label].append(
-                        1.0 if fai_trigger_hit else 0.0
-                    )
+                    fai_history[box_label].append(1.0 if fai_trigger_hit else 0.0)
                     if len(fai_history[box_label]) > 10:
                         del fai_history[box_label][:-10]
 
                     recent_fai_trigger_vals = fai_history[box_label][-2:]
-                    fai_trigger_ok = (
-                        len(recent_fai_trigger_vals) >= 2
-                        and all(v >= 0.5 for v in recent_fai_trigger_vals)
+                    fai_trigger_ok = len(recent_fai_trigger_vals) >= 2 and all(
+                        v >= 0.5 for v in recent_fai_trigger_vals
                     )
                     box_fai_trigger_cooldown = int(
                         fai_trigger_cooldown_remaining[box_label]
@@ -6987,9 +7311,7 @@ def stream_aia_data(
                             trigger_txt = "FAI_TRIGGER10"
                         elif fai_trigger_ok and box_fai_trigger_cooldown > 0:
                             fai_trigger_states[i] = True
-                            trigger_txt = (
-                                f"fai_trigger_cooldown({box_fai_trigger_cooldown},box={box_label})"
-                            )
+                            trigger_txt = f"fai_trigger_cooldown({box_fai_trigger_cooldown},box={box_label})"
                     statuses_by_label[box_label] = trigger_txt
 
                     em_prev = float("nan")
@@ -7016,17 +7338,18 @@ def stream_aia_data(
                 )
                 if float(em_totals[focus_idx]) >= 5.0e48:
                     if not c5_sms_active:
-                        maybe_send_sms("Waffle: C5+ level has been reached, possible flare.")
+                        maybe_send_sms(
+                            "Waffle: C5+ level has been reached, possible flare."
+                        )
                         c5_sms_active = True
                 else:
                     c5_sms_active = False
 
-                focus_area_frac = float(em_active_area_fraction(em_maps[focus_idx].data))
+                focus_area_frac = float(
+                    em_active_area_fraction(em_maps[focus_idx].data)
+                )
                 if np.isfinite(focus_area_frac):
-                    print(
-                        "Focus box active area fraction: "
-                        f"{focus_area_frac:.3f}"
-                    )
+                    print(f"Focus box active area fraction: {focus_area_frac:.3f}")
                 else:
                     print("Focus box active area fraction: NA")
 
@@ -7051,35 +7374,35 @@ def stream_aia_data(
                     estimated_realtime_utc = None
                     estimated_realtime_local = None
                     if (
-                        (not realtime_mode)
-                        and archive_trigger_realtime_delay_minutes is not None
-                    ):
-                        estimated_realtime_utc, estimated_realtime_local = _estimate_realtime_from_aia(
-                            trigger_time_utc,
-                            timezone=timezone,
-                            delay_minutes=archive_trigger_realtime_delay_minutes,
+                        not realtime_mode
+                    ) and archive_trigger_realtime_delay_minutes is not None:
+                        estimated_realtime_utc, estimated_realtime_local = (
+                            _estimate_realtime_from_aia(
+                                trigger_time_utc,
+                                timezone=timezone,
+                                delay_minutes=archive_trigger_realtime_delay_minutes,
+                            )
                         )
                         print(
                             "FAI trigger estimated realtime: "
                             f"{estimated_realtime_local.isoformat()} "
                             f"({estimated_realtime_utc.isoformat()})"
                         )
-                    maybe_send_sms(
-                        f"Waffle: FAI trigger fired in box {focus_label}."
-                    )
-                    if (
-                        not fai_trigger_times
-                        or (
-                            fai_trigger_times[-1].get("time")
-                            if isinstance(fai_trigger_times[-1], dict)
-                            else fai_trigger_times[-1]
-                        ) != (
-                            estimated_realtime_local
-                            if estimated_realtime_local is not None
-                            else trigger_time_local
-                        )
+                    maybe_send_sms(f"Waffle: FAI trigger fired in box {focus_label}.")
+                    if not fai_trigger_times or (
+                        fai_trigger_times[-1].get("time")
+                        if isinstance(fai_trigger_times[-1], dict)
+                        else fai_trigger_times[-1]
+                    ) != (
+                        estimated_realtime_local
+                        if estimated_realtime_local is not None
+                        else trigger_time_local
                     ):
-                        trigger_color = color_arr[label.index(focus_label)] if focus_label in label else "black"
+                        trigger_color = (
+                            color_arr[label.index(focus_label)]
+                            if focus_label in label
+                            else "black"
+                        )
                         fai_trigger_times.append(
                             {
                                 "time": (
@@ -7104,9 +7427,7 @@ def stream_aia_data(
                     persistent_fai_active = True
                     persistent_fai_label = focus_label
                 elif persistent_fai_active:
-                    tracked_vals = fai_history.get(
-                        persistent_fai_label or "", []
-                    )
+                    tracked_vals = fai_history.get(persistent_fai_label or "", [])
                     tracked_recent = tracked_vals[-2:]
                     tracked_avg = (
                         float(np.mean(tracked_recent))
@@ -7172,7 +7493,9 @@ def stream_aia_data(
                     goes_plot_data=goes_plot_data,
                     trigger_states=fai_trigger_states,
                     trigger_times=fai_trigger_times,
-                    alert_face_mode=("pretrigger" if persistent_fai_active else "watch"),
+                    alert_face_mode=(
+                        "pretrigger" if persistent_fai_active else "watch"
+                    ),
                     goes_anchor_time_local=goes_anchor_local,
                     archive_goes_offset_minutes=archive_goes_offset_minutes,
                 )
@@ -7183,6 +7506,7 @@ def stream_aia_data(
                 write_detailed_analysis_pages(
                     detailed_analysis_folder, label[:n_ar], arnum[:n_ar]
                 )
+
                 def _render_detail_plot(i):
                     plot_detailed_em_result(
                         detailed_analysis_folder,
@@ -7193,7 +7517,9 @@ def stream_aia_data(
                         arnum[i],
                         label[i],
                         i + 1,
-                        os.path.join(total_em_folder, "total_em_" + str(arnum[i]) + ".csv"),
+                        os.path.join(
+                            total_em_folder, "total_em_" + str(arnum[i]) + ".csv"
+                        ),
                         timezone=timezone,
                         em_cache=em_cache,
                         ar_color=color_arr[i],
@@ -7222,7 +7548,8 @@ def stream_aia_data(
                                     "label": label[i],
                                     "box_index": i + 1,
                                     "file_name_em_csv": os.path.join(
-                                        total_em_folder, "total_em_" + str(arnum[i]) + ".csv"
+                                        total_em_folder,
+                                        "total_em_" + str(arnum[i]) + ".csv",
                                     ),
                                     "timezone": timezone,
                                     "ar_color": color_arr[i],
@@ -7233,7 +7560,9 @@ def stream_aia_data(
                                     ),
                                 }
                             )
-                        with ProcessPoolExecutor(max_workers=plot_workers) as plot_executor:
+                        with ProcessPoolExecutor(
+                            max_workers=plot_workers
+                        ) as plot_executor:
                             futures = [
                                 plot_executor.submit(
                                     render_detailed_em_result_process, payload
@@ -7279,13 +7608,13 @@ def stream_aia_data(
                         alert_config={
                             "type": "fai_trigger",
                             "alert_count": 2,
-                            "box_em_total_thresholds": list(fai_trigger_box_em_total_thresholds),
+                            "box_em_total_thresholds": list(
+                                fai_trigger_box_em_total_thresholds
+                            ),
                             "t_mk_thresholds": list(fai_trigger_t_mk_thresholds),
                             "em49_thresholds": list(fai_trigger_em49_thresholds),
                             "consecutive_frames_required": 2,
-                            "cooldown_frames": int(
-                                fai_trigger_cooldown_frames
-                            ),
+                            "cooldown_frames": int(fai_trigger_cooldown_frames),
                         },
                         copy_em_goes_plot=True,
                         snapshot_root_name="FAI Triggers",
