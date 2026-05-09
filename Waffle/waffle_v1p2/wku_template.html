@@ -821,12 +821,7 @@ document.getElementById("box-control-form").addEventListener("submit", function(
             );
         })
         .catch(function(err) {
-            setControlError(
-                "Save rejected. Reverting to the previous coordinates: " + err.message
-            );
-            setTimeout(function() {
-                loadControlConfig();
-            }, 150);
+            setControlError("Save rejected: " + err.message);
         });
 });
 

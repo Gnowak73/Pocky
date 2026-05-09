@@ -171,7 +171,9 @@ if __name__ == "__main__":
         global_control_config_path
     )
     ngrok_authtoken = str(global_control_cfg.get("ngrok_authtoken", "") or "").strip()
-    if ngrok_authtoken:
+    provider_mode = str(global_control_provider or "auto").strip().lower()
+    using_ngrok = provider_mode in ("auto", "ngrok") and bool(ngrok_authtoken)
+    if using_ngrok:
         if not external_control_url:
             external_control_url = str(
                 global_control_cfg.get("external_control_url", "") or ""
@@ -187,6 +189,9 @@ if __name__ == "__main__":
                 local_web_host,
                 local_web_port,
                 control_config_path=box_control_path,
+                control_validation_context_path=aux_functions.default_control_validation_context_path(
+                    local_publish_dir
+                ),
                 control_auth_user=control_auth_user,
                 control_auth_password=control_auth_password,
             )

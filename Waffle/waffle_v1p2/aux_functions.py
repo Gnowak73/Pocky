@@ -299,7 +299,7 @@ def _coerce_box_control_payload(payload, fallback_payload):
     return out
 
 
-def _validate_manual_box_control_payload(payload, max_radius_arcsec=1000.0):
+def _validate_manual_box_control_payload(payload):
     if str(payload.get("region_source", "")).strip().lower() != "manual":
         return
     bad_boxes = []
@@ -318,13 +318,105 @@ def _validate_manual_box_control_payload(payload, max_radius_arcsec=1000.0):
             continue
         if (not np.isfinite(x)) or (not np.isfinite(y)):
             bad_boxes.append(f"{lab}(invalid)")
-            continue
-        if (x * x + y * y) > float(max_radius_arcsec) ** 2:
-            bad_boxes.append(f"{lab}({int(round(x))},{int(round(y))})")
     if bad_boxes:
         raise ValueError(
-            "Manual box coordinates must stay on the solar disk. Invalid boxes: "
+            "Manual box coordinates must be finite arcsec values. Invalid boxes: "
             + ", ".join(bad_boxes)
+        )
+
+
+def _is_valid_manual_box_on_map(aia_map, x_arcsec, y_arcsec, n_pix_x, n_pix_y):
+    try:
+        x_arcsec = float(x_arcsec)
+        y_arcsec = float(y_arcsec)
+    except Exception:
+        return False
+    if (not np.isfinite(x_arcsec)) or (not np.isfinite(y_arcsec)):
+        return False
+    try:
+        rsun_arcsec = float(aia_map.rsun_obs.to_value(u.arcsec))
+    except Exception:
+        rsun_arcsec = np.nan
+    if np.isfinite(rsun_arcsec) and (x_arcsec * x_arcsec + y_arcsec * y_arcsec) > (
+        rsun_arcsec * rsun_arcsec
+    ):
+        return False
+    try:
+        pix_x, pix_y = _hpc_xy_to_pixel(aia_map, x_arcsec, y_arcsec)
+    except Exception:
+        return False
+    if (not np.isfinite(pix_x)) or (not np.isfinite(pix_y)):
+        return False
+    ny, nx = aia_map.data.shape
+    x0 = float(pix_x) - float(n_pix_x) / 2.0
+    x1 = float(pix_x) + float(n_pix_x) / 2.0
+    y0 = float(pix_y) - float(n_pix_y) / 2.0
+    y1 = float(pix_y) + float(n_pix_y) / 2.0
+    return x0 >= 0.0 and y0 >= 0.0 and x1 <= float(nx) and y1 <= float(ny)
+
+
+def sanitize_manual_box_centers_with_map(aia_map, arnum, ar_x, ar_y, n_pix_x, n_pix_y):
+    sanitized_x = np.array(ar_x, dtype=float, copy=True)
+    sanitized_y = np.array(ar_y, dtype=float, copy=True)
+    invalid = []
+    for i in range(min(len(sanitized_x), len(sanitized_y))):
+        if not _is_valid_manual_box_on_map(
+            aia_map, sanitized_x[i], sanitized_y[i], n_pix_x, n_pix_y
+        ):
+            invalid.append(i)
+            sanitized_x[i] = np.nan
+            sanitized_y[i] = np.nan
+    return sanitized_x, sanitized_y, invalid
+
+
+def default_control_validation_context_path(local_publish_dir):
+    return os.path.join(local_publish_dir, "box_control_validation_context.json")
+
+
+def save_control_validation_context(context_path, aia_map, n_pix_x, n_pix_y):
+    payload = {
+        "meta": dict(aia_map.meta),
+        "shape": [int(aia_map.data.shape[0]), int(aia_map.data.shape[1])],
+        "n_pix_x": int(n_pix_x),
+        "n_pix_y": int(n_pix_y),
+    }
+    _write_json_atomic(context_path, payload)
+
+
+def _load_control_validation_map(context_path):
+    payload = _load_json_file(context_path)
+    meta = payload.get("meta", {})
+    shape = payload.get("shape", [])
+    if not isinstance(meta, dict) or len(shape) != 2:
+        raise ValueError("invalid control validation context")
+    ny = int(shape[0])
+    nx = int(shape[1])
+    n_pix_x = int(payload.get("n_pix_x", 0))
+    n_pix_y = int(payload.get("n_pix_y", 0))
+    dummy = np.zeros((ny, nx), dtype=np.float32)
+    return Map(dummy, meta), n_pix_x, n_pix_y
+
+
+def validate_manual_box_control_payload_with_context(payload, context_path):
+    if str(payload.get("region_source", "")).strip().lower() != "manual":
+        return
+    if not context_path or not os.path.exists(context_path):
+        return
+    aia_map, n_pix_x, n_pix_y = _load_control_validation_map(context_path)
+    bad_boxes = []
+    for lab in ["A", "B", "C", "D", "E", "F"]:
+        box = payload.get("manual_boxes", {}).get(lab, {})
+        x = box.get("x")
+        y = box.get("y")
+        if not _is_valid_manual_box_on_map(aia_map, x, y, n_pix_x, n_pix_y):
+            try:
+                bad_boxes.append(f"{lab}({int(round(float(x)))},{int(round(float(y)))})")
+            except Exception:
+                bad_boxes.append(f"{lab}(invalid)")
+    if bad_boxes:
+        raise ValueError(
+            "Manual box coordinates are invalid for the current solar-disk "
+            "projection. Rejected boxes: " + ", ".join(bad_boxes)
         )
 
 
@@ -334,11 +426,13 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
         *args,
         directory=None,
         control_config_path=None,
+        control_validation_context_path=None,
         control_auth_user="",
         control_auth_password="",
         **kwargs,
     ):
         self._control_config_path = control_config_path
+        self._control_validation_context_path = control_validation_context_path
         self._control_auth_user = str(control_auth_user or "")
         self._control_auth_password = str(control_auth_password or "")
         super().__init__(*args, directory=directory, **kwargs)
@@ -419,6 +513,9 @@ class _LocalControlRequestHandler(http.server.SimpleHTTPRequestHandler):
             current = _load_json_file(self._control_config_path)
             payload = _coerce_box_control_payload(incoming, current)
             _validate_manual_box_control_payload(payload)
+            validate_manual_box_control_payload_with_context(
+                payload, self._control_validation_context_path
+            )
             _write_json_atomic(self._control_config_path, payload)
             self._send_json(200, {"ok": True, "config": payload})
         except Exception as exc:
@@ -430,6 +527,7 @@ def start_local_publish_server(
     host,
     port,
     control_config_path=None,
+    control_validation_context_path=None,
     control_auth_user="",
     control_auth_password="",
 ):
@@ -444,6 +542,7 @@ def start_local_publish_server(
         *args,
         directory=local_publish_dir,
         control_config_path=control_config_path,
+        control_validation_context_path=control_validation_context_path,
         control_auth_user=control_auth_user,
         control_auth_password=control_auth_password,
         **kwargs,
@@ -581,9 +680,14 @@ def start_global_control_tunnel(
     ngrok_authtoken="",
     external_control_url="",
 ):
+    provider = str(provider or "auto").strip().lower()
     ngrok_authtoken = str(ngrok_authtoken or "").strip()
     external_control_url = str(external_control_url or "").strip()
-    if ngrok_authtoken:
+    if provider not in ("auto", "ngrok", "cloudflared"):
+        raise ValueError(
+            "global control provider must be 'auto', 'ngrok', or 'cloudflared'"
+        )
+    if ngrok_authtoken and provider in ("auto", "ngrok"):
         try:
             import ngrok
 
@@ -601,16 +705,10 @@ def start_global_control_tunnel(
         except Exception as exc:
             print(f"Global control tunnel ngrok sdk failed to start: {exc}")
 
-    provider_order = []
-    provider = str(provider or "auto").strip().lower()
     if provider == "auto":
         provider_order = ["ngrok", "cloudflared"]
-    elif provider in ("ngrok", "cloudflared"):
-        provider_order = [provider]
     else:
-        raise ValueError(
-            "global control provider must be 'auto', 'ngrok', or 'cloudflared'"
-        )
+        provider_order = [provider]
 
     for name in provider_order:
         if name == "ngrok":
@@ -6215,8 +6313,12 @@ def stream_aia_data(
     startup_sms_sent = False
     last_successful_publish_unix = time.time()
     last_successful_goes_plot_data = None
+    provider_mode = str(global_control_provider or "auto").strip().lower()
+    using_ngrok = provider_mode in ("auto", "ngrok") and bool(
+        str(ngrok_authtoken or "").strip()
+    )
     configured_control_url = (
-        str(external_control_url).strip() if str(ngrok_authtoken or "").strip() else ""
+        str(external_control_url).strip() if using_ngrok else ""
     )
     tunnel_health_check_interval_sec = max(
         10.0, float(tunnel_health_check_interval_sec)
@@ -6939,6 +7041,21 @@ def stream_aia_data(
                 cycle_ar_lat = np.array(ar_lat[:n_ar], dtype=float)
                 if len(normalized_aia_maps) > 0:
                     ref_map = normalized_aia_maps[0]
+                    if local_publish_dir is not None:
+                        try:
+                            save_control_validation_context(
+                                default_control_validation_context_path(
+                                    local_publish_dir
+                                ),
+                                ref_map,
+                                n_pix_x,
+                                n_pix_y,
+                            )
+                        except Exception as exc:
+                            print(
+                                "Failed to update box-control validation context: "
+                                f"{exc}"
+                            )
                     for i in range(n_ar):
                         lon_i, lat_i = hpc_xy_to_hgs(ref_map, ar_x[i], ar_y[i])
                         cycle_ar_lon[i] = lon_i
