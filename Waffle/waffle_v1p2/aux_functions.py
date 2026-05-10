@@ -6324,7 +6324,12 @@ def stream_aia_data(
         10.0, float(tunnel_health_check_interval_sec)
     )
     tunnel_restart_cooldown_sec = max(10.0, float(tunnel_restart_cooldown_sec))
-    tunnel_next_health_check_unix = 0.0
+    # Delay the first tunnel supervision pass until after startup settles.
+    tunnel_next_health_check_unix = (
+        time.time() + tunnel_health_check_interval_sec
+        if enable_global_control
+        else 0.0
+    )
     tunnel_next_restart_unix = 0.0
     tunnel_consecutive_health_failures = 0
     box_control_path = None
